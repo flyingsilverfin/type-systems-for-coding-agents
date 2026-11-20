@@ -1,0 +1,15 @@
+{
+ "run": "t3r_between_in_py_sma",
+ "task": "between_in",
+ "suite": "toydb-t3",
+ "tier": "t3",
+ "lang": "python",
+ "model": "sonnet",
+ "effort": "medium",
+ "ws": "/home/user/agentbench/runs/t3r_between_in_py_sma",
+ "hint": true,
+ "readme_from": "t2",
+ "baseline": "1bf215c74bcb703a1455323a03adbd618e98bf04",
+ "created": 1795151199.013224,
+ "warm_ok": true
+}

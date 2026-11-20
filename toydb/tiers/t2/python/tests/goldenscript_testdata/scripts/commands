@@ -1,0 +1,472 @@
+# A bare command.
+command
+---
+Command {
+    name: "command",
+    args: [],
+    context: Context {
+        prefix: None,
+        tags: {},
+        silent: false,
+        fail: false,
+        line_number: 2,
+    },
+}
+
+# Commands with arguments.
+foo arg
+bar key=value
+baz arg key=value
+---
+Command {
+    name: "foo",
+    args: [
+        Positional(
+            "arg",
+        ),
+    ],
+    context: Context {
+        prefix: None,
+        tags: {},
+        silent: false,
+        fail: false,
+        line_number: 17,
+    },
+}
+Command {
+    name: "bar",
+    args: [
+        KeyValue(
+            "key",
+            "value",
+        ),
+    ],
+    context: Context {
+        prefix: None,
+        tags: {},
+        silent: false,
+        fail: false,
+        line_number: 18,
+    },
+}
+Command {
+    name: "baz",
+    args: [
+        Positional(
+            "arg",
+        ),
+        KeyValue(
+            "key",
+            "value",
+        ),
+    ],
+    context: Context {
+        prefix: None,
+        tags: {},
+        silent: false,
+        fail: false,
+        line_number: 19,
+    },
+}
+
+# Commands with tags.
+foo [tag]
+foo arg key=value [a,b c]
+---
+Command {
+    name: "foo",
+    args: [],
+    context: Context {
+        prefix: None,
+        tags: {
+            "tag",
+        },
+        silent: false,
+        fail: false,
+        line_number: 73,
+    },
+}
+Command {
+    name: "foo",
+    args: [
+        Positional(
+            "arg",
+        ),
+        KeyValue(
+            "key",
+            "value",
+        ),
+    ],
+    context: Context {
+        prefix: None,
+        tags: {
+            "a",
+            "b",
+            "c",
+        },
+        silent: false,
+        fail: false,
+        line_number: 74,
+    },
+}
+
+# Command with tags before the command.
+[tag] foo
+[a,b c] foo arg
+---
+Command {
+    name: "foo",
+    args: [],
+    context: Context {
+        prefix: None,
+        tags: {
+            "tag",
+        },
+        silent: false,
+        fail: false,
+        line_number: 114,
+    },
+}
+Command {
+    name: "foo",
+    args: [
+        Positional(
+            "arg",
+        ),
+    ],
+    context: Context {
+        prefix: None,
+        tags: {
+            "a",
+            "b",
+            "c",
+        },
+        silent: false,
+        fail: false,
+        line_number: 115,
+    },
+}
+
+# Commands with prefixes.
+a: foo arg
+b: bar key=value
+---
+a: Command {
+a:     name: "foo",
+a:     args: [
+a:         Positional(
+a:             "arg",
+a:         ),
+a:     ],
+a:     context: Context {
+a:         prefix: Some(
+a:             "a",
+a:         ),
+a:         tags: {},
+a:         silent: false,
+a:         fail: false,
+a:         line_number: 151,
+a:     },
+a: }
+b: Command {
+b:     name: "bar",
+b:     args: [
+b:         KeyValue(
+b:             "key",
+b:             "value",
+b:         ),
+b:     ],
+b:     context: Context {
+b:         prefix: Some(
+b:             "b",
+b:         ),
+b:         tags: {},
+b:         silent: false,
+b:         fail: false,
+b:         line_number: 152,
+b:     },
+b: }
+
+# Failing commands.
+! foo bar
+---
+Error: Command {
+    name: "foo",
+    args: [
+        Positional(
+            "bar",
+        ),
+    ],
+    context: Context {
+        prefix: None,
+        tags: {},
+        silent: false,
+        fail: true,
+        line_number: 191,
+    },
+}
+
+# Command with tags, prefixes, and failures.
+prefix:[tag]! foo bar
+---
+prefix: Error: Command {
+prefix:     name: "foo",
+prefix:     args: [
+prefix:         Positional(
+prefix:             "bar",
+prefix:         ),
+prefix:     ],
+prefix:     context: Context {
+prefix:         prefix: Some(
+prefix:             "prefix",
+prefix:         ),
+prefix:         tags: {
+prefix:             "tag",
+prefix:         },
+prefix:         silent: false,
+prefix:         fail: true,
+prefix:         line_number: 210,
+prefix:     },
+prefix: }
+
+# Prefixes, commands, keys, and tags can be empty.
+"": "" ""="" [""]
+---
+: Command {
+:     name: "",
+:     args: [
+:         KeyValue(
+:             "",
+:             "",
+:         ),
+:     ],
+:     context: Context {
+:         prefix: Some(
+:             "",
+:         ),
+:         tags: {
+:             "",
+:         },
+:         silent: false,
+:         fail: false,
+:         line_number: 233,
+:     },
+: }
+
+# Prefixes, commands, and keys can be whitespace.
+" ": " " " "=" "
+---
+ : Command {
+ :     name: " ",
+ :     args: [
+ :         KeyValue(
+ :             " ",
+ :             " ",
+ :         ),
+ :     ],
+ :     context: Context {
+ :         prefix: Some(
+ :             " ",
+ :         ),
+ :         tags: {},
+ :         silent: false,
+ :         fail: false,
+ :         line_number: 257,
+ :     },
+ : }
+
+# Empty argument keys and values are fine.
+command ""
+command arg=""
+command arg=
+---
+Command {
+    name: "command",
+    args: [
+        Positional(
+            "",
+        ),
+    ],
+    context: Context {
+        prefix: None,
+        tags: {},
+        silent: false,
+        fail: false,
+        line_number: 279,
+    },
+}
+Command {
+    name: "command",
+    args: [
+        KeyValue(
+            "arg",
+            "",
+        ),
+    ],
+    context: Context {
+        prefix: None,
+        tags: {},
+        silent: false,
+        fail: false,
+        line_number: 280,
+    },
+}
+Command {
+    name: "command",
+    args: [
+        KeyValue(
+            "arg",
+            "",
+        ),
+    ],
+    context: Context {
+        prefix: None,
+        tags: {},
+        silent: false,
+        fail: false,
+        line_number: 281,
+    },
+}
+
+# > uses the rest of the line as the command name, regardless.
+> command arg "quoted" key=value [tag] # comment
+>
+>!
+> > >
+---
+Command {
+    name: "command arg \"quoted\" key=value [tag] # comment",
+    args: [],
+    context: Context {
+        prefix: None,
+        tags: {},
+        silent: false,
+        fail: false,
+        line_number: 332,
+    },
+}
+Command {
+    name: "",
+    args: [],
+    context: Context {
+        prefix: None,
+        tags: {},
+        silent: false,
+        fail: false,
+        line_number: 333,
+    },
+}
+Command {
+    name: "!",
+    args: [],
+    context: Context {
+        prefix: None,
+        tags: {},
+        silent: false,
+        fail: false,
+        line_number: 334,
+    },
+}
+Command {
+    name: "> >",
+    args: [],
+    context: Context {
+        prefix: None,
+        tags: {},
+        silent: false,
+        fail: false,
+        line_number: 335,
+    },
+}
+
+# > also works with prefix, tags, and error markers.
+prefix: > command arg
+!> command arg
+[tag]> command arg
+prefix:[tag]!> command arg
+---
+prefix: Command {
+prefix:     name: "command arg",
+prefix:     args: [],
+prefix:     context: Context {
+prefix:         prefix: Some(
+prefix:             "prefix",
+prefix:         ),
+prefix:         tags: {},
+prefix:         silent: false,
+prefix:         fail: false,
+prefix:         line_number: 383,
+prefix:     },
+prefix: }
+Error: Command {
+    name: "command arg",
+    args: [],
+    context: Context {
+        prefix: None,
+        tags: {},
+        silent: false,
+        fail: true,
+        line_number: 384,
+    },
+}
+Command {
+    name: "command arg",
+    args: [],
+    context: Context {
+        prefix: None,
+        tags: {
+            "tag",
+        },
+        silent: false,
+        fail: false,
+        line_number: 385,
+    },
+}
+prefix: Error: Command {
+prefix:     name: "command arg",
+prefix:     args: [],
+prefix:     context: Context {
+prefix:         prefix: Some(
+prefix:             "prefix",
+prefix:         ),
+prefix:         tags: {
+prefix:             "tag",
+prefix:         },
+prefix:         silent: false,
+prefix:         fail: true,
+prefix:         line_number: 386,
+prefix:     },
+prefix: }
+
+# > respects \ line continuation, but it can't be escaped by \\.
+> a very \
+long line \
+with line \
+continuation
+---
+Command {
+    name: "a very long line with line continuation",
+    args: [],
+    context: Context {
+        prefix: None,
+        tags: {},
+        silent: false,
+        fail: false,
+        line_number: 442,
+    },
+}
+
+> a line with \n ending with \\
+another line
+---
+Command {
+    name: "a line with \\n ending with \\another line",
+    args: [],
+    context: Context {
+        prefix: None,
+        tags: {},
+        silent: false,
+        fail: false,
+        line_number: 459,
+    },
+}

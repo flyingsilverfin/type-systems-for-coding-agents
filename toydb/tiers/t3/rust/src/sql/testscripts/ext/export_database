@@ -1,0 +1,138 @@
+# EXPORT AS SQL without a table exports every table: each table's CREATE TABLE
+# and INSERT statements, with the tables ordered so that a table comes after
+# the tables it references (otherwise by name).
+
+# With no tables there is nothing to export.
+> EXPORT AS SQL
+---
+ok
+
+[json]> EXPORT AS SQL
+---
+{"result":"export","format":"sql","lines":[]}
+
+> CREATE TABLE zoo (k STRING PRIMARY KEY)
+> CREATE TABLE b_parent (id INT PRIMARY KEY, name STRING)
+> INSERT INTO b_parent VALUES (2, 'two'), (1, 'one')
+> CREATE TABLE a_child (id INT PRIMARY KEY, p INT REFERENCES b_parent)
+> INSERT INTO a_child VALUES (10, 1), (11, 2)
+> CREATE TABLE c (id INT PRIMARY KEY, a INT REFERENCES a_child)
+> INSERT INTO c VALUES (100, 10)
+> CREATE TABLE self (id INT PRIMARY KEY, up INT REFERENCES self)
+> INSERT INTO self VALUES (1, NULL), (2, 1)
+---
+ok
+
+# a_child references b_parent and c references a_child, so b_parent comes first
+# although a_child has the smaller name; a reference to the table itself
+# doesn't count.
+> EXPORT AS SQL
+---
+CREATE TABLE b_parent (
+  id INTEGER PRIMARY KEY,
+  name STRING DEFAULT NULL
+);
+INSERT INTO b_parent VALUES (1, 'one');
+INSERT INTO b_parent VALUES (2, 'two');
+CREATE TABLE a_child (
+  id INTEGER PRIMARY KEY,
+  p INTEGER DEFAULT NULL INDEX REFERENCES b_parent
+);
+INSERT INTO a_child VALUES (10, 1);
+INSERT INTO a_child VALUES (11, 2);
+CREATE TABLE c (
+  id INTEGER PRIMARY KEY,
+  a INTEGER DEFAULT NULL INDEX REFERENCES a_child
+);
+INSERT INTO c VALUES (100, 10);
+CREATE TABLE self (
+  id INTEGER PRIMARY KEY,
+  up INTEGER DEFAULT NULL INDEX REFERENCES self
+);
+INSERT INTO self VALUES (1, NULL);
+INSERT INTO self VALUES (2, 1);
+CREATE TABLE zoo (
+  k STRING PRIMARY KEY
+);
+
+# The export sees the transaction's own changes, and nothing else.
+a:> BEGIN
+a:> DROP TABLE c
+a:> CREATE TABLE "A b" (id INT PRIMARY KEY, z STRING REFERENCES zoo)
+a:> DELETE FROM self WHERE id = 2
+b:> CREATE TABLE yak (id INT PRIMARY KEY)
+a:> EXPORT AS SQL
+a:> ROLLBACK
+---
+a: CREATE TABLE b_parent (
+a:   id INTEGER PRIMARY KEY,
+a:   name STRING DEFAULT NULL
+a: );
+a: INSERT INTO b_parent VALUES (1, 'one');
+a: INSERT INTO b_parent VALUES (2, 'two');
+a: CREATE TABLE a_child (
+a:   id INTEGER PRIMARY KEY,
+a:   p INTEGER DEFAULT NULL INDEX REFERENCES b_parent
+a: );
+a: INSERT INTO a_child VALUES (10, 1);
+a: INSERT INTO a_child VALUES (11, 2);
+a: CREATE TABLE self (
+a:   id INTEGER PRIMARY KEY,
+a:   up INTEGER DEFAULT NULL INDEX REFERENCES self
+a: );
+a: INSERT INTO self VALUES (1, NULL);
+a: CREATE TABLE zoo (
+a:   k STRING PRIMARY KEY
+a: );
+a: CREATE TABLE "A b" (
+a:   id INTEGER PRIMARY KEY,
+a:   z STRING DEFAULT NULL INDEX REFERENCES zoo
+a: );
+
+# Executing the export of the whole database re-creates it.
+> DROP TABLE yak
+> DROP TABLE c
+> DROP TABLE a_child
+> DROP TABLE b_parent
+> DROP TABLE self
+> DROP TABLE zoo
+> CREATE TABLE b_parent ( id INTEGER PRIMARY KEY, name STRING DEFAULT NULL );
+> INSERT INTO b_parent VALUES (1, 'one');
+> INSERT INTO b_parent VALUES (2, 'two');
+> CREATE TABLE a_child ( id INTEGER PRIMARY KEY, p INTEGER DEFAULT NULL INDEX REFERENCES b_parent );
+> INSERT INTO a_child VALUES (10, 1);
+> INSERT INTO a_child VALUES (11, 2);
+> CREATE TABLE c ( id INTEGER PRIMARY KEY, a INTEGER DEFAULT NULL INDEX REFERENCES a_child );
+> INSERT INTO c VALUES (100, 10);
+> CREATE TABLE self ( id INTEGER PRIMARY KEY, up INTEGER DEFAULT NULL INDEX REFERENCES self );
+> INSERT INTO self VALUES (1, NULL);
+> INSERT INTO self VALUES (2, 1);
+> CREATE TABLE zoo ( k STRING PRIMARY KEY );
+> SELECT * FROM c JOIN a_child ON c.a = a_child.id JOIN b_parent ON a_child.p = b_parent.id
+> SELECT * FROM self
+---
+100, 10, 10, 1, 1, 'one'
+1, NULL
+2, 1
+
+schema
+---
+CREATE TABLE a_child (
+  id INTEGER PRIMARY KEY,
+  p INTEGER DEFAULT NULL INDEX REFERENCES b_parent
+)
+CREATE TABLE b_parent (
+  id INTEGER PRIMARY KEY,
+  name STRING DEFAULT NULL
+)
+CREATE TABLE c (
+  id INTEGER PRIMARY KEY,
+  a INTEGER DEFAULT NULL INDEX REFERENCES a_child
+)
+CREATE TABLE self (
+  id INTEGER PRIMARY KEY,
+  up INTEGER DEFAULT NULL INDEX REFERENCES self
+)
+CREATE TABLE zoo (
+  k STRING PRIMARY KEY
+)

@@ -1,0 +1,13 @@
+{
+ "run": "t1_bugfix_rs_hl",
+ "task": "bugfix",
+ "suite": "toydb-t1",
+ "tier": "t1",
+ "lang": "rust",
+ "model": "haiku",
+ "effort": "low",
+ "ws": "/home/user/agentbench/runs/t1_bugfix_rs_hl",
+ "baseline": "db2ab0dd9827da00ce4a0025183f8eb8a1c36a90",
+ "created": 1794950678.2182527,
+ "warm_ok": true
+}

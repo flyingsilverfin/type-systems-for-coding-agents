@@ -1,0 +1,13 @@
+{
+ "run": "t2_bugfix_py_hl",
+ "task": "bugfix",
+ "suite": "toydb-t2",
+ "tier": "t2",
+ "lang": "python",
+ "model": "haiku",
+ "effort": "low",
+ "ws": "/home/user/agentbench/runs/t2_bugfix_py_hl",
+ "baseline": "cac744e436de42f11cf15a12e5e2a4ad39a46b20",
+ "created": 1794976556.0759988,
+ "warm_ok": true
+}

@@ -1,0 +1,15 @@
+{
+ "run": "t3r_between_in_py_hlc",
+ "task": "between_in",
+ "suite": "toydb-t3",
+ "tier": "t3",
+ "lang": "python",
+ "model": "haiku",
+ "effort": "low",
+ "ws": "/home/user/agentbench/runs/t3r_between_in_py_hlc",
+ "hint": true,
+ "readme_from": "t2",
+ "baseline": "fcb5b9f655d539f5bd72c24ef307a2d01696322f",
+ "created": 1795122990.1274652,
+ "warm_ok": true
+}

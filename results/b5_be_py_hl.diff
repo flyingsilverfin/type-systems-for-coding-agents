@@ -1,0 +1,421 @@
+diff --git a/app/lending/ingest.py b/app/lending/ingest.py
+index 6ab9789..9cb52c3 100644
+--- a/app/lending/ingest.py
++++ b/app/lending/ingest.py
+@@ -74,12 +74,15 @@ def parse_loan(record: Record, line: int) -> Loan:
+     returned = _optional(record, "returned")
+     lost = _optional(record, "lost")
+     fee_cents = _optional(record, "fee_cents")
++    due = _optional(record, "due")
++    renewed = _optional(record, "renewed")
+     return Loan(
+         id=_field(record, "loan_id", f, line),
+         member_id=_field(record, "member_id", f, line),
+         isbn=_field(record, "isbn", f, line),
+         borrowed=_date(_field(record, "borrowed", f, line), f, line),
+-        due=_date(_field(record, "due", f, line), f, line),
++        due=_date(due, f, line) if due is not None else None,
++        renewed=_date(renewed, f, line) if renewed is not None else None,
+         returned=_date(returned, f, line) if returned is not None else None,
+         lost=_date(lost, f, line) if lost is not None else None,
+         fee_cents=_int(fee_cents, f, line) if fee_cents is not None else None,
+@@ -118,8 +121,11 @@ def loan_query(loan: Loan) -> str:
+     attrs = [
+         f"has loan-id {quote(loan.id)}",
+         f"has borrowed {loan.borrowed.isoformat()}",
+-        f"has due {loan.due.isoformat()}",
+     ]
++    if loan.due is not None:
++        attrs.append(f"has due {loan.due.isoformat()}")
++    if loan.renewed is not None:
++        attrs.append(f"has renewed {loan.renewed.isoformat()}")
+     if loan.returned is not None:
+         attrs.append(f"has returned {loan.returned.isoformat()}")
+     if loan.lost is not None:
+diff --git a/app/lending/model.py b/app/lending/model.py
+index 2cff38a..f5c180a 100644
+--- a/app/lending/model.py
++++ b/app/lending/model.py
+@@ -48,13 +48,19 @@ class Book:
+     copies: int
+ 
+ 
++def effective_due(due: Optional[date], renewed: Optional[date]) -> Optional[date]:
++    """The renewed date if the loan was renewed, otherwise its due date (None for open-ended loans)."""
++    return renewed if renewed is not None else due
++
++
+ @dataclass(frozen=True)
+ class Loan(LoanStatus):
+     id: str
+     member_id: str
+     isbn: str
+     borrowed: date
+-    due: date
++    due: Optional[date]
++    renewed: Optional[date]
+     returned: Optional[date]
+     lost: Optional[date]
+     fee_cents: Optional[int]
+@@ -83,7 +89,8 @@ class MemberLoan(LoanStatus):
+     """member"""
+     id: str
+     isbn: str
+-    due: date
++    due: Optional[date]
++    renewed: Optional[date]
+     returned: Optional[date]
+     lost: Optional[date]
+ 
+@@ -135,7 +142,8 @@ class HistoryLoan:
+     id: str
+     isbn: str
+     borrowed: date
+-    due: date
++    due: Optional[date]
++    renewed: Optional[date]
+     returned: Optional[date]
+     lost: Optional[date]
+ 
+diff --git a/app/lending/repo/loans.py b/app/lending/repo/loans.py
+index 3bc1745..97010de 100644
+--- a/app/lending/repo/loans.py
++++ b/app/lending/repo/loans.py
+@@ -6,7 +6,22 @@ from typing import Optional
+ 
+ from lending.db import Db, quote
+ from lending.errors import DataError
+-from lending.model import DueLoan, HistoryLoan, LateReturn, LostLoan
++from lending.model import DueLoan, HistoryLoan, LateReturn, LostLoan, effective_due
++
++
++def _opt_date(row, key: str) -> Optional[date]:
++    """An optional date column of a row: None when the variable is unbound."""
++    if (concept := row.get(key)) is None:
++        return None
++    if (value := concept.try_get_date()) is None:
++        raise DataError(f"${key}: expected a date")
++    return value
++
++
++def _str(row, key: str) -> str:
++    if (concept := row.get(key)) is None or (value := concept.try_get_string()) is None:
++        raise DataError(f"${key}: expected a string")
++    return value
+ 
+ 
+ def member_history(db: Db, member_id: str) -> Optional[list[HistoryLoan]]:
+@@ -15,8 +30,10 @@ def member_history(db: Db, member_id: str) -> Optional[list[HistoryLoan]]:
+         match
+           $m isa member, has member-id {quote(member_id)};
+           try {{
+-            $l isa loan, links (borrower: $m, item: $b), has loan-id $lid, has borrowed $bo, has due $du;
++            $l isa loan, links (borrower: $m, item: $b), has loan-id $lid, has borrowed $bo;
+             $b has isbn $isbn;
++            try {{ $l has due $du; }};
++            try {{ $l has renewed $rn; }};
+             try {{ $l has returned $re; }};
+             try {{ $l has lost $lo; }};
+           }};
+@@ -27,97 +44,74 @@ def member_history(db: Db, member_id: str) -> Optional[list[HistoryLoan]]:
+     for row in rows:
+         if row.get("l") is None:
+             continue  # the member exists but has no loans
+-        if (concept := row.get("lid")) is None or (loan_id := concept.try_get_string()) is None:
+-            raise DataError("$lid: expected a string")
+-        if (concept := row.get("isbn")) is None or (isbn := concept.try_get_string()) is None:
+-            raise DataError("$isbn: expected a string")
+-        if (concept := row.get("bo")) is None or (borrowed := concept.try_get_date()) is None:
+-            raise DataError("$bo: expected a date")
+-        if (concept := row.get("du")) is None or (due := concept.try_get_date()) is None:
+-            raise DataError("$du: expected a date")
+-        returned: Optional[date] = None
+-        if (concept := row.get("re")) is not None and (returned := concept.try_get_date()) is None:
+-            raise DataError("$re: expected a date")
+-        lost: Optional[date] = None
+-        if (concept := row.get("lo")) is not None and (lost := concept.try_get_date()) is None:
+-            raise DataError("$lo: expected a date")
+         loans.append(
+-            HistoryLoan(id=loan_id, isbn=isbn, borrowed=borrowed, due=due, returned=returned, lost=lost)
++            HistoryLoan(
++                id=_str(row, "lid"),
++                isbn=_str(row, "isbn"),
++                borrowed=_opt_date(row, "bo"),
++                due=_opt_date(row, "du"),
++                renewed=_opt_date(row, "rn"),
++                returned=_opt_date(row, "re"),
++                lost=_opt_date(row, "lo"),
++            )
+         )
+     return loans
+ 
+ 
+-def overdue_loans(db: Db, as_of: date) -> list[DueLoan]:
+-    """Open loans due strictly before `as_of`."""
+-    rows = db.read_rows(f"""
++def _open_loans_with_due(db: Db) -> list[tuple[str, str, str, Optional[date]]]:
++    """Open loans as (loan id, member id, isbn, effective due date); the due date is None for open-ended loans."""
++    rows = db.read_rows("""
+         match
+-          $l isa loan, links (borrower: $m, item: $b), has loan-id $lid, has due $du;
++          $l isa loan, links (borrower: $m, item: $b), has loan-id $lid;
+           $m has member-id $mid;
+           $b has isbn $isbn;
+-          $du < {as_of.isoformat()};
+-          not {{ $l has returned $re; }};
+-          not {{ $l has lost $lo; }};
++          try { $l has due $du; };
++          try { $l has renewed $rn; };
++          not { $l has returned $re; };
++          not { $l has lost $lo; };
+     """)
+-    loans: list[DueLoan] = []
++    result = []
+     for row in rows:
+-        if (concept := row.get("lid")) is None or (loan_id := concept.try_get_string()) is None:
+-            raise DataError("$lid: expected a string")
+-        if (concept := row.get("mid")) is None or (member_id := concept.try_get_string()) is None:
+-            raise DataError("$mid: expected a string")
+-        if (concept := row.get("isbn")) is None or (isbn := concept.try_get_string()) is None:
+-            raise DataError("$isbn: expected a string")
+-        if (concept := row.get("du")) is None or (due := concept.try_get_date()) is None:
+-            raise DataError("$du: expected a date")
+-        loans.append(DueLoan(id=loan_id, member_id=member_id, isbn=isbn, due=due))
+-    return loans
++        due = effective_due(_opt_date(row, "du"), _opt_date(row, "rn"))
++        result.append((_str(row, "lid"), _str(row, "mid"), _str(row, "isbn"), due))
++    return result
++
++
++def overdue_loans(db: Db, as_of: date) -> list[DueLoan]:
++    """Open loans whose effective due date is strictly before `as_of`. Open-ended loans are never overdue."""
++    return [
++        DueLoan(id=loan_id, member_id=member_id, isbn=isbn, due=due)
++        for loan_id, member_id, isbn, due in _open_loans_with_due(db)
++        if due is not None and due < as_of
++    ]
+ 
+ 
+ def loans_due_between(db: Db, start: date, end: date) -> list[DueLoan]:
+-    """Open loans due on or after `start` and on or before `end`."""
+-    rows = db.read_rows(f"""
+-        match
+-          $l isa loan, links (borrower: $m, item: $b), has loan-id $lid, has due $du;
+-          $m has member-id $mid;
+-          $b has isbn $isbn;
+-          $du >= {start.isoformat()};
+-          $du <= {end.isoformat()};
+-          not {{ $l has returned $re; }};
+-          not {{ $l has lost $lo; }};
+-    """)
+-    loans: list[DueLoan] = []
+-    for row in rows:
+-        if (concept := row.get("lid")) is None or (loan_id := concept.try_get_string()) is None:
+-            raise DataError("$lid: expected a string")
+-        if (concept := row.get("mid")) is None or (member_id := concept.try_get_string()) is None:
+-            raise DataError("$mid: expected a string")
+-        if (concept := row.get("isbn")) is None or (isbn := concept.try_get_string()) is None:
+-            raise DataError("$isbn: expected a string")
+-        if (concept := row.get("du")) is None or (due := concept.try_get_date()) is None:
+-            raise DataError("$du: expected a date")
+-        loans.append(DueLoan(id=loan_id, member_id=member_id, isbn=isbn, due=due))
+-    return loans
++    """Open loans whose effective due date is on or after `start` and on or before `end`."""
++    return [
++        DueLoan(id=loan_id, member_id=member_id, isbn=isbn, due=due)
++        for loan_id, member_id, isbn, due in _open_loans_with_due(db)
++        if due is not None and start <= due <= end
++    ]
+ 
+ 
+ def late_returns(db: Db) -> list[LateReturn]:
+-    """Returned (and not lost) loans that came back after their due date."""
++    """Returned (and not lost) loans returned after their effective due date. Open-ended loans are never late."""
+     rows = db.read_rows("""
+         match
+-          $l isa loan, links (borrower: $m), has loan-id $lid, has due $du, has returned $re;
++          $l isa loan, links (borrower: $m), has loan-id $lid, has returned $re;
+           $m has member-id $mid;
+-          $re > $du;
++          try { $l has due $du; };
++          try { $l has renewed $rn; };
+           not { $l has lost $lo; };
+     """)
+     loans: list[LateReturn] = []
+     for row in rows:
+-        if (concept := row.get("lid")) is None or (loan_id := concept.try_get_string()) is None:
+-            raise DataError("$lid: expected a string")
+-        if (concept := row.get("mid")) is None or (member_id := concept.try_get_string()) is None:
+-            raise DataError("$mid: expected a string")
+-        if (concept := row.get("du")) is None or (due := concept.try_get_date()) is None:
+-            raise DataError("$du: expected a date")
+-        if (concept := row.get("re")) is None or (returned := concept.try_get_date()) is None:
+-            raise DataError("$re: expected a date")
+-        loans.append(LateReturn(id=loan_id, member_id=member_id, due=due, returned=returned))
++        due = effective_due(_opt_date(row, "du"), _opt_date(row, "rn"))
++        returned = _opt_date(row, "re")
++        if due is None or returned is None or returned <= due:
++            continue
++        loans.append(LateReturn(id=_str(row, "lid"), member_id=_str(row, "mid"), due=due, returned=returned))
+     return loans
+ 
+ 
+@@ -128,18 +122,10 @@ def lost_loans(db: Db) -> list[LostLoan]:
+           $m has member-id $mid;
+           $b has isbn $isbn;
+     """)
+-    loans: list[LostLoan] = []
+-    for row in rows:
+-        if (concept := row.get("lid")) is None or (loan_id := concept.try_get_string()) is None:
+-            raise DataError("$lid: expected a string")
+-        if (concept := row.get("mid")) is None or (member_id := concept.try_get_string()) is None:
+-            raise DataError("$mid: expected a string")
+-        if (concept := row.get("isbn")) is None or (isbn := concept.try_get_string()) is None:
+-            raise DataError("$isbn: expected a string")
+-        if (concept := row.get("lo")) is None or (lost := concept.try_get_date()) is None:
+-            raise DataError("$lo: expected a date")
+-        loans.append(LostLoan(id=loan_id, member_id=member_id, isbn=isbn, lost=lost))
+-    return loans
++    return [
++        LostLoan(id=_str(row, "lid"), member_id=_str(row, "mid"), isbn=_str(row, "isbn"), lost=_opt_date(row, "lo"))
++        for row in rows
++    ]
+ 
+ 
+ def borrow_dates(db: Db) -> list[date]:
+diff --git a/app/lending/repo/members.py b/app/lending/repo/members.py
+index 6b68702..3139762 100644
+--- a/app/lending/repo/members.py
++++ b/app/lending/repo/members.py
+@@ -59,8 +59,10 @@ def member_loans(db: Db, member_id: str) -> list[MemberLoan]:
+     rows = db.read_rows(f"""
+         match
+           $m isa member, has member-id {quote(member_id)};
+-          $l isa loan, links (borrower: $m, item: $b), has loan-id $lid, has due $du;
++          $l isa loan, links (borrower: $m, item: $b), has loan-id $lid;
+           $b has isbn $isbn;
++          try {{ $l has due $du; }};
++          try {{ $l has renewed $rn; }};
+           try {{ $l has returned $re; }};
+           try {{ $l has lost $lo; }};
+     """)
+@@ -70,15 +72,19 @@ def member_loans(db: Db, member_id: str) -> list[MemberLoan]:
+             raise DataError("$lid: expected a string")
+         if (concept := row.get("isbn")) is None or (isbn := concept.try_get_string()) is None:
+             raise DataError("$isbn: expected a string")
+-        if (concept := row.get("du")) is None or (due := concept.try_get_date()) is None:
++        due: Optional[date] = None
++        if (concept := row.get("du")) is not None and (due := concept.try_get_date()) is None:
+             raise DataError("$du: expected a date")
++        renewed: Optional[date] = None
++        if (concept := row.get("rn")) is not None and (renewed := concept.try_get_date()) is None:
++            raise DataError("$rn: expected a date")
+         returned: Optional[date] = None
+         if (concept := row.get("re")) is not None and (returned := concept.try_get_date()) is None:
+             raise DataError("$re: expected a date")
+         lost: Optional[date] = None
+         if (concept := row.get("lo")) is not None and (lost := concept.try_get_date()) is None:
+             raise DataError("$lo: expected a date")
+-        loans.append(MemberLoan(id=loan_id, isbn=isbn, due=due, returned=returned, lost=lost))
++        loans.append(MemberLoan(id=loan_id, isbn=isbn, due=due, renewed=renewed, returned=returned, lost=lost))
+     return loans
+ 
+ 
+diff --git a/app/lending/report/loans.py b/app/lending/report/loans.py
+index 19a2594..3cc47c1 100644
+--- a/app/lending/report/loans.py
++++ b/app/lending/report/loans.py
+@@ -11,6 +11,14 @@ def _by_due(loans: list[DueLoan]) -> list[DueLoan]:
+     return sorted(loans, key=lambda loan: (loan.due, loan.id))
+ 
+ 
++def _due_text(due: date | None) -> str:
++    return due.isoformat() if due is not None else "-"
++
++
++def _renewed_text(renewed: date | None) -> str:
++    return f" renewed {renewed.isoformat()}" if renewed is not None else ""
++
++
+ def _status(loan: HistoryLoan) -> str:
+     if loan.lost is not None:
+         return f"lost {loan.lost.isoformat()}"
+@@ -23,7 +31,8 @@ def history(member_id: str, loans: list[HistoryLoan]) -> list[str]:
+     ordered = sorted(loans, key=lambda loan: (loan.borrowed, loan.id))
+     lines = [f"history {member_id}: {len(ordered)} loans"]
+     lines += [
+-        f"  {loan.id} {loan.isbn} borrowed {loan.borrowed.isoformat()} due {loan.due.isoformat()} {_status(loan)}"
++        f"  {loan.id} {loan.isbn} borrowed {loan.borrowed.isoformat()} due {_due_text(loan.due)}"
++        f"{_renewed_text(loan.renewed)} {_status(loan)}"
+         for loan in ordered
+     ]
+     return lines
+diff --git a/app/lending/report/members.py b/app/lending/report/members.py
+index fa92ffa..af3e119 100644
+--- a/app/lending/report/members.py
++++ b/app/lending/report/members.py
+@@ -3,7 +3,7 @@ from __future__ import annotations
+ 
+ from collections import Counter
+ 
+-from lending.model import LoanFee, Member, MemberContact, MemberFee, MemberLoan, MemberName
++from lending.model import LoanFee, Member, MemberContact, MemberFee, MemberLoan, MemberName, effective_due
+ from lending.report import or_none
+ 
+ 
+@@ -17,7 +17,14 @@ def members(items: list[MemberContact]) -> list[str]:
+ 
+ 
+ def member(m: Member, loans: list[MemberLoan]) -> list[str]:
+-    open_loans = sorted((loan for loan in loans if loan.is_open()), key=lambda loan: (loan.due, loan.id))
++    open_loans = [loan for loan in loans if loan.is_open()]
++    # Dated loans by effective due date then id; open-ended loans (no effective due date) after them, by id.
++    dated = sorted(
++        (loan for loan in open_loans if effective_due(loan.due, loan.renewed) is not None),
++        key=lambda loan: (effective_due(loan.due, loan.renewed), loan.id),
++    )
++    open_ended = sorted((loan for loan in open_loans if effective_due(loan.due, loan.renewed) is None), key=lambda loan: loan.id)
++    open_loans = dated + open_ended
+     lines = [
+         f"member {m.id}: {m.name}",
+         f"email: {or_none(m.email)}",
+@@ -25,11 +32,18 @@ def member(m: Member, loans: list[MemberLoan]) -> list[str]:
+         f"joined: {m.joined.isoformat()}",
+         f"open loans: {len(open_loans)}",
+     ]
+-    lines += [f"  {loan.id} {loan.isbn} due {loan.due.isoformat()}" for loan in open_loans]
++    lines += [_open_line(loan) for loan in open_loans]
+     lines.append(f"lost loans: {sum(1 for loan in loans if loan.is_lost())}")
+     return lines
+ 
+ 
++def _open_line(loan: MemberLoan) -> str:
++    due = effective_due(loan.due, loan.renewed)
++    due_text = due.isoformat() if due is not None else "-"
++    suffix = " (renewed)" if loan.renewed is not None else ""
++    return f"  {loan.id} {loan.isbn} due {due_text}{suffix}"
++
++
+ def contact(m: MemberContact) -> list[str]:
+     via = m.email or m.phone or "(no contact)"
+     return [f"{m.name} {via}"]
+diff --git a/app/lending/schema.py b/app/lending/schema.py
+index 746be54..e657c7f 100644
+--- a/app/lending/schema.py
++++ b/app/lending/schema.py
+@@ -16,6 +16,7 @@ define
+   attribute loan-id, value string;
+   attribute borrowed, value date;
+   attribute due, value date;
++  attribute renewed, value date;
+   attribute returned, value date;
+   attribute fee-cents, value integer;
+   attribute lost, value date;
+@@ -43,6 +44,7 @@ define
+     owns loan-id @key,
+     owns borrowed,
+     owns due,
++    owns renewed,
+     owns returned,
+     owns fee-cents,
+     owns lost;

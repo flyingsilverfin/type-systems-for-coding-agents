@@ -1,0 +1,15 @@
+{
+ "run": "t3r_release_rs_ohc",
+ "task": "release",
+ "suite": "toydb-t3",
+ "tier": "t3",
+ "lang": "rust",
+ "model": "opus",
+ "effort": "high",
+ "ws": "/home/user/agentbench/runs/t3r_release_rs_ohc",
+ "hint": true,
+ "readme_from": "t2",
+ "baseline": "55ec8e5368a1f0bb0a60b335968c3af536a8f65c",
+ "created": 1795152232.292841,
+ "warm_ok": true
+}

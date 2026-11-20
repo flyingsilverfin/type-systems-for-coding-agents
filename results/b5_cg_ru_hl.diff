@@ -1,0 +1,515 @@
+diff --git a/app/src/ingest.rs b/app/src/ingest.rs
+index d9efd50..b989fd4 100644
+--- a/app/src/ingest.rs
++++ b/app/src/ingest.rs
+@@ -57,6 +57,20 @@ pub fn member_query(record: &Record, line: usize) -> Result<String> {
+     Ok(format!("insert {};", parts.join(", ")))
+ }
+ 
++/// The genres of a book: `genre` may hold several separated by `;`. Sorted, without duplicates.
++fn genres(record: &Record) -> Vec<String> {
++    let mut genres: Vec<String> = optional(record, "genre")
++        .into_iter()
++        .flat_map(|text| text.split(';'))
++        .map(str::trim)
++        .filter(|genre| !genre.is_empty())
++        .map(str::to_owned)
++        .collect();
++    genres.sort();
++    genres.dedup();
++    genres
++}
++
+ pub fn book_query(record: &Record, line: usize) -> Result<String> {
+     let f = "books.csv";
+     let isbn = field(record, "isbn", f, line)?;
+@@ -71,8 +85,8 @@ pub fn book_query(record: &Record, line: usize) -> Result<String> {
+     if let Some(subtitle) = optional(record, "subtitle") {
+         parts.push(format!("has subtitle {}", quote(subtitle)));
+     }
+-    if let Some(genre) = optional(record, "genre") {
+-        parts.push(format!("has genre {}", quote(genre)));
++    for genre in genres(record) {
++        parts.push(format!("has genre {}", quote(&genre)));
+     }
+     Ok(format!("insert {};", parts.join(", ")))
+ }
+diff --git a/app/src/model.rs b/app/src/model.rs
+index 1d534d2..5403899 100644
+--- a/app/src/model.rs
++++ b/app/src/model.rs
+@@ -15,7 +15,8 @@ pub struct Book {
+     pub title: String,
+     pub subtitle: Option<String>,
+     pub year: i64,
+-    pub genre: Option<String>,
++    /// Sorted, without duplicates; empty when the book has no genre.
++    pub genres: Vec<String>,
+     pub copies: i64,
+ }
+ 
+diff --git a/app/src/repo/books.rs b/app/src/repo/books.rs
+index 984154c..a2cb8a8 100644
+--- a/app/src/repo/books.rs
++++ b/app/src/repo/books.rs
+@@ -1,5 +1,10 @@
+ //! Queries behind the book commands: books, book, stats, decades, genre, never-borrowed, available, search.
+-use typedb_driver::concept::Concept;
++//!
++//! A book may have several genres, so a query returns one row per (book, genre) pair; the rows of a book are
++//! merged here so that every book is listed once with all of its genres.
++use std::collections::{btree_map::Entry, BTreeMap, BTreeSet};
++
++use typedb_driver::{answer::ConceptRow, concept::Concept};
+ 
+ use crate::{
+     db::{quote, Db},
+@@ -7,13 +12,13 @@ use crate::{
+     model::{Book, Loan},
+ };
+ 
+-/// The columns of a book listing line.
++/// The columns of a book listing line. `genres` is sorted and without duplicates.
+ #[derive(Debug, Clone, PartialEq)]
+ pub struct BookSummary {
+     pub isbn: String,
+     pub title: String,
+     pub year: i64,
+-    pub genre: Option<String>,
++    pub genres: Vec<String>,
+ }
+ 
+ /// A book's title and number of copies, together with all of its loans.
+@@ -25,6 +30,65 @@ pub struct Availability {
+     pub loans: Vec<Loan>,
+ }
+ 
++/// A string column of a row, if the row has a value for it.
++fn optional_string(row: &ConceptRow, var: &str) -> Result<Option<String>> {
++    row.get(var)?
++        .map(|concept| concept.try_get_string().map(str::to_owned).ok_or_else(|| AppError::column(var, "string")))
++        .transpose()
++}
++
++/// One result row as a book: its listing columns with the row's genre (if any), and its subtitle when
++/// `with_subtitle` is set.
++fn read_book(row: &ConceptRow, with_subtitle: bool) -> Result<(BookSummary, Option<String>)> {
++    let summary = BookSummary {
++        isbn: row.get("isbn")?
++            .and_then(Concept::try_get_string)
++            .ok_or_else(|| AppError::column("isbn", "string"))?
++            .to_owned(),
++        title: row.get("title")?
++            .and_then(Concept::try_get_string)
++            .ok_or_else(|| AppError::column("title", "string"))?
++            .to_owned(),
++        year: row.get("year")?.and_then(Concept::try_get_integer).ok_or_else(|| AppError::column("year", "integer"))?,
++        genres: optional_string(row, "genre")?.into_iter().collect(),
++    };
++    let subtitle = if with_subtitle { optional_string(row, "subtitle")? } else { None };
++    Ok((summary, subtitle))
++}
++
++/// Merge the rows of each book into one entry, collecting its genres (sorted, without duplicates).
++fn merge_books(rows: Vec<(BookSummary, Option<String>)>) -> Vec<(BookSummary, Option<String>)> {
++    let mut merged: BTreeMap<String, (BookSummary, Option<String>)> = BTreeMap::new();
++    for (book, subtitle) in rows {
++        match merged.entry(book.isbn.clone()) {
++            Entry::Vacant(entry) => {
++                entry.insert((book, subtitle));
++            }
++            Entry::Occupied(mut entry) => {
++                let (existing, existing_subtitle) = entry.get_mut();
++                existing.genres.extend(book.genres);
++                if existing_subtitle.is_none() {
++                    *existing_subtitle = subtitle;
++                }
++            }
++        }
++    }
++    merged
++        .into_values()
++        .map(|(mut book, subtitle)| {
++            book.genres.sort();
++            book.genres.dedup();
++            (book, subtitle)
++        })
++        .collect()
++}
++
++/// The books of a query whose rows hold one genre each, one entry per book.
++fn list_books(rows: &[ConceptRow], with_subtitle: bool) -> Result<Vec<(BookSummary, Option<String>)>> {
++    let read = rows.iter().map(|row| read_book(row, with_subtitle)).collect::<Result<Vec<_>>>()?;
++    Ok(merge_books(read))
++}
++
+ pub fn books(db: &Db) -> Result<Vec<BookSummary>> {
+     let rows = db.read_rows(
+         "
+@@ -33,28 +97,7 @@ pub fn books(db: &Db) -> Result<Vec<BookSummary>> {
+           try { $b has genre $genre; };
+         ",
+     )?;
+-    rows.iter()
+-        .map(|row| {
+-            Ok(BookSummary {
+-                isbn: row.get("isbn")?
+-                    .and_then(Concept::try_get_string)
+-                    .ok_or_else(|| AppError::column("isbn", "string"))?
+-                    .to_owned(),
+-                title: row.get("title")?
+-                    .and_then(Concept::try_get_string)
+-                    .ok_or_else(|| AppError::column("title", "string"))?
+-                    .to_owned(),
+-                year: row.get("year")?
+-                    .and_then(Concept::try_get_integer)
+-                    .ok_or_else(|| AppError::column("year", "integer"))?,
+-                genre: row.get("genre")?
+-                    .map(|concept| {
+-                        concept.try_get_string().map(str::to_owned).ok_or_else(|| AppError::column("genre", "string"))
+-                    })
+-                    .transpose()?,
+-            })
+-        })
+-        .collect()
++    Ok(list_books(&rows, false)?.into_iter().map(|(book, _)| book).collect())
+ }
+ 
+ /// The book with the given ISBN and all of its loans, or `None` if there is no such book.
+@@ -69,6 +112,10 @@ pub fn book(db: &Db, isbn: &str) -> Result<Option<(Book, Vec<Loan>)>> {
+         quote(isbn)
+     ))?;
+     let Some(row) = book_rows.first() else { return Ok(None) };
++    let mut genres = BTreeSet::new();
++    for genre_row in &book_rows {
++        genres.extend(optional_string(genre_row, "genre")?);
++    }
+     let book = Book {
+         isbn: isbn.to_owned(),
+         title: row.get("title")?
+@@ -81,11 +128,7 @@ pub fn book(db: &Db, isbn: &str) -> Result<Option<(Book, Vec<Loan>)>> {
+             })
+             .transpose()?,
+         year: row.get("year")?.and_then(Concept::try_get_integer).ok_or_else(|| AppError::column("year", "integer"))?,
+-        genre: row.get("genre")?
+-            .map(|concept| {
+-                concept.try_get_string().map(str::to_owned).ok_or_else(|| AppError::column("genre", "string"))
+-            })
+-            .transpose()?,
++        genres: genres.into_iter().collect(),
+         copies: row.get("copies")?
+             .and_then(Concept::try_get_integer)
+             .ok_or_else(|| AppError::column("copies", "integer"))?,
+@@ -135,24 +178,16 @@ pub fn book(db: &Db, isbn: &str) -> Result<Option<(Book, Vec<Loan>)>> {
+     Ok(Some((book, loans)))
+ }
+ 
+-/// The genre of every book (`None` for books without one).
+-pub fn stats(db: &Db) -> Result<Vec<Option<String>>> {
++/// The genres of every book, one entry per book (empty for books without a genre).
++pub fn stats(db: &Db) -> Result<Vec<Vec<String>>> {
+     let rows = db.read_rows(
+         "
+         match
+-          $b isa book;
++          $b isa book, has isbn $isbn, has title $title, has year $year;
+           try { $b has genre $genre; };
+         ",
+     )?;
+-    rows.iter()
+-        .map(|row| {
+-            row.get("genre")?
+-                .map(|concept| {
+-                    concept.try_get_string().map(str::to_owned).ok_or_else(|| AppError::column("genre", "string"))
+-                })
+-                .transpose()
+-        })
+-        .collect()
++    Ok(list_books(&rows, false)?.into_iter().map(|(book, _)| book.genres).collect())
+ }
+ 
+ /// The publication year of every book.
+@@ -174,33 +209,17 @@ pub fn decades(db: &Db) -> Result<Vec<i64>> {
+ pub fn genre(db: &Db, genre: Option<&str>) -> Result<Vec<BookSummary>> {
+     let genre_constraint = match genre {
+         Some(name) => format!("$b has genre {};", quote(name)),
+-        None => "not { $b has genre $genre; };".to_owned(),
++        None => "not { $b has genre $other_genre; };".to_owned(),
+     };
+     let rows = db.read_rows(&format!(
+         "
+         match
+           $b isa book, has isbn $isbn, has title $title, has year $year;
+           {genre_constraint}
++          try {{ $b has genre $genre; }};
+         "
+     ))?;
+-    rows.iter()
+-        .map(|row| {
+-            Ok(BookSummary {
+-                isbn: row.get("isbn")?
+-                    .and_then(Concept::try_get_string)
+-                    .ok_or_else(|| AppError::column("isbn", "string"))?
+-                    .to_owned(),
+-                title: row.get("title")?
+-                    .and_then(Concept::try_get_string)
+-                    .ok_or_else(|| AppError::column("title", "string"))?
+-                    .to_owned(),
+-                year: row.get("year")?
+-                    .and_then(Concept::try_get_integer)
+-                    .ok_or_else(|| AppError::column("year", "integer"))?,
+-                genre: genre.map(str::to_owned),
+-            })
+-        })
+-        .collect()
++    Ok(list_books(&rows, false)?.into_iter().map(|(book, _)| book).collect())
+ }
+ 
+ /// Books that have never been lent out.
+@@ -213,28 +232,7 @@ pub fn never_borrowed(db: &Db) -> Result<Vec<BookSummary>> {
+           not { $l isa loan, links (item: $b); };
+         ",
+     )?;
+-    rows.iter()
+-        .map(|row| {
+-            Ok(BookSummary {
+-                isbn: row.get("isbn")?
+-                    .and_then(Concept::try_get_string)
+-                    .ok_or_else(|| AppError::column("isbn", "string"))?
+-                    .to_owned(),
+-                title: row.get("title")?
+-                    .and_then(Concept::try_get_string)
+-                    .ok_or_else(|| AppError::column("title", "string"))?
+-                    .to_owned(),
+-                year: row.get("year")?
+-                    .and_then(Concept::try_get_integer)
+-                    .ok_or_else(|| AppError::column("year", "integer"))?,
+-                genre: row.get("genre")?
+-                    .map(|concept| {
+-                        concept.try_get_string().map(str::to_owned).ok_or_else(|| AppError::column("genre", "string"))
+-                    })
+-                    .transpose()?,
+-            })
+-        })
+-        .collect()
++    Ok(list_books(&rows, false)?.into_iter().map(|(book, _)| book).collect())
+ }
+ 
+ /// The book's title, copies and loans, or `None` if there is no such book.
+@@ -304,32 +302,5 @@ pub fn search(db: &Db) -> Result<Vec<(BookSummary, Option<String>)>> {
+           try { $b has genre $genre; };
+         ",
+     )?;
+-    rows.iter()
+-        .map(|row| {
+-            let summary = BookSummary {
+-                isbn: row.get("isbn")?
+-                    .and_then(Concept::try_get_string)
+-                    .ok_or_else(|| AppError::column("isbn", "string"))?
+-                    .to_owned(),
+-                title: row.get("title")?
+-                    .and_then(Concept::try_get_string)
+-                    .ok_or_else(|| AppError::column("title", "string"))?
+-                    .to_owned(),
+-                year: row.get("year")?
+-                    .and_then(Concept::try_get_integer)
+-                    .ok_or_else(|| AppError::column("year", "integer"))?,
+-                genre: row.get("genre")?
+-                    .map(|concept| {
+-                        concept.try_get_string().map(str::to_owned).ok_or_else(|| AppError::column("genre", "string"))
+-                    })
+-                    .transpose()?,
+-            };
+-            let subtitle = row.get("subtitle")?
+-                .map(|concept| {
+-                    concept.try_get_string().map(str::to_owned).ok_or_else(|| AppError::column("subtitle", "string"))
+-                })
+-                .transpose()?;
+-            Ok((summary, subtitle))
+-        })
+-        .collect()
++    list_books(&rows, true)
+ }
+diff --git a/app/src/report/books.rs b/app/src/report/books.rs
+index 9c007b8..8cc11e3 100644
+--- a/app/src/report/books.rs
++++ b/app/src/report/books.rs
+@@ -1,7 +1,7 @@
+ //! Output of the book commands.
+ use std::collections::BTreeMap;
+ 
+-use super::{book_lines, NONE, NO_GENRE};
++use super::{book_lines, genres_joined, NONE, NO_GENRE};
+ use crate::{
+     model::{Book, Loan},
+     repo::books::{Availability, BookSummary},
+@@ -21,23 +21,36 @@ pub fn book(book: &Book, loans: &[Loan]) -> Vec<String> {
+         format!("book {}: {}", book.isbn, book.title),
+         format!("subtitle: {}", book.subtitle.as_deref().unwrap_or(NONE)),
+         format!("year: {}", book.year),
+-        format!("genre: {}", book.genre.as_deref().unwrap_or(NONE)),
++        format!("genre: {}", genres_joined(&book.genres, ", ")),
+         format!("copies: {}", book.copies),
+-        format!("loans: {}", loans.len()),
++        format!(
++            "loans: {} ({} returned, {} lost)",
++            loans.len(),
++            loans.iter().filter(|loan| loan.is_returned()).count(),
++            loans.iter().filter(|loan| loan.is_lost()).count()
++        ),
+         format!("on loan: {}", open.len()),
+         format!("borrowers: {borrowers}"),
+     ]
+ }
+ 
+-/// Number of books per genre, most common first.
+-pub fn stats(genres: &[Option<String>]) -> Vec<String> {
++/// Number of books per genre, most common first, then the total number of books.
++/// A book counts once under each of its genres; a book without genres counts under `NO_GENRE`.
++pub fn stats(books: &[Vec<String>]) -> Vec<String> {
+     let mut counts: BTreeMap<&str, usize> = BTreeMap::new();
+-    for genre in genres {
+-        *counts.entry(genre.as_deref().unwrap_or(NO_GENRE)).or_default() += 1;
++    for genres in books {
++        if genres.is_empty() {
++            *counts.entry(NO_GENRE).or_default() += 1;
++        }
++        for genre in genres {
++            *counts.entry(genre.as_str()).or_default() += 1;
++        }
+     }
+     let mut ordered: Vec<(&str, usize)> = counts.into_iter().collect();
+     ordered.sort_by(|a, b| b.1.cmp(&a.1).then(a.0.cmp(b.0)));
+-    ordered.iter().map(|(genre, count)| format!("{genre}: {count}")).collect()
++    let mut lines: Vec<String> = ordered.iter().map(|(genre, count)| format!("{genre}: {count}")).collect();
++    lines.push(format!("total: {}", books.len()));
++    lines
+ }
+ 
+ /// Number of books per decade of publication, in chronological order.
+@@ -57,10 +70,18 @@ pub fn never_borrowed(items: &[BookSummary]) -> Vec<String> {
+     book_lines(items)
+ }
+ 
++/// Copies not on loan; when none are free, the earliest due date among the open loans is added.
+ pub fn available(availability: &Availability) -> Vec<String> {
+-    let on_loan: i64 = availability.loans.iter().filter(|loan| loan.is_open()).map(|_| 1).sum();
+-    let free = (availability.copies - on_loan).max(0);
+-    vec![format!("{} {}: {free} of {} available", availability.isbn, availability.title, availability.copies)]
++    let open: Vec<&Loan> = availability.loans.iter().filter(|loan| loan.is_open()).collect();
++    let free = (availability.copies - open.len() as i64).max(0);
++    let mut line =
++        format!("{} {}: {free} of {} available", availability.isbn, availability.title, availability.copies);
++    if free == 0 {
++        if let Some(next_due) = open.iter().map(|loan| loan.due).min() {
++            line.push_str(&format!(" (next due {next_due})"));
++        }
++    }
++    vec![line]
+ }
+ 
+ /// Books whose title or subtitle contains `query`, ignoring case.
+diff --git a/app/src/report/loans.rs b/app/src/report/loans.rs
+index 47a622b..3778686 100644
+--- a/app/src/report/loans.rs
++++ b/app/src/report/loans.rs
+@@ -1,7 +1,7 @@
+ //! Output of the loan commands.
+ use std::collections::BTreeMap;
+ 
+-use chrono::NaiveDate;
++use chrono::{Datelike, NaiveDate};
+ 
+ use super::by_due;
+ use crate::model::Loan;
+@@ -55,19 +55,33 @@ pub fn returned_late(loans: &[Loan]) -> Vec<String> {
+         .collect()
+ }
+ 
+-/// Lost loans, ordered by the date they were reported lost.
++/// Lost loans, ordered by the date they were reported lost, with the days from due date to lost date.
+ pub fn lost(loans: &[Loan]) -> Vec<String> {
+     let mut lost: Vec<(&Loan, NaiveDate)> =
+         loans.iter().filter_map(|loan| loan.lost.map(|lost| (loan, lost))).collect();
+     lost.sort_by(|a, b| (a.1, &a.0.id).cmp(&(b.1, &b.0.id)));
+-    lost.iter().map(|(loan, lost)| format!("{} {} {} lost {lost}", loan.id, loan.member_id, loan.isbn)).collect()
++    lost.iter()
++        .map(|(loan, lost)| {
++            let days = (*lost - loan.due).num_days();
++            format!("{} {} {} lost {lost} ({days} days after due)", loan.id, loan.member_id, loan.isbn)
++        })
++        .collect()
+ }
+ 
+-/// Number of loans borrowed per calendar month, in chronological order.
++/// Number of loans borrowed per calendar month, in chronological order, from the first month to the last
++/// one; months without loans count 0.
+ pub fn monthly(borrowed: &[NaiveDate]) -> Vec<String> {
+-    let mut counts: BTreeMap<String, usize> = BTreeMap::new();
++    let mut counts: BTreeMap<(i32, u32), usize> = BTreeMap::new();
+     for date in borrowed {
+-        *counts.entry(date.format("%Y-%m").to_string()).or_default() += 1;
++        *counts.entry((date.year(), date.month())).or_default() += 1;
+     }
+-    counts.iter().map(|(month, count)| format!("{month}: {count}")).collect()
++    let (Some(&first), Some(&last)) = (counts.keys().next(), counts.keys().next_back()) else { return Vec::new() };
++    let mut lines = Vec::new();
++    let mut month = first;
++    while month <= last {
++        let count = counts.get(&month).copied().unwrap_or(0);
++        lines.push(format!("{:04}-{:02}: {count}", month.0, month.1));
++        month = if month.1 == 12 { (month.0 + 1, 1) } else { (month.0, month.1 + 1) };
++    }
++    lines
+ }
+diff --git a/app/src/report/members.rs b/app/src/report/members.rs
+index c8d6f51..94a5380 100644
+--- a/app/src/report/members.rs
++++ b/app/src/report/members.rs
+@@ -7,10 +7,10 @@ use crate::{
+     repo::members::{MemberFee, MemberName, MemberSummary},
+ };
+ 
+-/// One line per member, ordered by member id.
++/// One line per member, ordered by name and then member id.
+ pub fn members(items: &[MemberSummary]) -> Vec<String> {
+     let mut ordered: Vec<&MemberSummary> = items.iter().collect();
+-    ordered.sort_by(|a, b| a.id.cmp(&b.id));
++    ordered.sort_by(|a, b| (&a.name, &a.id).cmp(&(&b.name, &b.id)));
+     ordered
+         .iter()
+         .map(|m| {
+diff --git a/app/src/report/mod.rs b/app/src/report/mod.rs
+index 63f1559..636d4f7 100644
+--- a/app/src/report/mod.rs
++++ b/app/src/report/mod.rs
+@@ -16,10 +16,15 @@ fn book_lines<'a>(books: impl IntoIterator<Item = &'a BookSummary>) -> Vec<Strin
+     ordered.sort_by(|a, b| (&a.title, &a.isbn).cmp(&(&b.title, &b.isbn)));
+     ordered
+         .iter()
+-        .map(|b| format!("{}  {} ({}) [{}]", b.isbn, b.title, b.year, b.genre.as_deref().unwrap_or(NONE)))
++        .map(|b| format!("{}  {} ({}) [{}]", b.isbn, b.title, b.year, genres_joined(&b.genres, "/")))
+         .collect()
+ }
+ 
++/// The genres separated by `separator`, or the placeholder when there are none.
++fn genres_joined(genres: &[String], separator: &str) -> String {
++    if genres.is_empty() { NONE.to_owned() } else { genres.join(separator) }
++}
++
+ /// Order loans by due date, then loan id.
+ fn by_due(mut loans: Vec<&Loan>) -> Vec<&Loan> {
+     loans.sort_by(|a, b| (a.due, &a.id).cmp(&(b.due, &b.id)));
+diff --git a/app/src/schema.rs b/app/src/schema.rs
+index 2063bf1..39e60c4 100644
+--- a/app/src/schema.rs
++++ b/app/src/schema.rs
+@@ -33,7 +33,7 @@ define
+     owns title,
+     owns subtitle,
+     owns year,
+-    owns genre,
++    owns genre @card(0..),
+     owns copies,
+     plays loan:item;
+ 

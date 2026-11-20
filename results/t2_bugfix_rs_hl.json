@@ -1,0 +1,41 @@
+{
+ "run": "t2_bugfix_rs_hl",
+ "task": "bugfix",
+ "tier": "t2",
+ "lang": "rust",
+ "model": "haiku",
+ "effort": "low",
+ "build_ok": true,
+ "hidden_passed": 9,
+ "hidden_total": 9,
+ "visible_passed": 1,
+ "visible_total": 1,
+ "cluster_passed": 0,
+ "cluster_total": 0,
+ "regression_passed": 296,
+ "regression_total": 296,
+ "regression_failed": [],
+ "hidden": {
+  "delete_multiple_references": "pass",
+  "insert_column_constraints": "pass",
+  "insert_column_order": "pass",
+  "or_null_filters": "pass",
+  "or_null_select": "pass",
+  "or_null_writes": "pass",
+  "outer_join_null_keys": "pass",
+  "outer_join_null_keys_queries": "pass",
+  "update_multiple_references": "pass"
+ },
+ "tests_completed": true,
+ "grade_times": {
+  "build_s": 11.5,
+  "test_s": 13.6,
+  "total_s": 25.1
+ },
+ "checks": 2,
+ "check_build_s": 18.3,
+ "check_test_s": 32.7,
+ "last_check_ok": true,
+ "pass": true,
+ "escaped": false
+}

@@ -1,0 +1,25 @@
+{
+ "run": "x23_alter_rs_hl",
+ "task": "alter",
+ "suite": "toydb-t2",
+ "tier": "t3",
+ "lang": "rust",
+ "model": "haiku",
+ "effort": "low",
+ "ws": "/home/user/agentbench/runs/x23_alter_rs_hl",
+ "baseline": "ab47167120b18b5e454b3c158425879d0e2c0263",
+ "created": 1794976334.051175,
+ "warm_ok": true,
+ "transplant_of": "t2_alter_rs_hl",
+ "apply_ok": false,
+ "merge_conflicts": {
+  "src/encoding/format.rs": 1,
+  "src/sql/engine/engine.rs": 2,
+  "src/sql/engine/local.rs": 1,
+  "src/sql/engine/raft.rs": 1,
+  "src/sql/parser/lexer.rs": 1,
+  "src/sql/types/mod.rs": 1
+ },
+ "files_changed": 14,
+ "files_fast": 1
+}

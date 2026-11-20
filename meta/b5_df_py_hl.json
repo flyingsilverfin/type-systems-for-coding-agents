@@ -1,0 +1,12 @@
+{
+ "run": "b5_df_py_hl",
+ "task": "DF",
+ "suite": "v3",
+ "lang": "python",
+ "model": "haiku",
+ "effort": "low",
+ "novis": false,
+ "ws": "/home/user/agentbench/runs/b5_df_py_hl",
+ "baseline": "86edd33faa377d46081594b7314bc64410d690c6",
+ "created": 1794860188.8372622
+}

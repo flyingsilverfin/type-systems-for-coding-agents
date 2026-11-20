@@ -1,0 +1,12 @@
+{
+ "run": "b4_g_py_hl",
+ "task": "G",
+ "suite": "v3",
+ "lang": "python",
+ "model": "haiku",
+ "effort": "low",
+ "novis": false,
+ "ws": "/home/user/agentbench/runs/b4_g_py_hl",
+ "baseline": "2305bcf51e11f401e890aede4a954adde2c1d39e",
+ "created": 1794861361.5260446
+}

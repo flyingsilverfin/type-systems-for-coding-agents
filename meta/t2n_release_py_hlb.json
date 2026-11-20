@@ -1,0 +1,14 @@
+{
+ "run": "t2n_release_py_hlb",
+ "task": "release",
+ "suite": "toydb-t2",
+ "tier": "t2",
+ "lang": "python",
+ "model": "haiku",
+ "effort": "low",
+ "ws": "/home/user/agentbench/runs/t2n_release_py_hlb",
+ "hint": false,
+ "baseline": "3336f19928def11ad9db89518562d6250af1cb9e",
+ "created": 1794991788.425662,
+ "warm_ok": true
+}

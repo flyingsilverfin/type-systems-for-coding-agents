@@ -1,0 +1,14 @@
+{
+ "run": "t2n_date_py_hla",
+ "task": "date",
+ "suite": "toydb-t2",
+ "tier": "t2",
+ "lang": "python",
+ "model": "haiku",
+ "effort": "low",
+ "ws": "/home/user/agentbench/runs/t2n_date_py_hla",
+ "hint": false,
+ "baseline": "ae166f5fba64c974d2381dd4a47eb9f16e058243",
+ "created": 1794991342.0633576,
+ "warm_ok": true
+}

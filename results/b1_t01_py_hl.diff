@@ -1,0 +1,78 @@
+diff --git a/app/lending/ingest.py b/app/lending/ingest.py
+index 50a3b43..8345225 100644
+--- a/app/lending/ingest.py
++++ b/app/lending/ingest.py
+@@ -47,6 +47,9 @@ def member_query(record: Record, line: int) -> str:
+     email = record.get("email", "")
+     if email != "":
+         parts.append(f"has email {quote(email)}")
++    phone = record.get("phone", "")
++    if phone != "":
++        parts.append(f"has phone {quote(phone)}")
+     return "insert " + ", ".join(parts) + ";"
+ 
+ 
+diff --git a/app/lending/model.py b/app/lending/model.py
+index 7ae5c96..59fed35 100644
+--- a/app/lending/model.py
++++ b/app/lending/model.py
+@@ -10,6 +10,7 @@ class Member:
+     id: str
+     name: str
+     email: Optional[str]
++    phone: Optional[str]
+     joined: date
+ 
+ 
+diff --git a/app/lending/repo.py b/app/lending/repo.py
+index 9c978a3..ae702c8 100644
+--- a/app/lending/repo.py
++++ b/app/lending/repo.py
+@@ -38,6 +38,7 @@ def find_member(db: Db, member_id: str) -> Optional[Member]:
+         match
+           $m isa member, has member-id {quote(member_id)}, has name $n, has joined $j;
+           try {{ $m has email $e; }};
++          try {{ $m has phone $p; }};
+     """)
+     if not rows:
+         return None
+@@ -46,6 +47,7 @@ def find_member(db: Db, member_id: str) -> Optional[Member]:
+         id=member_id,
+         name=req_string(row, "n"),
+         email=string(row, "e"),
++        phone=string(row, "p"),
+         joined=req_date(row, "j"),
+     )
+ 
+diff --git a/app/lending/report.py b/app/lending/report.py
+index 69a91e5..9e73a50 100644
+--- a/app/lending/report.py
++++ b/app/lending/report.py
+@@ -23,6 +23,7 @@ def member(m: Member, loans: list[Loan]) -> list[str]:
+     lines = [
+         f"member {m.id}: {m.name}",
+         f"email: {m.email if m.email is not None else NONE}",
++        f"phone: {m.phone if m.phone is not None else NONE}",
+         f"joined: {m.joined.isoformat()}",
+         f"open loans: {len(open_loans)}",
+     ]
+diff --git a/app/lending/schema.py b/app/lending/schema.py
+index 278ee77..ebcbd72 100644
+--- a/app/lending/schema.py
++++ b/app/lending/schema.py
+@@ -3,6 +3,7 @@ define
+   attribute member-id, value string;
+   attribute name, value string;
+   attribute email, value string;
++  attribute phone, value string;
+   attribute joined, value date;
+ 
+   attribute isbn, value string;
+@@ -20,6 +21,7 @@ define
+     owns member-id @key,
+     owns name,
+     owns email,
++    owns phone,
+     owns joined,
+     plays loan:borrower;
+ 

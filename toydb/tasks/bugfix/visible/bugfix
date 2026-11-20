@@ -1,0 +1,31 @@
+# One reproduction for each of the four bug reports.
+
+> CREATE TABLE city (id INT PRIMARY KEY, name STRING, country STRING)
+> CREATE TABLE flight (id INT PRIMARY KEY, origin INT REFERENCES city, dest INT REFERENCES city, direct BOOLEAN)
+> INSERT INTO city (id, country, name) VALUES (1, 'Norway', 'Oslo'), (2, 'Italy', 'Rome')
+> INSERT INTO flight VALUES (10, 1, 2, FALSE), (11, NULL, 1, TRUE)
+---
+ok
+
+# 1. INSERT with a column list that names every column, in another order.
+> SELECT * FROM city
+---
+1, 'Oslo', 'Norway'
+2, 'Rome', 'Italy'
+
+# 2. OR with a NULL operand.
+> SELECT id, direct OR NULL FROM flight
+---
+10, NULL
+11, TRUE
+
+# 3. LEFT JOIN on a column that is NULL in some rows.
+> SELECT flight.id, city.name FROM flight LEFT JOIN city ON flight.origin = city.id
+---
+10, 'Oslo'
+11, NULL
+
+# 4. DELETE of a row that is referenced through a second foreign key column.
+!> DELETE FROM city WHERE id = 2
+---
+Error: invalid input: row referenced by flight.id=10

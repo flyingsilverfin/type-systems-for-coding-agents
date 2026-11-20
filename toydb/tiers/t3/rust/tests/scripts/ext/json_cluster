@@ -1,0 +1,68 @@
+# JSON output through the client: results and plans received from a cluster.
+
+cluster nodes=3
+---
+ok
+
+c1:> CREATE TABLE item (id INT PRIMARY KEY, name STRING INDEX, price FLOAT, qty INT)
+c1:> INSERT INTO item VALUES (1, 'apple', 1.5, 10), (2, 'pear', 2.25, 0), (3, 'fig', NAN, 7), (4, 'kiwi', NULL, NULL)
+---
+ok
+
+# SELECT results with labels and every kind of value.
+c2:[json]> SELECT id, name AS n, price, qty * 2 FROM item WHERE id > 1
+---
+c2: {"result":"select","columns":["item.id","n","item.price",null],"rows":[[2,"pear",2.25,0],[3,"fig",{"type":"FLOAT","value":"NaN"},14],[4,"kiwi",null,null]]}
+
+# EXPLAIN: the client receives the plan and writes it as JSON instead of the
+# plan display.
+c3:> EXPLAIN SELECT name FROM item WHERE name = 'fig' OR name = 'kiwi'
+c3:[json]> EXPLAIN SELECT name FROM item WHERE name = 'fig' OR name = 'kiwi'
+---
+c3: Projection: item.name
+c3: └─ IndexLookup: item.name ('fig', 'kiwi')
+c3: {"result":"explain","plan":{"statement":"select","root":{"node":"projection","expressions":[{"expr":{"column":1,"label":"item.name"},"alias":null}],"source":{"node":"index_lookup","table":"item","alias":null,"column":"name","values":["fig","kiwi"]}}}}
+
+c1:[json]> EXPLAIN UPDATE item SET qty = 0 WHERE qty > 5
+---
+c1: {"result":"explain","plan":{"statement":"update","table":"item","set":[{"column":"qty","expr":{"constant":0}}],"source":{"node":"scan","table":"item","alias":null,"filter":{"op":"_ > _","args":[{"column":3,"label":"item.qty"},{"constant":5}]}}}}
+
+# Transactions on different clients. The two statements above used versions 1
+# and 2.
+c3:[json]> BEGIN
+c3:[json]> UPDATE item SET qty = qty + 1 WHERE name = 'pear'
+c1:[json]> SELECT qty FROM item WHERE id = 2
+c3:[json]> COMMIT
+c1:[json]> SELECT qty FROM item WHERE id = 2
+---
+c3: {"result":"begin","version":3,"read_only":false}
+c3: {"result":"update","count":1}
+c1: {"result":"select","columns":["item.qty"],"rows":[[0]]}
+c3: {"result":"commit","version":3}
+c1: {"result":"select","columns":["item.qty"],"rows":[[1]]}
+
+# Writes and schema changes.
+c2:[json]> DELETE FROM item WHERE price IS NULL
+c2:[json]> INSERT INTO item (id, name) VALUES (5, 'lime')
+c1:[json]> CREATE TABLE "Tmp" (id INT PRIMARY KEY)
+c3:[json]> DROP TABLE "Tmp"
+c3:[json]> DROP TABLE IF EXISTS "Tmp"
+---
+c2: {"result":"delete","count":1}
+c2: {"result":"insert","count":1}
+c1: {"result":"create_table","table":"Tmp"}
+c3: {"result":"drop_table","table":"Tmp","existed":true}
+c3: {"result":"drop_table","table":"Tmp","existed":false}
+
+# Errors are returned as usual.
+c2:[json]!> SELECT nope FROM item
+---
+c2: Error: invalid input: unknown column nope
+
+# Without the tag, nothing changes.
+c1:> SELECT * FROM item
+---
+c1: 1, 'apple', 1.5, 10
+c1: 2, 'pear', 2.25, 1
+c1: 3, 'fig', NaN, 7
+c1: 5, 'lime', NULL, NULL

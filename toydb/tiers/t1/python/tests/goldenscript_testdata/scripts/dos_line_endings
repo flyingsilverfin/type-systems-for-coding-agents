@@ -1,0 +1,116 @@
+# Comment.
+
+command
+---
+Command {
+    name: "command",
+    args: [],
+    context: Context {
+        prefix: None,
+        tags: {},
+        silent: false,
+        fail: false,
+        line_number: 3,
+    },
+}
+
+// Comment.
+
+foo arg
+bar key=value
+baz arg key=value
+---
+Command {
+    name: "foo",
+    args: [
+        Positional(
+            "arg",
+        ),
+    ],
+    context: Context {
+        prefix: None,
+        tags: {},
+        silent: false,
+        fail: false,
+        line_number: 19,
+    },
+}
+Command {
+    name: "bar",
+    args: [
+        KeyValue(
+            "key",
+            "value",
+        ),
+    ],
+    context: Context {
+        prefix: None,
+        tags: {},
+        silent: false,
+        fail: false,
+        line_number: 20,
+    },
+}
+Command {
+    name: "baz",
+    args: [
+        Positional(
+            "arg",
+        ),
+        KeyValue(
+            "key",
+            "value",
+        ),
+    ],
+    context: Context {
+        prefix: None,
+        tags: {},
+        silent: false,
+        fail: false,
+        line_number: 21,
+    },
+}
+
+# Comment.
+a: foo arg
+# Comment.
+b: bar key=value
+# Comment.
+---
+a: Command {
+a:     name: "foo",
+a:     args: [
+a:         Positional(
+a:             "arg",
+a:         ),
+a:     ],
+a:     context: Context {
+a:         prefix: Some(
+a:             "a",
+a:         ),
+a:         tags: {},
+a:         silent: false,
+a:         fail: false,
+a:         line_number: 75,
+a:     },
+a: }
+b: Command {
+b:     name: "bar",
+b:     args: [
+b:         KeyValue(
+b:             "key",
+b:             "value",
+b:         ),
+b:     ],
+b:     context: Context {
+b:         prefix: Some(
+b:             "b",
+b:         ),
+b:         tags: {},
+b:         silent: false,
+b:         fail: false,
+b:         line_number: 77,
+b:     },
+b: }
+
+# Comment.

@@ -1,0 +1,35 @@
+# BETWEEN and IN: the main happy path.
+
+> CREATE TABLE item (id INT PRIMARY KEY, name STRING, price INT)
+> INSERT INTO item VALUES (1, 'apple', 5), (2, 'pear', 12), (3, 'plum', 20), (4, 'fig', NULL)
+---
+ok
+
+# Constant expressions.
+> SELECT 2 BETWEEN 1 AND 3, 5 NOT BETWEEN 1 AND 3, 2 IN (1, 2, 3), 'x' NOT IN ('a', 'b')
+---
+TRUE, TRUE, TRUE, TRUE
+
+# In WHERE.
+> SELECT id, name FROM item WHERE price BETWEEN 5 AND 12 ORDER BY id
+---
+1, 'apple'
+2, 'pear'
+
+> SELECT id, name FROM item WHERE name IN ('plum', 'fig', 'kiwi') ORDER BY id
+---
+3, 'plum'
+4, 'fig'
+
+# In the SELECT list. A NULL operand gives NULL.
+> SELECT id, price BETWEEN 10 AND 20, price NOT IN (5, 20) FROM item ORDER BY id
+---
+1, FALSE, FALSE
+2, TRUE, TRUE
+3, TRUE, FALSE
+4, NULL, NULL
+
+# An IN list can't be empty.
+!> SELECT 1 IN ()
+---
+Error: invalid input: expected expression atom, found )

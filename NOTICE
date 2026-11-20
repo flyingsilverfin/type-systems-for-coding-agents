@@ -1,0 +1,19 @@
+type-systems-for-coding-agents
+
+This repository contains a copy of toydb (https://github.com/erikgrinaker/toydb),
+Copyright Erik Grinaker, licensed under the Apache License, Version 2.0, at upstream
+commit 2d7cd32 (toydb/rust). toydb's LICENSE is kept in every copy.
+
+Changes and additions relative to upstream toydb, made for this experiment:
+- toydb/python: a Python port of toydb, written to be structurally parallel to the Rust
+  code and to pass the same golden scripts byte for byte.
+- toydb/tiers/t1: the SQL core of both codebases, run in-process (server, client and
+  Raft removed).
+- toydb/tiers/t2: the full codebases, with a Python goldenscript runner and test cluster.
+- toydb/tiers/t3: t2 plus four new extension layers (JSON output, statement digests, column
+  statistics, export/import), including an AST change that keeps IS NOT.
+- check.sh, grade.py, LAYOUT.md and task directories in every tier; benchmark task specs
+  under toydb/tasks.
+
+Everything outside toydb/ (the harness, analysis, the tier-0 lending app and results) is
+original to this repository.

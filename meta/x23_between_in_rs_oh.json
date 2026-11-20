@@ -1,0 +1,20 @@
+{
+ "run": "x23_between_in_rs_oh",
+ "task": "between_in",
+ "suite": "toydb-t2",
+ "tier": "t3",
+ "lang": "rust",
+ "model": "opus",
+ "effort": "high",
+ "ws": "/home/user/agentbench/runs/x23_between_in_rs_oh",
+ "baseline": "9f5937371e253b1cb73cc7d54a5a1202c97c28e3",
+ "created": 1794975985.9778624,
+ "warm_ok": true,
+ "transplant_of": "t2_between_in_rs_oh",
+ "apply_ok": false,
+ "merge_conflicts": {
+  "src/sql/parser/lexer.rs": 3
+ },
+ "files_changed": 3,
+ "files_fast": 1
+}

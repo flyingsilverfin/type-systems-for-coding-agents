@@ -1,0 +1,16 @@
+{
+ "run": "x12_bugfix_py_hl",
+ "task": "bugfix",
+ "suite": "toydb-t1",
+ "tier": "t2",
+ "lang": "python",
+ "model": "haiku",
+ "effort": "low",
+ "ws": "/home/user/agentbench/runs/x12_bugfix_py_hl",
+ "baseline": "ae673b750daea1535959912bd7bd9ea4b41bf786",
+ "created": 1794950684.9087417,
+ "warm_ok": true,
+ "transplant_of": "t1_bugfix_py_hl",
+ "apply_ok": true,
+ "apply_err": ""
+}

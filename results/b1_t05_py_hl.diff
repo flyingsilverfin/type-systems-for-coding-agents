@@ -1,0 +1,78 @@
+diff --git a/app/lending/__main__.py b/app/lending/__main__.py
+index 35fceee..b6b5e32 100644
+--- a/app/lending/__main__.py
++++ b/app/lending/__main__.py
+@@ -17,7 +17,8 @@ commands:
+   books                list all books
+   member <member-id>   show a member and their open loans
+   overdue <date>       list open loans due before <date> (YYYY-MM-DD)
+-  stats                count books per genre"""
++  stats                count books per genre
++  available <isbn>     show how many copies of a book are available"""
+ 
+ 
+ def arg(args: list[str], index: int, usage: str) -> str:
+@@ -66,6 +67,13 @@ def run(args: list[str]) -> None:
+             emit(report.overdue(repo.all_loans(db), as_of))
+         elif command == "stats":
+             emit(report.genre_stats(repo.list_books(db)))
++        elif command == "available":
++            isbn = arg(args, 1, "available <isbn>")
++            b = repo.find_book(db, isbn)
++            if b is None:
++                raise NotFoundError(f"no such book: {isbn}")
++            open_loans = sum(1 for loan in repo.loans_for_book(db, isbn) if loan.is_open())
++            emit([report.availability(b, open_loans)])
+         else:
+             raise UsageError(f"unknown command '{command}'\n{USAGE}")
+     finally:
+diff --git a/app/lending/repo.py b/app/lending/repo.py
+index 9c978a3..e56e2a0 100644
+--- a/app/lending/repo.py
++++ b/app/lending/repo.py
+@@ -50,6 +50,24 @@ def find_member(db: Db, member_id: str) -> Optional[Member]:
+     )
+ 
+ 
++def find_book(db: Db, isbn: str) -> Optional[Book]:
++    rows = db.read_rows(f"""
++        match
++          $b isa book, has isbn {quote(isbn)}, has title $t, has year $y, has copies $c;
++          try {{ $b has genre $g; }};
++    """)
++    if not rows:
++        return None
++    row = rows[0]
++    return Book(
++        isbn=isbn,
++        title=req_string(row, "t"),
++        year=req_integer(row, "y"),
++        genre=string(row, "g"),
++        copies=req_integer(row, "c"),
++    )
++
++
+ def _loans(db: Db, extra: str = "") -> list[Loan]:
+     rows = db.read_rows("match" + _LOAN_PATTERN + extra)
+     return [
+@@ -71,3 +89,7 @@ def loans_for_member(db: Db, member_id: str) -> list[Loan]:
+ 
+ def all_loans(db: Db) -> list[Loan]:
+     return _loans(db)
++
++
++def loans_for_book(db: Db, isbn: str) -> list[Loan]:
++    return _loans(db, f"  $b has isbn {quote(isbn)};\n")
+diff --git a/app/lending/report.py b/app/lending/report.py
+index 69a91e5..c12ce9f 100644
+--- a/app/lending/report.py
++++ b/app/lending/report.py
+@@ -42,3 +42,8 @@ def genre_stats(items: list[Book]) -> list[str]:
+     counts = Counter(b.genre if b.genre is not None else "(none)" for b in items)
+     ordered = sorted(counts.items(), key=lambda kv: (-kv[1], kv[0]))
+     return [f"{genre}: {count}" for genre, count in ordered]
++
++
++def availability(b: Book, open_loans: int) -> str:
++    available = max(0, b.copies - open_loans)
++    return f"{b.isbn} {b.title}: {available} of {b.copies} available"

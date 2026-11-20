@@ -1,0 +1,32 @@
+# SELECT DISTINCT and DISTINCT aggregates: the main happy path.
+
+> CREATE TABLE emp (id INT PRIMARY KEY, dept STRING, city STRING, salary INT)
+> INSERT INTO emp VALUES (1, 'eng', 'oslo', 100), (2, 'eng', 'oslo', 120), (3, 'ops', 'rome', 100), \
+    (4, 'eng', 'rome', 100), (5, 'ops', NULL, 90), (6, 'ops', NULL, 90)
+---
+ok
+
+# Duplicate rows are removed, keeping the first one. NULL is a duplicate of NULL.
+> SELECT DISTINCT dept, city FROM emp
+---
+'eng', 'oslo'
+'ops', 'rome'
+'eng', 'rome'
+'ops', NULL
+
+# DISTINCT is applied before ORDER BY and LIMIT.
+> SELECT DISTINCT city FROM emp ORDER BY city DESC LIMIT 2
+---
+'rome'
+'oslo'
+
+# DISTINCT aggregates only use the distinct non-NULL values of each group.
+> SELECT dept, COUNT(*), COUNT(DISTINCT city), SUM(salary), SUM(DISTINCT salary) FROM emp GROUP BY dept
+---
+'eng', 3, 2, 320, 220
+'ops', 3, 1, 280, 190
+
+# With SELECT DISTINCT, ORDER BY can only use what is in the select list.
+!> SELECT DISTINCT dept FROM emp ORDER BY salary
+---
+Error: invalid input: for SELECT DISTINCT, ORDER BY expressions must appear in select list

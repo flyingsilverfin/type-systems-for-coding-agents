@@ -1,0 +1,18 @@
+{
+ "run": "x23_case_rs_hl",
+ "task": "case",
+ "suite": "toydb-t2",
+ "tier": "t3",
+ "lang": "rust",
+ "model": "haiku",
+ "effort": "low",
+ "ws": "/home/user/agentbench/runs/x23_case_rs_hl",
+ "baseline": "27b08f1a5be69431c773306ee89e4be262a2d335",
+ "created": 1794976037.1418839,
+ "warm_ok": true,
+ "transplant_of": "t2_case_rs_hl",
+ "apply_ok": true,
+ "merge_conflicts": {},
+ "files_changed": 7,
+ "files_fast": 3
+}

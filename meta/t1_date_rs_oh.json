@@ -1,0 +1,13 @@
+{
+ "run": "t1_date_rs_oh",
+ "task": "date",
+ "suite": "toydb-t1",
+ "tier": "t1",
+ "lang": "rust",
+ "model": "opus",
+ "effort": "high",
+ "ws": "/home/user/agentbench/runs/t1_date_rs_oh",
+ "baseline": "1483aa3a281c1ab15acb747169f3d035a004b44f",
+ "created": 1794950572.8601305,
+ "warm_ok": true
+}

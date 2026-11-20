@@ -1,0 +1,16 @@
+{
+ "run": "x12_between_in_py_oh",
+ "task": "between_in",
+ "suite": "toydb-t1",
+ "tier": "t2",
+ "lang": "python",
+ "model": "opus",
+ "effort": "high",
+ "ws": "/home/user/agentbench/runs/x12_between_in_py_oh",
+ "baseline": "3036c68750c3f52eac0466e7e8694fe8c9dc4c76",
+ "created": 1794950522.3057578,
+ "warm_ok": true,
+ "transplant_of": "t1_between_in_py_oh",
+ "apply_ok": true,
+ "apply_err": ""
+}

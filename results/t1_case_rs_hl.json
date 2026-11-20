@@ -1,0 +1,42 @@
+{
+ "run": "t1_case_rs_hl",
+ "task": "case",
+ "tier": "t1",
+ "lang": "rust",
+ "model": "haiku",
+ "effort": "low",
+ "build_ok": true,
+ "hidden_passed": 12,
+ "hidden_total": 12,
+ "visible_passed": 1,
+ "visible_total": 1,
+ "regression_passed": 210,
+ "regression_total": 210,
+ "regression_failed": [],
+ "hidden": {
+  "aggregates": "pass",
+  "group_having": "pass",
+  "joins": "pass",
+  "lazy": "pass",
+  "plan_display": "pass",
+  "plan_folding": "pass",
+  "searched": "pass",
+  "select_order": "pass",
+  "simple": "pass",
+  "syntax_keywords": "pass",
+  "where_index": "pass",
+  "writes": "pass"
+ },
+ "tests_completed": true,
+ "grade_times": {
+  "build_s": 3.1,
+  "test_s": 0.8,
+  "total_s": 4.0
+ },
+ "checks": 1,
+ "check_build_s": 2.7,
+ "check_test_s": 1.2,
+ "last_check_ok": true,
+ "pass": true,
+ "escaped": false
+}

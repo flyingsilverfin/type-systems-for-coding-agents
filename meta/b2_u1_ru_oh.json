@@ -1,0 +1,11 @@
+{
+ "run": "b2_u1_ru_oh",
+ "task": "U1",
+ "suite": "v2",
+ "lang": "rust",
+ "model": "opus",
+ "effort": "high",
+ "ws": "/home/user/agentbench/runs/b2_u1_ru_oh",
+ "baseline": "0e3611bd41cea0cf0a9d8c18a08b18df053a1e3d",
+ "created": 1794856472.2934074
+}

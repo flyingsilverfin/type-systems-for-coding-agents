@@ -1,0 +1,18 @@
+{
+ "run": "x23_between_in_rs_hl",
+ "task": "between_in",
+ "suite": "toydb-t2",
+ "tier": "t3",
+ "lang": "rust",
+ "model": "haiku",
+ "effort": "low",
+ "ws": "/home/user/agentbench/runs/x23_between_in_rs_hl",
+ "baseline": "61d6b6d275d32db7dfa0f12be6a7c222bbe4239b",
+ "created": 1794975937.630736,
+ "warm_ok": true,
+ "transplant_of": "t2_between_in_rs_hl",
+ "apply_ok": true,
+ "merge_conflicts": {},
+ "files_changed": 2,
+ "files_fast": 0
+}

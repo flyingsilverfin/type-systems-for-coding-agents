@@ -1,0 +1,14 @@
+{
+ "run": "t3_alter_py_oh",
+ "task": "alter",
+ "suite": "toydb-t3",
+ "tier": "t3",
+ "lang": "python",
+ "model": "opus",
+ "effort": "high",
+ "ws": "/home/user/agentbench/runs/t3_alter_py_oh",
+ "hint": true,
+ "baseline": "9a1e6d816110fe28c8b832db33202177c721fc38",
+ "created": 1795025531.2973897,
+ "warm_ok": true
+}

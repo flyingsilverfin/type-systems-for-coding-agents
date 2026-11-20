@@ -1,0 +1,12 @@
+{
+ "run": "b5_abcdefg_py_hl",
+ "task": "ABCDEFG",
+ "suite": "v3",
+ "lang": "python",
+ "model": "haiku",
+ "effort": "low",
+ "novis": false,
+ "ws": "/home/user/agentbench/runs/b5_abcdefg_py_hl",
+ "baseline": "4e9156e82bcbbc1433da5f838219ba53b8b3daca",
+ "created": 1794860329.0521789
+}

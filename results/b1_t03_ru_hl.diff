@@ -1,0 +1,54 @@
+diff --git a/app/src/main.rs b/app/src/main.rs
+index 4a418f4..1e26080 100644
+--- a/app/src/main.rs
++++ b/app/src/main.rs
+@@ -24,6 +24,7 @@ commands:
+   load <dir>           load members.csv, books.csv, loans.csv from <dir>
+   books                list all books
+   member <member-id>   show a member and their open loans
++  history <member-id>  list all loans of a member (open and returned)
+   overdue <date>       list open loans due before <date> (YYYY-MM-DD)
+   stats                count books per genre";
+ 
+@@ -68,6 +69,13 @@ fn run(args: &[String]) -> Result<()> {
+             };
+             emit(report::member(&m, &repo::loans_for_member(&db, member_id)?));
+         }
++        "history" => {
++            let member_id = arg(args, 1, "history <member-id>")?;
++            if repo::find_member(&db, member_id)?.is_none() {
++                return Err(AppError::NotFound(format!("no such member: {member_id}")));
++            }
++            emit(report::history(member_id, &repo::loans_for_member(&db, member_id)?));
++        }
+         "overdue" => {
+             let as_of = parse_date(arg(args, 1, "overdue <date>")?)?;
+             emit(report::overdue(&repo::all_loans(&db)?, as_of));
+diff --git a/app/src/report.rs b/app/src/report.rs
+index c094d79..c5414c5 100644
+--- a/app/src/report.rs
++++ b/app/src/report.rs
+@@ -35,6 +35,23 @@ pub fn member(m: &Member, loans: &[Loan]) -> Vec<String> {
+     lines
+ }
+ 
++pub fn history(member_id: &str, loans: &[Loan]) -> Vec<String> {
++    let mut ordered: Vec<&Loan> = loans.iter().collect();
++    ordered.sort_by(|a, b| (a.borrowed, &a.id).cmp(&(b.borrowed, &b.id)));
++    let mut lines = vec![format!("history {}: {} loans", member_id, ordered.len())];
++    lines.extend(ordered.iter().map(|loan| {
++        format!(
++            "  {} {} borrowed {} due {} returned {}",
++            loan.id,
++            loan.isbn,
++            loan.borrowed.format("%Y-%m-%d"),
++            loan.due.format("%Y-%m-%d"),
++            loan.returned.map_or_else(|| "open".to_owned(), |r| r.format("%Y-%m-%d").to_string()),
++        )
++    }));
++    lines
++}
++
+ pub fn overdue(loans: &[Loan], as_of: NaiveDate) -> Vec<String> {
+     let late = by_due(loans.iter().filter(|loan| loan.is_open() && loan.due < as_of).collect());
+     late.iter()

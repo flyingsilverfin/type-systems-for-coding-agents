@@ -1,0 +1,42 @@
+# The DATE type: the main happy path.
+
+> CREATE TABLE ev (id INT PRIMARY KEY, name STRING, d DATE DEFAULT DATE '2024-01-01')
+> INSERT INTO ev VALUES (1, 'leap day', DATE '2024-02-29'), (2, 'old', DATE '1999-12-31'), (3, 'none', NULL), (4, 'new year', DATE '2024-01-01')
+schema ev
+---
+CREATE TABLE ev (
+  id INTEGER PRIMARY KEY,
+  name STRING DEFAULT NULL,
+  d DATE DEFAULT DATE '2024-01-01'
+)
+
+# Results show dates as YYYY-MM-DD; comparisons and ORDER BY use calendar order.
+> SELECT id, d FROM ev WHERE d > DATE '2000-01-01' ORDER BY d DESC
+---
+1, 2024-02-29
+4, 2024-01-01
+
+# Dates and integers: adding or subtracting days, and the days between two dates.
+> SELECT id, d + 1, d - 60, d - DATE '2024-01-01' FROM ev
+---
+1, 2024-03-01, 2023-12-31, 59
+2, 2000-01-01, 1999-11-01, -8767
+3, NULL, NULL, NULL
+4, 2024-01-02, 2023-11-02, 0
+
+# MIN and MAX work on dates.
+> SELECT MIN(d), MAX(d), MAX(d) - MIN(d) FROM ev
+---
+1999-12-31, 2024-02-29, 8826
+
+# Plans show dates as literals.
+[plan]> SELECT name FROM ev WHERE d = DATE '2024-02-28' + 1
+---
+Projection: ev.name
+└─ Scan: ev (ev.d = DATE '2024-02-29')
+'leap day'
+
+# Only real calendar dates are valid.
+!> SELECT DATE '2023-02-29'
+---
+Error: invalid input: invalid date '2023-02-29'

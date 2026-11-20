@@ -1,0 +1,57 @@
+# Statement digests: the canonical form of CREATE TABLE, DROP TABLE, INSERT,
+# UPDATE and DELETE.
+
+# Data types are written by their schema names; column constraints in a fixed
+# order (PRIMARY KEY, NULL/NOT NULL as written, DEFAULT, UNIQUE, INDEX,
+# REFERENCES); DEFAULT expressions have literals replaced.
+> create table T (ID int primary key, V text, N integer)
+> CREATE TABLE u (k INT NOT NULL DEFAULT 1 PRIMARY KEY, r INT INDEX REFERENCES u, b BOOL NULL UNIQUE, s VARCHAR DEFAULT 'x', f DOUBLE DEFAULT 1.5 + 1)
+!> CREATE TABLE w (id INT PRIMARY KEY, x STRING DEFAULT NULL NOT NULL)
+---
+Error: invalid input: invalid NULL default for non-nullable column x
+
+# INSERT with and without a column list; one (?, ...) per row. UPDATE lists the
+# assignments by column name.
+> insert into T values (1, 'x', 15), (2, NULL, -1)
+> INSERT INTO t (id, v) VALUES (3, 'y')
+> update t set v = default, n = n + 1 where id = 3
+> UPDATE t SET v = 'z'
+> UPDATE t SET v = 'a', n = 2, id = id WHERE id = 9
+> delete from t where id >= 2 and v is null
+> DELETE FROM t
+> DROP TABLE IF EXISTS nosuch
+> DROP TABLE u
+!> INSERT INTO t VALUES (1, 2, 3)
+!> UPDATE t SET nope = 1
+---
+Error: invalid input: invalid datatype INTEGER for STRING column v
+Error: invalid input: unknown column nope
+
+> SHOW STATEMENTS
+---
+'CREATE TABLE t (id INTEGER PRIMARY KEY, v STRING, n INTEGER)', 1, 0, 0
+'CREATE TABLE u (k INTEGER PRIMARY KEY NOT NULL DEFAULT ?, r INTEGER INDEX REFERENCES u, b BOOLEAN NULL UNIQUE, s STRING DEFAULT ?, f FLOAT DEFAULT ? + ?)', 1, 0, 0
+'CREATE TABLE w (id INTEGER PRIMARY KEY, x STRING NOT NULL DEFAULT ?)', 1, 1, 0
+'INSERT INTO t VALUES (?, ?, ?), (?, ?, -?)', 1, 0, 2
+'INSERT INTO t (id, v) VALUES (?, ?)', 1, 0, 1
+'UPDATE t SET n = n + ?, v = DEFAULT WHERE id = ?', 1, 0, 1
+'UPDATE t SET v = ?', 1, 0, 3
+'UPDATE t SET id = id, n = ?, v = ? WHERE id = ?', 1, 0, 0
+'DELETE FROM t WHERE id >= ? AND v IS NULL', 1, 0, 0
+'DELETE FROM t', 1, 0, 3
+'DROP TABLE IF EXISTS nosuch', 1, 0, 0
+'DROP TABLE u', 1, 0, 0
+'INSERT INTO t VALUES (?, ?, ?)', 1, 1, 0
+'UPDATE t SET nope = ?', 1, 1, 0
+
+# The same writes in another spelling.
+> INSERT INTO t VALUES (5, 'five', 5), (6, 'six', -(6))
+> UPDATE t SET V = DEFAULT, N = (N + 10) WHERE ID = 5
+> Update T Set V = 'w'
+> DELETE FROM t
+---
+ok
+
+[json]> SHOW STATEMENTS
+---
+{"result":"select","columns":["digest","calls","errors","rows"],"rows":[["CREATE TABLE t (id INTEGER PRIMARY KEY, v STRING, n INTEGER)",1,0,0],["CREATE TABLE u (k INTEGER PRIMARY KEY NOT NULL DEFAULT ?, r INTEGER INDEX REFERENCES u, b BOOLEAN NULL UNIQUE, s STRING DEFAULT ?, f FLOAT DEFAULT ? + ?)",1,0,0],["CREATE TABLE w (id INTEGER PRIMARY KEY, x STRING NOT NULL DEFAULT ?)",1,1,0],["INSERT INTO t VALUES (?, ?, ?), (?, ?, -?)",2,0,4],["INSERT INTO t (id, v) VALUES (?, ?)",1,0,1],["UPDATE t SET n = n + ?, v = DEFAULT WHERE id = ?",2,0,2],["UPDATE t SET v = ?",2,0,5],["UPDATE t SET id = id, n = ?, v = ? WHERE id = ?",1,0,0],["DELETE FROM t WHERE id >= ? AND v IS NULL",1,0,0],["DELETE FROM t",2,0,5],["DROP TABLE IF EXISTS nosuch",1,0,0],["DROP TABLE u",1,0,0],["INSERT INTO t VALUES (?, ?, ?)",1,1,0],["UPDATE t SET nope = ?",1,1,0]]}

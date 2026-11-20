@@ -1,0 +1,79 @@
+# Column statistics: syntax and execution errors of ANALYZE and SHOW STATISTICS.
+# A statement that fails changes nothing.
+
+> CREATE TABLE t (id INT PRIMARY KEY, v STRING)
+> INSERT INTO t VALUES (1, 'a')
+---
+ok
+
+# Unknown tables.
+!> ANALYZE nosuch
+!> SHOW STATISTICS nosuch
+---
+Error: invalid input: table nosuch does not exist
+Error: invalid input: table nosuch does not exist
+
+# Syntax errors.
+!> ANALYZE 1
+!> ANALYZE t u
+!> ANALYZE t, u
+!> SHOW STATISTICS
+!> SHOW STATISTICS 1
+!> SHOW STATISTICS t u
+!> SHOW STATISTIC t
+---
+Error: invalid input: unexpected token 1
+Error: invalid input: unexpected token u
+Error: invalid input: unexpected token ,
+Error: invalid input: unexpected end of input
+Error: invalid input: expected identifier, got 1
+Error: invalid input: unexpected token u
+Error: invalid input: unexpected token statistic
+
+# A trailing semicolon is allowed, as for every statement.
+> ANALYZE t;
+> SHOW STATISTICS t;
+---
+'id', 1, 0, 1, 1, 1, 1, 1, NULL
+'v', 1, 0, 1, 'a', 'a', 'a', 1, 1.0
+
+# These statements can't be explained.
+!> EXPLAIN ANALYZE t
+!> EXPLAIN SHOW STATISTICS t
+---
+Error: invalid input: EXPLAIN is not supported for ANALYZE
+Error: invalid input: EXPLAIN is not supported for SHOW
+
+# Keywords are case-insensitive.
+> analyze T
+> Show Statistics T
+---
+'id', 1, 0, 1, 1, 1, 1, 1, NULL
+'v', 1, 0, 1, 'a', 'a', 'a', 1, 1.0
+
+# A failed ANALYZE in an explicit transaction leaves the transaction usable.
+> BEGIN
+!> ANALYZE nosuch
+> INSERT INTO t VALUES (2, 'bb')
+> ANALYZE t
+> COMMIT
+> SHOW STATISTICS t
+---
+Error: invalid input: table nosuch does not exist
+'id', 2, 0, 2, 1, 2, 1, 1, NULL
+'v', 2, 0, 2, 'a', 'bb', 'a', 1, 1.5
+
+# In a read-only transaction ANALYZE fails, before the table is looked up, and
+# also when there is no table to analyze.
+> BEGIN READ ONLY
+!> ANALYZE
+!> ANALYZE nosuch
+> COMMIT
+> DROP TABLE t
+> BEGIN READ ONLY
+!> ANALYZE
+> COMMIT
+---
+Error: read-only transaction
+Error: read-only transaction
+Error: read-only transaction

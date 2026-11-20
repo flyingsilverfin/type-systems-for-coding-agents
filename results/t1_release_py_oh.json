@@ -1,0 +1,42 @@
+{
+ "run": "t1_release_py_oh",
+ "task": "release",
+ "tier": "t1",
+ "lang": "python",
+ "model": "opus",
+ "effort": "high",
+ "build_ok": true,
+ "hidden_passed": 12,
+ "hidden_total": 12,
+ "visible_passed": 1,
+ "visible_total": 1,
+ "regression_passed": 247,
+ "regression_total": 247,
+ "regression_failed": [],
+ "hidden": {
+  "bool_aggregates": "pass",
+  "bool_aggregates_group": "pass",
+  "create_if_not_exists": "pass",
+  "create_if_not_exists_txn": "pass",
+  "functions": "pass",
+  "functions_queries": "pass",
+  "insert_select": "pass",
+  "insert_select_errors": "pass",
+  "insert_select_txn": "pass",
+  "lookup_dedup": "pass",
+  "not_like": "pass",
+  "not_like_syntax": "pass"
+ },
+ "tests_completed": true,
+ "grade_times": {
+  "build_s": 0.4,
+  "test_s": 8.0,
+  "total_s": 8.4
+ },
+ "checks": 3,
+ "check_build_s": 0.8,
+ "check_test_s": 16.2,
+ "last_check_ok": true,
+ "pass": true,
+ "escaped": false
+}

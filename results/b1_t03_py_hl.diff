@@ -1,0 +1,46 @@
+diff --git a/app/lending/__main__.py b/app/lending/__main__.py
+index 35fceee..32ee628 100644
+--- a/app/lending/__main__.py
++++ b/app/lending/__main__.py
+@@ -16,6 +16,7 @@ commands:
+   load <dir>           load members.csv, books.csv, loans.csv from <dir>
+   books                list all books
+   member <member-id>   show a member and their open loans
++  history <member-id>  list all loans of a member (open and returned)
+   overdue <date>       list open loans due before <date> (YYYY-MM-DD)
+   stats                count books per genre"""
+ 
+@@ -61,6 +62,11 @@ def run(args: list[str]) -> None:
+             if m is None:
+                 raise NotFoundError(f"no such member: {member_id}")
+             emit(report.member(m, repo.loans_for_member(db, member_id)))
++        elif command == "history":
++            member_id = arg(args, 1, "history <member-id>")
++            if repo.find_member(db, member_id) is None:
++                raise NotFoundError(f"no such member: {member_id}")
++            emit(report.history(member_id, repo.loans_for_member(db, member_id)))
+         elif command == "overdue":
+             as_of = parse_date(arg(args, 1, "overdue <date>"))
+             emit(report.overdue(repo.all_loans(db), as_of))
+diff --git a/app/lending/report.py b/app/lending/report.py
+index 69a91e5..fb6986f 100644
+--- a/app/lending/report.py
++++ b/app/lending/report.py
+@@ -30,6 +30,17 @@ def member(m: Member, loans: list[Loan]) -> list[str]:
+     return lines
+ 
+ 
++def history(member_id: str, loans: list[Loan]) -> list[str]:
++    ordered = sorted(loans, key=lambda loan: (loan.borrowed, loan.id))
++    lines = [f"history {member_id}: {len(ordered)} loans"]
++    for loan in ordered:
++        returned = loan.returned.isoformat() if loan.returned is not None else "open"
++        lines.append(
++            f"  {loan.id} {loan.isbn} borrowed {loan.borrowed.isoformat()} due {loan.due.isoformat()} returned {returned}"
++        )
++    return lines
++
++
+ def overdue(loans: list[Loan], as_of: date) -> list[str]:
+     late = by_due([loan for loan in loans if loan.is_open() and loan.due < as_of])
+     return [

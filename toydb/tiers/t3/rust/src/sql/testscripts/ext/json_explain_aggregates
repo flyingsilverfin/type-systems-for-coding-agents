@@ -1,0 +1,73 @@
+# JSON output: plans with aggregates, GROUP BY, HAVING and ordering by
+# aggregates. Aggregate calls are written like functions; aggregate results
+# referenced by later nodes are unlabeled columns (#n in the plan display).
+
+> CREATE TABLE item (id INT PRIMARY KEY, name STRING INDEX, price FLOAT, qty INT)
+> INSERT INTO item VALUES (1, 'apple', 1.5, 10), (2, 'pear', 2.25, 0), (3, 'fig', NULL, 7)
+> CREATE TABLE sale (id INT PRIMARY KEY, item_id INT REFERENCES item, n INT)
+> INSERT INTO sale VALUES (1, 1, 2), (2, 1, 5), (3, 3, 1)
+---
+ok
+
+# COUNT(*) is count(TRUE).
+[plan]> SELECT name, COUNT(*), MAX(qty) FROM item GROUP BY name
+[json]> EXPLAIN SELECT name, COUNT(*), MAX(qty) FROM item GROUP BY name
+---
+Aggregate: item.name, count(TRUE), max(item.qty)
+└─ Scan: item
+'apple', 1, 10
+'fig', 1, 7
+'pear', 1, 0
+{"result":"explain","plan":{"statement":"select","root":{"node":"aggregate","group_by":[{"column":1,"label":"item.name"}],"aggregates":[{"op":"count(_)","args":[{"constant":true}]},{"op":"max(_)","args":[{"column":3,"label":"item.qty"}]}],"source":{"node":"scan","table":"item","alias":null,"filter":null}}}}
+
+# Without GROUP BY; an aggregate over an expression.
+[plan]> SELECT SUM(qty * 2), AVG(price), MIN(id) FROM item
+[json]> EXPLAIN SELECT SUM(qty * 2), AVG(price), MIN(id) FROM item
+---
+Aggregate: sum(item.qty * 2), avg(item.price), min(item.id)
+└─ Scan: item
+34, 1.875, 1
+{"result":"explain","plan":{"statement":"select","root":{"node":"aggregate","group_by":[],"aggregates":[{"op":"sum(_)","args":[{"op":"_ * _","args":[{"column":3,"label":"item.qty"},{"constant":2}]}]},{"op":"avg(_)","args":[{"column":2,"label":"item.price"}]},{"op":"min(_)","args":[{"column":0,"label":"item.id"}]}],"source":{"node":"scan","table":"item","alias":null,"filter":null}}}}
+
+# A projection of an aggregate result.
+[plan]> SELECT COUNT(*) FROM item GROUP BY name
+[json]> EXPLAIN SELECT COUNT(*) FROM item GROUP BY name
+---
+Projection: #1
+└─ Aggregate: item.name, count(TRUE)
+   └─ Scan: item
+1
+1
+1
+{"result":"explain","plan":{"statement":"select","root":{"node":"projection","expressions":[{"expr":{"column":1,"label":null},"alias":null}],"source":{"node":"aggregate","group_by":[{"column":1,"label":"item.name"}],"aggregates":[{"op":"count(_)","args":[{"constant":true}]}],"source":{"node":"scan","table":"item","alias":null,"filter":null}}}}}
+
+# HAVING with an aggregate that is not selected: a filter and a remap that
+# drops the unlabeled column.
+[plan]> SELECT name FROM item GROUP BY name HAVING MAX(qty) > 5
+[json]> EXPLAIN SELECT name FROM item GROUP BY name HAVING MAX(qty) > 5
+---
+Remap: item.name (dropped: #1)
+└─ Filter: #1 > 5
+   └─ Aggregate: item.name, max(item.qty)
+      └─ Scan: item
+'apple'
+'fig'
+{"result":"explain","plan":{"statement":"select","root":{"node":"remap","columns":[{"column":0,"label":"item.name"}],"dropped":[{"column":1,"label":null}],"source":{"node":"filter","predicate":{"op":"_ > _","args":[{"column":1,"label":null},{"constant":5}]},"source":{"node":"aggregate","group_by":[{"column":1,"label":"item.name"}],"aggregates":[{"op":"max(_)","args":[{"column":3,"label":"item.qty"}]}],"source":{"node":"scan","table":"item","alias":null,"filter":null}}}}}}
+
+# Grouping over a join, ordered by an aggregate.
+[plan]> SELECT name, SUM(n) FROM sale JOIN item ON sale.item_id = item.id GROUP BY name ORDER BY SUM(n) DESC
+[json]> EXPLAIN SELECT name, SUM(n) FROM sale JOIN item ON sale.item_id = item.id GROUP BY name ORDER BY SUM(n) DESC
+---
+Order: #1 desc
+└─ Aggregate: item.name, sum(sale.n)
+   └─ HashJoin: inner on sale.item_id = item.id
+      ├─ Scan: sale
+      └─ Scan: item
+'apple', 7
+'fig', 1
+{"result":"explain","plan":{"statement":"select","root":{"node":"order","key":[{"expr":{"column":1,"label":null},"direction":"desc"}],"source":{"node":"aggregate","group_by":[{"column":4,"label":"item.name"}],"aggregates":[{"op":"sum(_)","args":[{"column":2,"label":"sale.n"}]}],"source":{"node":"hash_join","join":"inner","left_column":{"column":1,"label":"sale.item_id"},"right_column":{"column":0,"label":"item.id"},"left":{"node":"scan","table":"sale","alias":null,"filter":null},"right":{"node":"scan","table":"item","alias":null,"filter":null}}}}}}
+
+# The SELECT results of aggregates.
+[json]> SELECT name, COUNT(*) AS n FROM item GROUP BY name HAVING MAX(qty) > 5
+---
+{"result":"select","columns":["item.name","n"],"rows":[["apple",1],["fig",1]]}

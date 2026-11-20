@@ -1,0 +1,13 @@
+{
+ "run": "t1_distinct_py_oh",
+ "task": "distinct",
+ "suite": "toydb-t1",
+ "tier": "t1",
+ "lang": "python",
+ "model": "opus",
+ "effort": "high",
+ "ws": "/home/user/agentbench/runs/t1_distinct_py_oh",
+ "baseline": "7fa8b6ed2e9a0f1574dfa14111ded9cd782977f6",
+ "created": 1794950604.3650372,
+ "warm_ok": true
+}

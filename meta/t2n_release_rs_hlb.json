@@ -1,0 +1,14 @@
+{
+ "run": "t2n_release_rs_hlb",
+ "task": "release",
+ "suite": "toydb-t2",
+ "tier": "t2",
+ "lang": "rust",
+ "model": "haiku",
+ "effort": "low",
+ "ws": "/home/user/agentbench/runs/t2n_release_rs_hlb",
+ "hint": false,
+ "baseline": "92a56ade76b45c2e7361b57ca7c0b127f18dc74d",
+ "created": 1794991755.889228,
+ "warm_ok": true
+}

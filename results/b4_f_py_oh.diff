@@ -1,0 +1,103 @@
+diff --git a/app/lending/__main__.py b/app/lending/__main__.py
+index 9756b96..d029252 100644
+--- a/app/lending/__main__.py
++++ b/app/lending/__main__.py
+@@ -27,7 +27,7 @@ commands:
+   contact <member-id>      show the best way to contact a member
+   history <member-id>      list every loan a member has made
+   overdue <date>           list open loans due before <date> (YYYY-MM-DD)
+-  due-soon <date> <days>   list open loans due within <days> days from <date>
++  due-soon <date> [<days>] list open loans due within <days> days (default 7) from <date>
+   returned-late            list loans returned after their due date, latest first
+   lost                     list lost loans
+   fees                     total fees per member, highest first
+@@ -161,8 +161,8 @@ def dispatch(db: Db, command: str, args: list[str]) -> None:
+             as_of = parse_date(arg(args, 1, "overdue <date>"))
+             emit(loan_report.overdue(loan_repo.overdue_loans(db, as_of), as_of))
+         case "due-soon":
+-            start = parse_date(arg(args, 1, "due-soon <date> <days>"))
+-            days = parse_count(arg(args, 2, "due-soon <date> <days>"))
++            start = parse_date(arg(args, 1, "due-soon <date> [<days>]"))
++            days = parse_count(args[2]) if len(args) > 2 else 7
+             end = start + timedelta(days=days)
+             emit(loan_report.due_soon(loan_repo.loans_due_between(db, start, end)))
+         case "returned-late":
+diff --git a/app/lending/repo/books.py b/app/lending/repo/books.py
+index 375ee18..4877920 100644
+--- a/app/lending/repo/books.py
++++ b/app/lending/repo/books.py
+@@ -179,7 +179,7 @@ def book_availability(db: Db, isbn: str) -> Optional[BookAvailability]:
+ 
+ 
+ def search_books(db: Db, text: str) -> list[BookListing]:
+-    """Books whose title or subtitle contains `text`, ignoring case."""
++    """Books whose title or subtitle contains `text`, ignoring case, or whose ISBN is exactly `text`."""
+     rows = db.read_rows("""
+         match
+           $b isa book, has isbn $isbn, has title $t, has year $y;
+@@ -201,6 +201,10 @@ def search_books(db: Db, text: str) -> list[BookListing]:
+         genre: Optional[str] = None
+         if (concept := row.get("g")) is not None and (genre := concept.try_get_string()) is None:
+             raise DataError("$g: expected a string")
+-        if needle in title.lower() or (subtitle is not None and needle in subtitle.lower()):
++        if (
++            needle in title.lower()
++            or (subtitle is not None and needle in subtitle.lower())
++            or isbn == text
++        ):
+             books.append(BookListing(isbn=isbn, title=title, year=year, genre=genre))
+     return books
+diff --git a/app/lending/repo/members.py b/app/lending/repo/members.py
+index 6b68702..5e9d6b4 100644
+--- a/app/lending/repo/members.py
++++ b/app/lending/repo/members.py
+@@ -104,10 +104,11 @@ def find_contact(db: Db, member_id: str) -> Optional[MemberContact]:
+ 
+ 
+ def inactive_members(db: Db, since: date) -> list[MemberName]:
+-    """Members with no loan borrowed on or after `since`."""
++    """Members who joined on or before `since` and have no loan borrowed on or after `since`."""
+     rows = db.read_rows(f"""
+         match
+-          $m isa member, has member-id $mid, has name $n;
++          $m isa member, has member-id $mid, has name $n, has joined $j;
++          $j <= {since.isoformat()};
+           not {{
+             $l isa loan, links (borrower: $m), has borrowed $bo;
+             $bo >= {since.isoformat()};
+diff --git a/app/lending/report/loans.py b/app/lending/report/loans.py
+index 19a2594..a98e602 100644
+--- a/app/lending/report/loans.py
++++ b/app/lending/report/loans.py
+@@ -21,7 +21,8 @@ def _status(loan: HistoryLoan) -> str:
+ 
+ def history(member_id: str, loans: list[HistoryLoan]) -> list[str]:
+     ordered = sorted(loans, key=lambda loan: (loan.borrowed, loan.id))
+-    lines = [f"history {member_id}: {len(ordered)} loans"]
++    open_count = sum(1 for loan in ordered if loan.returned is None and loan.lost is None)
++    lines = [f"history {member_id}: {len(ordered)} loans ({open_count} open)"]
+     lines += [
+         f"  {loan.id} {loan.isbn} borrowed {loan.borrowed.isoformat()} due {loan.due.isoformat()} {_status(loan)}"
+         for loan in ordered
+diff --git a/app/lending/report/members.py b/app/lending/report/members.py
+index fa92ffa..577af5f 100644
+--- a/app/lending/report/members.py
++++ b/app/lending/report/members.py
+@@ -42,7 +42,7 @@ def inactive(items: list[MemberName]) -> list[str]:
+ def top(borrowers: list[MemberName], limit: int) -> list[str]:
+     counts = Counter(b.id for b in borrowers)
+     names = {b.id: b.name for b in borrowers}
+-    ranked = sorted(counts.items(), key=lambda kv: (-kv[1], kv[0]))[:limit]
++    ranked = sorted(counts.items(), key=lambda kv: (-kv[1], names[kv[0]], kv[0]))[:limit]
+     return [f"{rank}. {mid} {names[mid]} ({count} loans)" for rank, (mid, count) in enumerate(ranked, start=1)]
+ 
+ 
+@@ -52,7 +52,7 @@ def fees(items: list[MemberFee]) -> list[str]:
+     for item in items:
+         totals[item.member_id] += item.fee_cents
+         names[item.member_id] = item.name
+-    ranked = sorted(((mid, total) for mid, total in totals.items() if total > 0), key=lambda kv: (-kv[1], kv[0]))
++    ranked = sorted(((mid, total) for mid, total in totals.items() if total >= 100), key=lambda kv: (-kv[1], kv[0]))
+     return [f"{mid} {names[mid]} {money(total)}" for mid, total in ranked]
+ 
+ 

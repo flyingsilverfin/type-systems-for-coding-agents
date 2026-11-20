@@ -1,0 +1,72 @@
+# JSON output: plans of joins. Column numbers count across the joined rows,
+# except for the hash join columns, which are columns of the left and right
+# inputs.
+
+> CREATE TABLE item (id INT PRIMARY KEY, name STRING INDEX, price FLOAT, qty INT)
+> INSERT INTO item VALUES (1, 'apple', 1.5, 10), (2, 'pear', 2.25, 0), (3, 'fig', NULL, 7)
+> CREATE TABLE sale (id INT PRIMARY KEY, item_id INT REFERENCES item, n INT)
+> INSERT INTO sale VALUES (1, 1, 2), (2, 1, 5), (3, 3, 1)
+---
+ok
+
+# An equi-join on the same table with aliases becomes a hash join.
+[json]> EXPLAIN SELECT * FROM item a JOIN item b ON a.id = b.id
+---
+{"result":"explain","plan":{"statement":"select","root":{"node":"hash_join","join":"inner","left_column":{"column":0,"label":"a.id"},"right_column":{"column":0,"label":"b.id"},"left":{"node":"scan","table":"item","alias":"a","filter":null},"right":{"node":"scan","table":"item","alias":"b","filter":null}}}}
+
+# A projection over a hash join, with a filter pushed into the left scan.
+[plan]> SELECT s.id, i.name FROM sale s JOIN item i ON s.item_id = i.id WHERE s.n > 1
+[json]> EXPLAIN SELECT s.id, i.name FROM sale s JOIN item i ON s.item_id = i.id WHERE s.n > 1
+---
+Projection: s.id, i.name
+└─ HashJoin: inner on s.item_id = i.id
+   ├─ Scan: sale as s (s.n > 1)
+   └─ Scan: item as i
+1, 'apple'
+2, 'apple'
+{"result":"explain","plan":{"statement":"select","root":{"node":"projection","expressions":[{"expr":{"column":0,"label":"s.id"},"alias":null},{"expr":{"column":4,"label":"i.name"},"alias":null}],"source":{"node":"hash_join","join":"inner","left_column":{"column":1,"label":"s.item_id"},"right_column":{"column":0,"label":"i.id"},"left":{"node":"scan","table":"sale","alias":"s","filter":{"op":"_ > _","args":[{"column":2,"label":"s.n"},{"constant":1}]}},"right":{"node":"scan","table":"item","alias":"i","filter":null}}}}}
+
+# A cross join is a nested loop join without a predicate.
+[json]> EXPLAIN SELECT * FROM item CROSS JOIN sale
+---
+{"result":"explain","plan":{"statement":"select","root":{"node":"nested_loop_join","join":"inner","predicate":null,"left":{"node":"scan","table":"item","alias":null,"filter":null},"right":{"node":"scan","table":"sale","alias":null,"filter":null}}}}
+
+# A nested loop join with a predicate over both sides.
+[plan]> SELECT a.id, b.id FROM item a JOIN item b ON a.price < b.price
+[json]> EXPLAIN SELECT a.id, b.id FROM item a JOIN item b ON a.price < b.price
+---
+Projection: a.id, b.id
+└─ NestedLoopJoin: inner on a.price < b.price
+   ├─ Scan: item as a
+   └─ Scan: item as b
+1, 2
+{"result":"explain","plan":{"statement":"select","root":{"node":"projection","expressions":[{"expr":{"column":0,"label":"a.id"},"alias":null},{"expr":{"column":4,"label":"b.id"},"alias":null}],"source":{"node":"nested_loop_join","join":"inner","predicate":{"op":"_ < _","args":[{"column":2,"label":"a.price"},{"column":6,"label":"b.price"}]},"left":{"node":"scan","table":"item","alias":"a","filter":null},"right":{"node":"scan","table":"item","alias":"b","filter":null}}}}}
+
+# An outer join; the plan display puts the left table's column first.
+[plan]> SELECT i.id, s.id FROM item i LEFT JOIN sale s ON s.item_id = i.id AND s.n > 1
+[json]> EXPLAIN SELECT i.id, s.id FROM item i LEFT JOIN sale s ON s.item_id = i.id AND s.n > 1
+---
+Projection: i.id, s.id
+└─ HashJoin: outer on i.id = s.item_id
+   ├─ Scan: item as i
+   └─ Scan: sale as s (s.n > 1)
+1, 1
+1, 2
+2, NULL
+3, NULL
+{"result":"explain","plan":{"statement":"select","root":{"node":"projection","expressions":[{"expr":{"column":0,"label":"i.id"},"alias":null},{"expr":{"column":4,"label":"s.id"},"alias":null}],"source":{"node":"hash_join","join":"outer","left_column":{"column":0,"label":"i.id"},"right_column":{"column":1,"label":"s.item_id"},"left":{"node":"scan","table":"item","alias":"i","filter":null},"right":{"node":"scan","table":"sale","alias":"s","filter":{"op":"_ > _","args":[{"column":2,"label":"s.n"},{"constant":1}]}}}}}}
+
+# A right join is an outer join of the swapped tables, remapped back. The remap
+# drops nothing.
+[plan]> SELECT * FROM sale RIGHT JOIN item ON sale.item_id = item.id
+[json]> EXPLAIN SELECT * FROM sale RIGHT JOIN item ON sale.item_id = item.id
+---
+Remap: sale.id, sale.item_id, sale.n, item.id, item.name, item.price, item.qty
+└─ HashJoin: outer on item.id = sale.item_id
+   ├─ Scan: item
+   └─ Scan: sale
+1, 1, 2, 1, 'apple', 1.5, 10
+2, 1, 5, 1, 'apple', 1.5, 10
+NULL, NULL, NULL, 2, 'pear', 2.25, 0
+3, 3, 1, 3, 'fig', NULL, 7
+{"result":"explain","plan":{"statement":"select","root":{"node":"remap","columns":[{"column":4,"label":"sale.id"},{"column":5,"label":"sale.item_id"},{"column":6,"label":"sale.n"},{"column":0,"label":"item.id"},{"column":1,"label":"item.name"},{"column":2,"label":"item.price"},{"column":3,"label":"item.qty"}],"dropped":[],"source":{"node":"hash_join","join":"outer","left_column":{"column":0,"label":"item.id"},"right_column":{"column":1,"label":"sale.item_id"},"left":{"node":"scan","table":"item","alias":null,"filter":null},"right":{"node":"scan","table":"sale","alias":null,"filter":null}}}}}

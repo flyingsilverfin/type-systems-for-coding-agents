@@ -1,0 +1,13 @@
+diff --git a/app/lending/report.py b/app/lending/report.py
+index 49ee77a..69a91e5 100644
+--- a/app/lending/report.py
++++ b/app/lending/report.py
+@@ -31,7 +31,7 @@ def member(m: Member, loans: list[Loan]) -> list[str]:
+ 
+ 
+ def overdue(loans: list[Loan], as_of: date) -> list[str]:
+-    late = by_due([loan for loan in loans if loan.is_open() and loan.due <= as_of])
++    late = by_due([loan for loan in loans if loan.is_open() and loan.due < as_of])
+     return [
+         f"{loan.id} {loan.member_id} {loan.isbn} due {loan.due.isoformat()} ({(as_of - loan.due).days} days)"
+         for loan in late

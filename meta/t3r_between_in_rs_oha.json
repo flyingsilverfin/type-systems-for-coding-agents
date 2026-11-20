@@ -1,0 +1,15 @@
+{
+ "run": "t3r_between_in_rs_oha",
+ "task": "between_in",
+ "suite": "toydb-t3",
+ "tier": "t3",
+ "lang": "rust",
+ "model": "opus",
+ "effort": "high",
+ "ws": "/home/user/agentbench/runs/t3r_between_in_rs_oha",
+ "hint": true,
+ "readme_from": "t2",
+ "baseline": "6542e1cd8e2f7ccdd0b3605357f7fc95644050c2",
+ "created": 1795151215.2370543,
+ "warm_ok": true
+}

@@ -1,0 +1,15 @@
+diff --git a/app/lending/csvio.py b/app/lending/csvio.py
+index e652039..c58f8ff 100644
+--- a/app/lending/csvio.py
++++ b/app/lending/csvio.py
+@@ -16,6 +16,10 @@ def parse_line(line: str, file: str, line_no: int) -> list[str]:
+     while i < len(line):
+         ch = line[i]
+         if in_quotes:
++            if ch == '"' and i + 1 < len(line) and line[i + 1] == '"':
++                current.append('"')
++                i += 2
++                continue
+             if ch == '"':
+                 in_quotes = False
+             else:

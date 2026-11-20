@@ -1,0 +1,13 @@
+{
+ "run": "t1_case_py_hl",
+ "task": "case",
+ "suite": "toydb-t1",
+ "tier": "t1",
+ "lang": "python",
+ "model": "haiku",
+ "effort": "low",
+ "ws": "/home/user/agentbench/runs/t1_case_py_hl",
+ "baseline": "1a37e757a4c487839dd420a06d691f17bc4b3298",
+ "created": 1794950539.0273008,
+ "warm_ok": true
+}

@@ -1,0 +1,155 @@
+{
+ "run": "b1_t03_ru_hl",
+ "task": "T03",
+ "lang": "rust",
+ "model": "haiku",
+ "effort": "low",
+ "ws": "/home/user/agentbench/runs/b1_t03_ru_hl",
+ "baseline": "3ec4e6e471910a5f5a0251a1876be29b0609ffba",
+ "created": 1794853307.5133681,
+ "tampered": [],
+ "diff_shortstat": "2 files changed, 25 insertions(+)",
+ "lines_added": 25,
+ "lines_deleted": 0,
+ "build_ok": true,
+ "build_output": "",
+ "setup_ok": true,
+ "hidden": [
+  {
+   "args": [
+    "books"
+   ],
+   "passed": true,
+   "exit": 0,
+   "expected_exit": 0
+  },
+  {
+   "args": [
+    "member",
+    "M001"
+   ],
+   "passed": true,
+   "exit": 0,
+   "expected_exit": 0
+  },
+  {
+   "args": [
+    "member",
+    "M002"
+   ],
+   "passed": true,
+   "exit": 0,
+   "expected_exit": 0
+  },
+  {
+   "args": [
+    "member",
+    "M017"
+   ],
+   "passed": true,
+   "exit": 0,
+   "expected_exit": 0
+  },
+  {
+   "args": [
+    "member",
+    "M900"
+   ],
+   "passed": true,
+   "exit": 0,
+   "expected_exit": 0
+  },
+  {
+   "args": [
+    "member",
+    "NOPE"
+   ],
+   "passed": true,
+   "exit": 1,
+   "expected_exit": 1
+  },
+  {
+   "args": [
+    "overdue",
+    "2024-05-01"
+   ],
+   "passed": true,
+   "exit": 0,
+   "expected_exit": 0
+  },
+  {
+   "args": [
+    "overdue",
+    "2024-03-15"
+   ],
+   "passed": true,
+   "exit": 0,
+   "expected_exit": 0
+  },
+  {
+   "args": [
+    "stats"
+   ],
+   "passed": true,
+   "exit": 0,
+   "expected_exit": 0
+  },
+  {
+   "args": [
+    "history",
+    "M001"
+   ],
+   "passed": true,
+   "exit": 0,
+   "expected_exit": 0
+  },
+  {
+   "args": [
+    "history",
+    "M007"
+   ],
+   "passed": true,
+   "exit": 0,
+   "expected_exit": 0
+  },
+  {
+   "args": [
+    "history",
+    "M900"
+   ],
+   "passed": true,
+   "exit": 0,
+   "expected_exit": 0
+  },
+  {
+   "args": [
+    "history",
+    "NOPE"
+   ],
+   "passed": true,
+   "exit": 1,
+   "expected_exit": 1
+  },
+  {
+   "args": [
+    "history",
+    "M031"
+   ],
+   "passed": true,
+   "exit": 0,
+   "expected_exit": 0
+  }
+ ],
+ "hidden_passed": 14,
+ "hidden_total": 14,
+ "regressions_failed": [],
+ "task_failed": [],
+ "structural_failures": [],
+ "pass": true,
+ "checks": 1,
+ "check_build_s": 8.1,
+ "check_test_s": 0.9,
+ "check_build_failures": 0,
+ "check_test_failures": 0,
+ "final_visible_ok": true
+}

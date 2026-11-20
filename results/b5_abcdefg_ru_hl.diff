@@ -1,0 +1,1731 @@
+diff --git a/app/src/ingest.rs b/app/src/ingest.rs
+index d9efd50..1021109 100644
+--- a/app/src/ingest.rs
++++ b/app/src/ingest.rs
+@@ -27,6 +27,20 @@ fn optional<'a>(record: &'a Record, key: &str) -> Option<&'a str> {
+     record.get(key).map(String::as_str).filter(|value| !value.is_empty())
+ }
+ 
++/// The distinct, non-empty values of a `;`-separated field, sorted.
++fn multi_valued(record: &Record, key: &str) -> Vec<String> {
++    let mut values: Vec<String> = optional(record, key)
++        .unwrap_or("")
++        .split(';')
++        .map(str::trim)
++        .filter(|value| !value.is_empty())
++        .map(str::to_owned)
++        .collect();
++    values.sort();
++    values.dedup();
++    values
++}
++
+ fn parse_date(text: &str, file: &str, line: usize) -> Result<NaiveDate> {
+     NaiveDate::parse_from_str(text, "%Y-%m-%d")
+         .map_err(|_| AppError::Csv { file: file.to_owned(), line, message: format!("invalid date '{text}'") })
+@@ -48,8 +62,8 @@ pub fn member_query(record: &Record, line: usize) -> Result<String> {
+         quote(name),
+         joined.format("%Y-%m-%d")
+     )];
+-    if let Some(email) = optional(record, "email") {
+-        parts.push(format!("has email {}", quote(email)));
++    for email in multi_valued(record, "email") {
++        parts.push(format!("has email {}", quote(&email)));
+     }
+     if let Some(phone) = optional(record, "phone") {
+         parts.push(format!("has phone {}", quote(phone)));
+@@ -61,18 +75,16 @@ pub fn book_query(record: &Record, line: usize) -> Result<String> {
+     let f = "books.csv";
+     let isbn = field(record, "isbn", f, line)?;
+     let title = field(record, "title", f, line)?;
+-    let year = parse_int(field(record, "year", f, line)?, f, line)?;
+     let copies = parse_int(field(record, "copies", f, line)?, f, line)?;
+-    let mut parts = vec![format!(
+-        "$b isa book, has isbn {}, has title {}, has year {year}, has copies {copies}",
+-        quote(isbn),
+-        quote(title)
+-    )];
++    let mut parts = vec![format!("$b isa book, has isbn {}, has title {}, has copies {copies}", quote(isbn), quote(title))];
++    if let Some(year) = optional(record, "year") {
++        parts.push(format!("has year {}", parse_int(year, f, line)?));
++    }
+     if let Some(subtitle) = optional(record, "subtitle") {
+         parts.push(format!("has subtitle {}", quote(subtitle)));
+     }
+-    if let Some(genre) = optional(record, "genre") {
+-        parts.push(format!("has genre {}", quote(genre)));
++    for genre in multi_valued(record, "genre") {
++        parts.push(format!("has genre {}", quote(&genre)));
+     }
+     Ok(format!("insert {};", parts.join(", ")))
+ }
+@@ -83,12 +95,13 @@ pub fn loan_query(record: &Record, line: usize) -> Result<String> {
+     let member_id = field(record, "member_id", f, line)?;
+     let isbn = field(record, "isbn", f, line)?;
+     let borrowed = parse_date(field(record, "borrowed", f, line)?, f, line)?;
+-    let due = parse_date(field(record, "due", f, line)?, f, line)?;
+-    let mut attrs = vec![
+-        format!("has loan-id {}", quote(loan_id)),
+-        format!("has borrowed {}", borrowed.format("%Y-%m-%d")),
+-        format!("has due {}", due.format("%Y-%m-%d")),
+-    ];
++    let mut attrs = vec![format!("has loan-id {}", quote(loan_id)), format!("has borrowed {}", borrowed.format("%Y-%m-%d"))];
++    if let Some(due) = optional(record, "due") {
++        attrs.push(format!("has due {}", parse_date(due, f, line)?.format("%Y-%m-%d")));
++    }
++    if let Some(renewed) = optional(record, "renewed") {
++        attrs.push(format!("has renewed {}", parse_date(renewed, f, line)?.format("%Y-%m-%d")));
++    }
+     if let Some(returned) = optional(record, "returned") {
+         attrs.push(format!("has returned {}", parse_date(returned, f, line)?.format("%Y-%m-%d")));
+     }
+diff --git a/app/src/main.rs b/app/src/main.rs
+index 2bb4795..fc950d3 100644
+--- a/app/src/main.rs
++++ b/app/src/main.rs
+@@ -28,7 +28,7 @@ commands:
+   member <member-id>        show a member, their open loans and lost loans
+   history <member-id>       list all loans of a member with their status
+   overdue <date>            list open loans due before <date> (YYYY-MM-DD)
+-  due-soon <date> <days>    list open loans due within <days> days from <date>
++  due-soon <date> [<days>]  list open loans due within <days> days (default 7) from <date>
+   returned-late             list returned loans that came back after their due date
+   lost                      list lost loans
+   fees                      total fees per member
+@@ -108,18 +108,21 @@ fn run(args: &[String]) -> Result<()> {
+         }
+         "overdue" => {
+             let as_of = parse_date(arg(args, 1, "overdue <date>")?)?;
+-            emit(report::loans::overdue(&repo::loans::overdue(&db, as_of)?, as_of));
++            emit(report::loans::overdue(&repo::loans::all(&db)?, as_of));
+         }
+         "due-soon" => {
+-            let start = parse_date(arg(args, 1, "due-soon <date> <days>")?)?;
+-            let days = parse_count(arg(args, 2, "due-soon <date> <days>")?)?;
++            let start = parse_date(arg(args, 1, "due-soon <date> [<days>]")?)?;
++            let days = match args.get(2) {
++                Some(text) => parse_count(text)?,
++                None => 7,
++            };
+             let end = start
+                 .checked_add_days(Days::new(days))
+                 .ok_or_else(|| AppError::Usage(format!("{days} days after {start} is out of range")))?;
+-            emit(report::loans::due_soon(&repo::loans::due_soon(&db, start, end)?));
++            emit(report::loans::due_soon(&repo::loans::all(&db)?, start, end));
+         }
+-        "returned-late" => emit(report::loans::returned_late(&repo::loans::returned_late(&db)?)),
+-        "lost" => emit(report::loans::lost(&repo::loans::lost(&db)?)),
++        "returned-late" => emit(report::loans::returned_late(&repo::loans::all(&db)?)),
++        "lost" => emit(report::loans::lost(&repo::loans::all(&db)?)),
+         "fees" => emit(report::members::fees(&repo::members::fees(&db)?)),
+         "member-fees" => {
+             let member_id = arg(args, 1, "member-fees <member-id>")?;
+diff --git a/app/src/model.rs b/app/src/model.rs
+index 1d534d2..fd78ff0 100644
+--- a/app/src/model.rs
++++ b/app/src/model.rs
+@@ -4,7 +4,8 @@ use chrono::NaiveDate;
+ pub struct Member {
+     pub id: String,
+     pub name: String,
+-    pub email: Option<String>,
++    /// Sorted, without duplicates.
++    pub email: Vec<String>,
+     pub phone: Option<String>,
+     pub joined: NaiveDate,
+ }
+@@ -14,8 +15,10 @@ pub struct Book {
+     pub isbn: String,
+     pub title: String,
+     pub subtitle: Option<String>,
+-    pub year: i64,
+-    pub genre: Option<String>,
++    /// `None` when the publication year is unknown.
++    pub year: Option<i64>,
++    /// Sorted, without duplicates; empty when the book has no genre.
++    pub genre: Vec<String>,
+     pub copies: i64,
+ }
+ 
+@@ -25,13 +28,20 @@ pub struct Loan {
+     pub member_id: String,
+     pub isbn: String,
+     pub borrowed: NaiveDate,
+-    pub due: NaiveDate,
++    /// `None` for open-ended loans.
++    pub due: Option<NaiveDate>,
++    pub renewed: Option<NaiveDate>,
+     pub returned: Option<NaiveDate>,
+     pub lost: Option<NaiveDate>,
+     pub fee_cents: Option<i64>,
+ }
+ 
+ impl Loan {
++    /// The renewed due date if the loan was renewed, otherwise the original due date.
++    pub fn effective_due(&self) -> Option<NaiveDate> {
++        self.renewed.or(self.due)
++    }
++
+     /// A lost loan counts as lost even if it also carries a return date.
+     pub fn is_lost(&self) -> bool {
+         self.lost.is_some()
+diff --git a/app/src/repo/books.rs b/app/src/repo/books.rs
+index 984154c..ea7df6a 100644
+--- a/app/src/repo/books.rs
++++ b/app/src/repo/books.rs
+@@ -1,19 +1,23 @@
+ //! Queries behind the book commands: books, book, stats, decades, genre, never-borrowed, available, search.
+-use typedb_driver::concept::Concept;
++use std::collections::{HashMap, HashSet};
+ 
+ use crate::{
+     db::{quote, Db},
+-    error::{AppError, Result},
++    error::Result,
+     model::{Book, Loan},
+ };
+ 
++use super::{int, loans_matching, opt_int, opt_text, text};
++
+ /// The columns of a book listing line.
+ #[derive(Debug, Clone, PartialEq)]
+ pub struct BookSummary {
+     pub isbn: String,
+     pub title: String,
+-    pub year: i64,
+-    pub genre: Option<String>,
++    /// `None` when the publication year is unknown.
++    pub year: Option<i64>,
++    /// Sorted, without duplicates; empty when the book has no genre.
++    pub genre: Vec<String>,
+ }
+ 
+ /// A book's title and number of copies, together with all of its loans.
+@@ -25,311 +29,117 @@ pub struct Availability {
+     pub loans: Vec<Loan>,
+ }
+ 
+-pub fn books(db: &Db) -> Result<Vec<BookSummary>> {
+-    let rows = db.read_rows(
++/// A listed book, with the columns only some commands need.
++struct Listed {
++    book: BookSummary,
++    subtitle: Option<String>,
++    copies: i64,
++}
++
++/// The genres of the books matching `filter` (a TypeQL statement, such as `$isbn == "X";`, or empty), by ISBN.
++fn genres(db: &Db, filter: &str) -> Result<HashMap<String, Vec<String>>> {
++    let rows = db.read_rows(&format!(
++        "
++        match
++          $b isa book, has isbn $isbn, has genre $genre;
++          {filter}
++        "
++    ))?;
++    let mut by_isbn: HashMap<String, Vec<String>> = HashMap::new();
++    for row in &rows {
++        by_isbn.entry(text(row, "isbn")?).or_default().push(text(row, "genre")?);
++    }
++    for values in by_isbn.values_mut() {
++        values.sort();
++        values.dedup();
++    }
++    Ok(by_isbn)
++}
++
++/// The books matching `filter` (a TypeQL statement, or empty), with their genres.
++fn listed(db: &Db, filter: &str) -> Result<Vec<Listed>> {
++    let rows = db.read_rows(&format!(
+         "
+         match
+-          $b isa book, has isbn $isbn, has title $title, has year $year;
+-          try { $b has genre $genre; };
+-        ",
+-    )?;
++          $b isa book, has isbn $isbn, has title $title, has copies $copies;
++          try {{ $b has year $year; }};
++          try {{ $b has subtitle $subtitle; }};
++          {filter}
++        "
++    ))?;
++    let mut genre_of = genres(db, filter)?;
+     rows.iter()
+         .map(|row| {
+-            Ok(BookSummary {
+-                isbn: row.get("isbn")?
+-                    .and_then(Concept::try_get_string)
+-                    .ok_or_else(|| AppError::column("isbn", "string"))?
+-                    .to_owned(),
+-                title: row.get("title")?
+-                    .and_then(Concept::try_get_string)
+-                    .ok_or_else(|| AppError::column("title", "string"))?
+-                    .to_owned(),
+-                year: row.get("year")?
+-                    .and_then(Concept::try_get_integer)
+-                    .ok_or_else(|| AppError::column("year", "integer"))?,
+-                genre: row.get("genre")?
+-                    .map(|concept| {
+-                        concept.try_get_string().map(str::to_owned).ok_or_else(|| AppError::column("genre", "string"))
+-                    })
+-                    .transpose()?,
++            let isbn = text(row, "isbn")?;
++            let genre = genre_of.remove(&isbn).unwrap_or_default();
++            Ok(Listed {
++                book: BookSummary { isbn, title: text(row, "title")?, year: opt_int(row, "year")?, genre },
++                subtitle: opt_text(row, "subtitle")?,
++                copies: int(row, "copies")?,
+             })
+         })
+         .collect()
+ }
+ 
++pub fn books(db: &Db) -> Result<Vec<BookSummary>> {
++    Ok(listed(db, "")?.into_iter().map(|item| item.book).collect())
++}
++
+ /// The book with the given ISBN and all of its loans, or `None` if there is no such book.
+ pub fn book(db: &Db, isbn: &str) -> Result<Option<(Book, Vec<Loan>)>> {
+-    let book_rows = db.read_rows(&format!(
+-        "
+-        match
+-          $b isa book, has isbn {}, has title $title, has year $year, has copies $copies;
+-          try {{ $b has subtitle $subtitle; }};
+-          try {{ $b has genre $genre; }};
+-        ",
+-        quote(isbn)
+-    ))?;
+-    let Some(row) = book_rows.first() else { return Ok(None) };
++    let Some(item) = listed(db, &format!("$isbn == {};", quote(isbn)))?.into_iter().next() else {
++        return Ok(None);
++    };
+     let book = Book {
+-        isbn: isbn.to_owned(),
+-        title: row.get("title")?
+-            .and_then(Concept::try_get_string)
+-            .ok_or_else(|| AppError::column("title", "string"))?
+-            .to_owned(),
+-        subtitle: row.get("subtitle")?
+-            .map(|concept| {
+-                concept.try_get_string().map(str::to_owned).ok_or_else(|| AppError::column("subtitle", "string"))
+-            })
+-            .transpose()?,
+-        year: row.get("year")?.and_then(Concept::try_get_integer).ok_or_else(|| AppError::column("year", "integer"))?,
+-        genre: row.get("genre")?
+-            .map(|concept| {
+-                concept.try_get_string().map(str::to_owned).ok_or_else(|| AppError::column("genre", "string"))
+-            })
+-            .transpose()?,
+-        copies: row.get("copies")?
+-            .and_then(Concept::try_get_integer)
+-            .ok_or_else(|| AppError::column("copies", "integer"))?,
++        isbn: item.book.isbn,
++        title: item.book.title,
++        subtitle: item.subtitle,
++        year: item.book.year,
++        genre: item.book.genre,
++        copies: item.copies,
+     };
+-
+-    let loan_rows = db.read_rows(&format!(
+-        "
+-        match
+-          $b isa book, has isbn {};
+-          $l isa loan, links (borrower: $m, item: $b), has loan-id $loan_id, has borrowed $borrowed, has due $due;
+-          $m has member-id $member_id;
+-          try {{ $l has returned $returned; }};
+-          try {{ $l has lost $lost; }};
+-          try {{ $l has fee-cents $fee; }};
+-        ",
+-        quote(isbn)
+-    ))?;
+-    let loans = loan_rows
+-        .iter()
+-        .map(|row| {
+-            Ok(Loan {
+-                id: row.get("loan_id")?
+-                    .and_then(Concept::try_get_string)
+-                    .ok_or_else(|| AppError::column("loan_id", "string"))?
+-                    .to_owned(),
+-                member_id: row.get("member_id")?
+-                    .and_then(Concept::try_get_string)
+-                    .ok_or_else(|| AppError::column("member_id", "string"))?
+-                    .to_owned(),
+-                isbn: isbn.to_owned(),
+-                borrowed: row.get("borrowed")?
+-                    .and_then(Concept::try_get_date)
+-                    .ok_or_else(|| AppError::column("borrowed", "date"))?,
+-                due: row.get("due")?.and_then(Concept::try_get_date).ok_or_else(|| AppError::column("due", "date"))?,
+-                returned: row.get("returned")?
+-                    .map(|concept| concept.try_get_date().ok_or_else(|| AppError::column("returned", "date")))
+-                    .transpose()?,
+-                lost: row.get("lost")?
+-                    .map(|concept| concept.try_get_date().ok_or_else(|| AppError::column("lost", "date")))
+-                    .transpose()?,
+-                fee_cents: row.get("fee")?
+-                    .map(|concept| concept.try_get_integer().ok_or_else(|| AppError::column("fee", "integer")))
+-                    .transpose()?,
+-            })
+-        })
+-        .collect::<Result<Vec<_>>>()?;
++    let loans = loans_matching(db, &format!("$b isa book, has isbn {};", quote(isbn)))?;
+     Ok(Some((book, loans)))
+ }
+ 
+-/// The genre of every book (`None` for books without one).
+-pub fn stats(db: &Db) -> Result<Vec<Option<String>>> {
+-    let rows = db.read_rows(
+-        "
+-        match
+-          $b isa book;
+-          try { $b has genre $genre; };
+-        ",
+-    )?;
+-    rows.iter()
+-        .map(|row| {
+-            row.get("genre")?
+-                .map(|concept| {
+-                    concept.try_get_string().map(str::to_owned).ok_or_else(|| AppError::column("genre", "string"))
+-                })
+-                .transpose()
+-        })
+-        .collect()
++/// The genres of every book; a book without a genre has an empty list.
++pub fn stats(db: &Db) -> Result<Vec<Vec<String>>> {
++    Ok(listed(db, "")?.into_iter().map(|item| item.book.genre).collect())
+ }
+ 
+-/// The publication year of every book.
+-pub fn decades(db: &Db) -> Result<Vec<i64>> {
+-    let rows = db.read_rows(
+-        "
+-        match
+-          $b isa book, has year $year;
+-        ",
+-    )?;
+-    rows.iter()
+-        .map(|row| {
+-            row.get("year")?.and_then(Concept::try_get_integer).ok_or_else(|| AppError::column("year", "integer"))
+-        })
+-        .collect()
++/// The publication year of every book (`None` when unknown).
++pub fn decades(db: &Db) -> Result<Vec<Option<i64>>> {
++    Ok(listed(db, "")?.into_iter().map(|item| item.book.year).collect())
+ }
+ 
+ /// Books with the given genre, or books without a genre when `genre` is `None`.
+ pub fn genre(db: &Db, genre: Option<&str>) -> Result<Vec<BookSummary>> {
+-    let genre_constraint = match genre {
+-        Some(name) => format!("$b has genre {};", quote(name)),
+-        None => "not { $b has genre $genre; };".to_owned(),
+-    };
+-    let rows = db.read_rows(&format!(
+-        "
+-        match
+-          $b isa book, has isbn $isbn, has title $title, has year $year;
+-          {genre_constraint}
+-        "
+-    ))?;
+-    rows.iter()
+-        .map(|row| {
+-            Ok(BookSummary {
+-                isbn: row.get("isbn")?
+-                    .and_then(Concept::try_get_string)
+-                    .ok_or_else(|| AppError::column("isbn", "string"))?
+-                    .to_owned(),
+-                title: row.get("title")?
+-                    .and_then(Concept::try_get_string)
+-                    .ok_or_else(|| AppError::column("title", "string"))?
+-                    .to_owned(),
+-                year: row.get("year")?
+-                    .and_then(Concept::try_get_integer)
+-                    .ok_or_else(|| AppError::column("year", "integer"))?,
+-                genre: genre.map(str::to_owned),
+-            })
++    Ok(listed(db, "")?
++        .into_iter()
++        .map(|item| item.book)
++        .filter(|book| match genre {
++            Some(name) => book.genre.iter().any(|g| g == name),
++            None => book.genre.is_empty(),
+         })
+-        .collect()
++        .collect())
+ }
+ 
+ /// Books that have never been lent out.
+ pub fn never_borrowed(db: &Db) -> Result<Vec<BookSummary>> {
+-    let rows = db.read_rows(
+-        "
+-        match
+-          $b isa book, has isbn $isbn, has title $title, has year $year;
+-          try { $b has genre $genre; };
+-          not { $l isa loan, links (item: $b); };
+-        ",
+-    )?;
+-    rows.iter()
+-        .map(|row| {
+-            Ok(BookSummary {
+-                isbn: row.get("isbn")?
+-                    .and_then(Concept::try_get_string)
+-                    .ok_or_else(|| AppError::column("isbn", "string"))?
+-                    .to_owned(),
+-                title: row.get("title")?
+-                    .and_then(Concept::try_get_string)
+-                    .ok_or_else(|| AppError::column("title", "string"))?
+-                    .to_owned(),
+-                year: row.get("year")?
+-                    .and_then(Concept::try_get_integer)
+-                    .ok_or_else(|| AppError::column("year", "integer"))?,
+-                genre: row.get("genre")?
+-                    .map(|concept| {
+-                        concept.try_get_string().map(str::to_owned).ok_or_else(|| AppError::column("genre", "string"))
+-                    })
+-                    .transpose()?,
+-            })
+-        })
+-        .collect()
++    let lent: HashSet<String> = loans_matching(db, "")?.into_iter().map(|loan| loan.isbn).collect();
++    Ok(listed(db, "")?.into_iter().map(|item| item.book).filter(|book| !lent.contains(&book.isbn)).collect())
+ }
+ 
+ /// The book's title, copies and loans, or `None` if there is no such book.
+-///
+-/// `$member_id` sits in its own nested `try` only to work around a TypeDB 3.13.6 server panic
+-/// (`immediate_executor.rs:611`) that this query otherwise triggers when one member borrowed the same book
+-/// twice. Every member has an id, so the column is still treated as required below.
+ pub fn available(db: &Db, isbn: &str) -> Result<Option<Availability>> {
+-    let rows = db.read_rows(&format!(
+-        "
+-        match
+-          $b isa book, has isbn {}, has title $title, has copies $copies;
+-          try {{
+-            $l isa loan, links (borrower: $m, item: $b), has loan-id $loan_id, has borrowed $borrowed, has due $due;
+-            try {{ $m has member-id $member_id; }};
+-            try {{ $l has returned $returned; }};
+-            try {{ $l has lost $lost; }};
+-            try {{ $l has fee-cents $fee; }};
+-          }};
+-        ",
+-        quote(isbn)
+-    ))?;
+-    let Some(first) = rows.first() else { return Ok(None) };
+-    let title = first
+-        .get("title")?
+-        .and_then(Concept::try_get_string)
+-        .ok_or_else(|| AppError::column("title", "string"))?
+-        .to_owned();
+-    let copies =
+-        first.get("copies")?.and_then(Concept::try_get_integer).ok_or_else(|| AppError::column("copies", "integer"))?;
+-    let mut loans = Vec::new();
+-    for row in &rows {
+-        // A row without a loan id is the single row of a book that has never been lent out.
+-        let Some(loan_id) = row.get("loan_id")? else { continue };
+-        loans.push(Loan {
+-            id: loan_id.try_get_string().ok_or_else(|| AppError::column("loan_id", "string"))?.to_owned(),
+-            member_id: row.get("member_id")?
+-                .and_then(Concept::try_get_string)
+-                .ok_or_else(|| AppError::column("member_id", "string"))?
+-                .to_owned(),
+-            isbn: isbn.to_owned(),
+-            borrowed: row.get("borrowed")?
+-                .and_then(Concept::try_get_date)
+-                .ok_or_else(|| AppError::column("borrowed", "date"))?,
+-            due: row.get("due")?.and_then(Concept::try_get_date).ok_or_else(|| AppError::column("due", "date"))?,
+-            returned: row.get("returned")?
+-                .map(|concept| concept.try_get_date().ok_or_else(|| AppError::column("returned", "date")))
+-                .transpose()?,
+-            lost: row.get("lost")?
+-                .map(|concept| concept.try_get_date().ok_or_else(|| AppError::column("lost", "date")))
+-                .transpose()?,
+-            fee_cents: row.get("fee")?
+-                .map(|concept| concept.try_get_integer().ok_or_else(|| AppError::column("fee", "integer")))
+-                .transpose()?,
+-        });
+-    }
+-    Ok(Some(Availability { isbn: isbn.to_owned(), title, copies, loans }))
++    let Some(item) = listed(db, &format!("$isbn == {};", quote(isbn)))?.into_iter().next() else {
++        return Ok(None);
++    };
++    let loans = loans_matching(db, &format!("$b isa book, has isbn {};", quote(isbn)))?;
++    Ok(Some(Availability { isbn: item.book.isbn, title: item.book.title, copies: item.copies, loans }))
+ }
+ 
+ /// Every book's listing columns together with its subtitle; matching happens in the report.
+ pub fn search(db: &Db) -> Result<Vec<(BookSummary, Option<String>)>> {
+-    let rows = db.read_rows(
+-        "
+-        match
+-          $b isa book, has isbn $isbn, has title $title, has year $year;
+-          try { $b has subtitle $subtitle; };
+-          try { $b has genre $genre; };
+-        ",
+-    )?;
+-    rows.iter()
+-        .map(|row| {
+-            let summary = BookSummary {
+-                isbn: row.get("isbn")?
+-                    .and_then(Concept::try_get_string)
+-                    .ok_or_else(|| AppError::column("isbn", "string"))?
+-                    .to_owned(),
+-                title: row.get("title")?
+-                    .and_then(Concept::try_get_string)
+-                    .ok_or_else(|| AppError::column("title", "string"))?
+-                    .to_owned(),
+-                year: row.get("year")?
+-                    .and_then(Concept::try_get_integer)
+-                    .ok_or_else(|| AppError::column("year", "integer"))?,
+-                genre: row.get("genre")?
+-                    .map(|concept| {
+-                        concept.try_get_string().map(str::to_owned).ok_or_else(|| AppError::column("genre", "string"))
+-                    })
+-                    .transpose()?,
+-            };
+-            let subtitle = row.get("subtitle")?
+-                .map(|concept| {
+-                    concept.try_get_string().map(str::to_owned).ok_or_else(|| AppError::column("subtitle", "string"))
+-                })
+-                .transpose()?;
+-            Ok((summary, subtitle))
+-        })
+-        .collect()
++    Ok(listed(db, "")?.into_iter().map(|item| (item.book, item.subtitle)).collect())
+ }
+diff --git a/app/src/repo/loans.rs b/app/src/repo/loans.rs
+index dc51801..04c3e37 100644
+--- a/app/src/repo/loans.rs
++++ b/app/src/repo/loans.rs
+@@ -1,248 +1,28 @@
+ //! Queries behind the loan commands: history, overdue, due-soon, returned-late, lost, monthly.
++//!
++//! Loans are read whole, with their optional due, renewed, returned and lost dates; the date windows
++//! (overdue, due-soon, late, lost) are applied by the report, which uses the effective due date.
+ use chrono::NaiveDate;
+-use typedb_driver::concept::Concept;
+ 
+ use crate::{
+     db::{quote, Db},
+-    error::{AppError, Result},
++    error::Result,
+     model::Loan,
+ };
+ 
++use super::{date, loans_matching, members};
++
+ /// All loans of the given member, or `None` if there is no such member.
+ pub fn history(db: &Db, member_id: &str) -> Result<Option<Vec<Loan>>> {
+-    let rows = db.read_rows(&format!(
+-        "
+-        match
+-          $m isa member, has member-id {};
+-          try {{
+-            $l isa loan, links (borrower: $m, item: $b), has loan-id $loan_id, has borrowed $borrowed, has due $due;
+-            $b has isbn $isbn;
+-            try {{ $l has returned $returned; }};
+-            try {{ $l has lost $lost; }};
+-            try {{ $l has fee-cents $fee; }};
+-          }};
+-        ",
+-        quote(member_id)
+-    ))?;
+-    if rows.is_empty() {
++    if !members::exists(db, member_id)? {
+         return Ok(None);
+     }
+-    let mut loans = Vec::new();
+-    for row in &rows {
+-        // A row without a loan id is the single row of a member who has never borrowed anything.
+-        let Some(loan_id) = row.get("loan_id")? else { continue };
+-        loans.push(Loan {
+-            id: loan_id.try_get_string().ok_or_else(|| AppError::column("loan_id", "string"))?.to_owned(),
+-            member_id: member_id.to_owned(),
+-            isbn: row.get("isbn")?
+-                .and_then(Concept::try_get_string)
+-                .ok_or_else(|| AppError::column("isbn", "string"))?
+-                .to_owned(),
+-            borrowed: row.get("borrowed")?
+-                .and_then(Concept::try_get_date)
+-                .ok_or_else(|| AppError::column("borrowed", "date"))?,
+-            due: row.get("due")?.and_then(Concept::try_get_date).ok_or_else(|| AppError::column("due", "date"))?,
+-            returned: row.get("returned")?
+-                .map(|concept| concept.try_get_date().ok_or_else(|| AppError::column("returned", "date")))
+-                .transpose()?,
+-            lost: row.get("lost")?
+-                .map(|concept| concept.try_get_date().ok_or_else(|| AppError::column("lost", "date")))
+-                .transpose()?,
+-            fee_cents: row.get("fee")?
+-                .map(|concept| concept.try_get_integer().ok_or_else(|| AppError::column("fee", "integer")))
+-                .transpose()?,
+-        });
+-    }
+-    Ok(Some(loans))
+-}
+-
+-/// Loans (of any status) that were due before `as_of`.
+-pub fn overdue(db: &Db, as_of: NaiveDate) -> Result<Vec<Loan>> {
+-    let rows = db.read_rows(&format!(
+-        "
+-        match
+-          $l isa loan, links (borrower: $m, item: $b), has loan-id $loan_id, has borrowed $borrowed, has due $due;
+-          $due < {as_of};
+-          $m has member-id $member_id;
+-          $b has isbn $isbn;
+-          try {{ $l has returned $returned; }};
+-          try {{ $l has lost $lost; }};
+-          try {{ $l has fee-cents $fee; }};
+-        "
+-    ))?;
+-    rows.iter()
+-        .map(|row| {
+-            Ok(Loan {
+-                id: row.get("loan_id")?
+-                    .and_then(Concept::try_get_string)
+-                    .ok_or_else(|| AppError::column("loan_id", "string"))?
+-                    .to_owned(),
+-                member_id: row.get("member_id")?
+-                    .and_then(Concept::try_get_string)
+-                    .ok_or_else(|| AppError::column("member_id", "string"))?
+-                    .to_owned(),
+-                isbn: row.get("isbn")?
+-                    .and_then(Concept::try_get_string)
+-                    .ok_or_else(|| AppError::column("isbn", "string"))?
+-                    .to_owned(),
+-                borrowed: row.get("borrowed")?
+-                    .and_then(Concept::try_get_date)
+-                    .ok_or_else(|| AppError::column("borrowed", "date"))?,
+-                due: row.get("due")?.and_then(Concept::try_get_date).ok_or_else(|| AppError::column("due", "date"))?,
+-                returned: row.get("returned")?
+-                    .map(|concept| concept.try_get_date().ok_or_else(|| AppError::column("returned", "date")))
+-                    .transpose()?,
+-                lost: row.get("lost")?
+-                    .map(|concept| concept.try_get_date().ok_or_else(|| AppError::column("lost", "date")))
+-                    .transpose()?,
+-                fee_cents: row.get("fee")?
+-                    .map(|concept| concept.try_get_integer().ok_or_else(|| AppError::column("fee", "integer")))
+-                    .transpose()?,
+-            })
+-        })
+-        .collect()
++    Ok(Some(loans_matching(db, &format!("$m isa member, has member-id {};", quote(member_id)))?))
+ }
+ 
+-/// Loans (of any status) due between `start` and `end`, both inclusive.
+-pub fn due_soon(db: &Db, start: NaiveDate, end: NaiveDate) -> Result<Vec<Loan>> {
+-    let rows = db.read_rows(&format!(
+-        "
+-        match
+-          $l isa loan, links (borrower: $m, item: $b), has loan-id $loan_id, has borrowed $borrowed, has due $due;
+-          $due >= {start};
+-          $due <= {end};
+-          $m has member-id $member_id;
+-          $b has isbn $isbn;
+-          try {{ $l has returned $returned; }};
+-          try {{ $l has lost $lost; }};
+-          try {{ $l has fee-cents $fee; }};
+-        "
+-    ))?;
+-    rows.iter()
+-        .map(|row| {
+-            Ok(Loan {
+-                id: row.get("loan_id")?
+-                    .and_then(Concept::try_get_string)
+-                    .ok_or_else(|| AppError::column("loan_id", "string"))?
+-                    .to_owned(),
+-                member_id: row.get("member_id")?
+-                    .and_then(Concept::try_get_string)
+-                    .ok_or_else(|| AppError::column("member_id", "string"))?
+-                    .to_owned(),
+-                isbn: row.get("isbn")?
+-                    .and_then(Concept::try_get_string)
+-                    .ok_or_else(|| AppError::column("isbn", "string"))?
+-                    .to_owned(),
+-                borrowed: row.get("borrowed")?
+-                    .and_then(Concept::try_get_date)
+-                    .ok_or_else(|| AppError::column("borrowed", "date"))?,
+-                due: row.get("due")?.and_then(Concept::try_get_date).ok_or_else(|| AppError::column("due", "date"))?,
+-                returned: row.get("returned")?
+-                    .map(|concept| concept.try_get_date().ok_or_else(|| AppError::column("returned", "date")))
+-                    .transpose()?,
+-                lost: row.get("lost")?
+-                    .map(|concept| concept.try_get_date().ok_or_else(|| AppError::column("lost", "date")))
+-                    .transpose()?,
+-                fee_cents: row.get("fee")?
+-                    .map(|concept| concept.try_get_integer().ok_or_else(|| AppError::column("fee", "integer")))
+-                    .transpose()?,
+-            })
+-        })
+-        .collect()
+-}
+-
+-/// Loans that carry a return date (including any that were later marked lost).
+-pub fn returned_late(db: &Db) -> Result<Vec<Loan>> {
+-    let rows = db.read_rows(
+-        "
+-        match
+-          $l isa loan, links (borrower: $m, item: $b), has loan-id $loan_id, has borrowed $borrowed, has due $due,
+-            has returned $returned;
+-          $m has member-id $member_id;
+-          $b has isbn $isbn;
+-          try { $l has lost $lost; };
+-          try { $l has fee-cents $fee; };
+-        ",
+-    )?;
+-    rows.iter()
+-        .map(|row| {
+-            Ok(Loan {
+-                id: row.get("loan_id")?
+-                    .and_then(Concept::try_get_string)
+-                    .ok_or_else(|| AppError::column("loan_id", "string"))?
+-                    .to_owned(),
+-                member_id: row.get("member_id")?
+-                    .and_then(Concept::try_get_string)
+-                    .ok_or_else(|| AppError::column("member_id", "string"))?
+-                    .to_owned(),
+-                isbn: row.get("isbn")?
+-                    .and_then(Concept::try_get_string)
+-                    .ok_or_else(|| AppError::column("isbn", "string"))?
+-                    .to_owned(),
+-                borrowed: row.get("borrowed")?
+-                    .and_then(Concept::try_get_date)
+-                    .ok_or_else(|| AppError::column("borrowed", "date"))?,
+-                due: row.get("due")?.and_then(Concept::try_get_date).ok_or_else(|| AppError::column("due", "date"))?,
+-                returned: Some(
+-                    row.get("returned")?
+-                        .and_then(Concept::try_get_date)
+-                        .ok_or_else(|| AppError::column("returned", "date"))?,
+-                ),
+-                lost: row.get("lost")?
+-                    .map(|concept| concept.try_get_date().ok_or_else(|| AppError::column("lost", "date")))
+-                    .transpose()?,
+-                fee_cents: row.get("fee")?
+-                    .map(|concept| concept.try_get_integer().ok_or_else(|| AppError::column("fee", "integer")))
+-                    .transpose()?,
+-            })
+-        })
+-        .collect()
+-}
+-
+-/// Loans that have been marked lost.
+-pub fn lost(db: &Db) -> Result<Vec<Loan>> {
+-    let rows = db.read_rows(
+-        "
+-        match
+-          $l isa loan, links (borrower: $m, item: $b), has loan-id $loan_id, has borrowed $borrowed, has due $due,
+-            has lost $lost;
+-          $m has member-id $member_id;
+-          $b has isbn $isbn;
+-          try { $l has returned $returned; };
+-          try { $l has fee-cents $fee; };
+-        ",
+-    )?;
+-    rows.iter()
+-        .map(|row| {
+-            Ok(Loan {
+-                id: row.get("loan_id")?
+-                    .and_then(Concept::try_get_string)
+-                    .ok_or_else(|| AppError::column("loan_id", "string"))?
+-                    .to_owned(),
+-                member_id: row.get("member_id")?
+-                    .and_then(Concept::try_get_string)
+-                    .ok_or_else(|| AppError::column("member_id", "string"))?
+-                    .to_owned(),
+-                isbn: row.get("isbn")?
+-                    .and_then(Concept::try_get_string)
+-                    .ok_or_else(|| AppError::column("isbn", "string"))?
+-                    .to_owned(),
+-                borrowed: row.get("borrowed")?
+-                    .and_then(Concept::try_get_date)
+-                    .ok_or_else(|| AppError::column("borrowed", "date"))?,
+-                due: row.get("due")?.and_then(Concept::try_get_date).ok_or_else(|| AppError::column("due", "date"))?,
+-                returned: row.get("returned")?
+-                    .map(|concept| concept.try_get_date().ok_or_else(|| AppError::column("returned", "date")))
+-                    .transpose()?,
+-                lost: Some(
+-                    row.get("lost")?.and_then(Concept::try_get_date).ok_or_else(|| AppError::column("lost", "date"))?,
+-                ),
+-                fee_cents: row.get("fee")?
+-                    .map(|concept| concept.try_get_integer().ok_or_else(|| AppError::column("fee", "integer")))
+-                    .transpose()?,
+-            })
+-        })
+-        .collect()
++/// Every loan, of any status.
++pub fn all(db: &Db) -> Result<Vec<Loan>> {
++    loans_matching(db, "")
+ }
+ 
+ /// The borrow date of every loan.
+@@ -253,9 +33,5 @@ pub fn monthly(db: &Db) -> Result<Vec<NaiveDate>> {
+           $l isa loan, has borrowed $borrowed;
+         ",
+     )?;
+-    rows.iter()
+-        .map(|row| {
+-            row.get("borrowed")?.and_then(Concept::try_get_date).ok_or_else(|| AppError::column("borrowed", "date"))
+-        })
+-        .collect()
++    rows.iter().map(|row| date(row, "borrowed")).collect()
+ }
+diff --git a/app/src/repo/members.rs b/app/src/repo/members.rs
+index a7011c6..35f4020 100644
+--- a/app/src/repo/members.rs
++++ b/app/src/repo/members.rs
+@@ -1,19 +1,23 @@
+ //! Queries behind the member commands: members, member, contact, inactive, top, fees, member-fees.
++use std::collections::HashMap;
++
+ use chrono::NaiveDate;
+-use typedb_driver::concept::Concept;
+ 
+ use crate::{
+     db::{quote, Db},
+-    error::{AppError, Result},
++    error::Result,
+     model::{Loan, Member},
+ };
+ 
++use super::{date, loans_matching, opt_text, text};
++
+ /// A member's id, name and contact details.
+ #[derive(Debug, Clone, PartialEq)]
+ pub struct MemberSummary {
+     pub id: String,
+     pub name: String,
+-    pub email: Option<String>,
++    /// Sorted, without duplicates.
++    pub email: Vec<String>,
+     pub phone: Option<String>,
+ }
+ 
+@@ -32,170 +36,95 @@ pub struct MemberFee {
+     pub fee_cents: i64,
+ }
+ 
+-pub fn members(db: &Db) -> Result<Vec<MemberSummary>> {
+-    let rows = db.read_rows(
++/// The e-mail addresses of the members matching `filter` (a TypeQL statement, or empty), by member id.
++fn emails(db: &Db, filter: &str) -> Result<HashMap<String, Vec<String>>> {
++    let rows = db.read_rows(&format!(
++        "
++        match
++          $m isa member, has member-id $member_id, has email $email;
++          {filter}
++        "
++    ))?;
++    let mut by_id: HashMap<String, Vec<String>> = HashMap::new();
++    for row in &rows {
++        by_id.entry(text(row, "member_id")?).or_default().push(text(row, "email")?);
++    }
++    for values in by_id.values_mut() {
++        values.sort();
++        values.dedup();
++    }
++    Ok(by_id)
++}
++
++/// The members matching `filter` (a TypeQL statement, or empty), with their contact details.
++fn summaries(db: &Db, filter: &str) -> Result<Vec<MemberSummary>> {
++    let rows = db.read_rows(&format!(
+         "
+         match
+           $m isa member, has member-id $member_id, has name $name;
+-          try { $m has email $email; };
+-          try { $m has phone $phone; };
+-        ",
+-    )?;
++          try {{ $m has phone $phone; }};
++          {filter}
++        "
++    ))?;
++    let mut email_of = emails(db, filter)?;
+     rows.iter()
+         .map(|row| {
+-            Ok(MemberSummary {
+-                id: row.get("member_id")?
+-                    .and_then(Concept::try_get_string)
+-                    .ok_or_else(|| AppError::column("member_id", "string"))?
+-                    .to_owned(),
+-                name: row.get("name")?
+-                    .and_then(Concept::try_get_string)
+-                    .ok_or_else(|| AppError::column("name", "string"))?
+-                    .to_owned(),
+-                email: row.get("email")?
+-                    .map(|concept| {
+-                        concept.try_get_string().map(str::to_owned).ok_or_else(|| AppError::column("email", "string"))
+-                    })
+-                    .transpose()?,
+-                phone: row.get("phone")?
+-                    .map(|concept| {
+-                        concept.try_get_string().map(str::to_owned).ok_or_else(|| AppError::column("phone", "string"))
+-                    })
+-                    .transpose()?,
+-            })
++            let id = text(row, "member_id")?;
++            let email = email_of.remove(&id).unwrap_or_default();
++            Ok(MemberSummary { id, name: text(row, "name")?, email, phone: opt_text(row, "phone")? })
+         })
+         .collect()
+ }
+ 
++/// Whether a member with the given id exists.
++pub fn exists(db: &Db, member_id: &str) -> Result<bool> {
++    let rows = db.read_rows(&format!("match $m isa member, has member-id {};", quote(member_id)))?;
++    Ok(!rows.is_empty())
++}
++
++pub fn members(db: &Db) -> Result<Vec<MemberSummary>> {
++    summaries(db, "")
++}
++
+ /// The member with the given id and all of their loans, or `None` if there is no such member.
+ pub fn member(db: &Db, member_id: &str) -> Result<Option<(Member, Vec<Loan>)>> {
+-    let member_rows = db.read_rows(&format!(
++    let rows = db.read_rows(&format!(
+         "
+         match
+           $m isa member, has member-id {}, has name $name, has joined $joined;
+-          try {{ $m has email $email; }};
+           try {{ $m has phone $phone; }};
+         ",
+         quote(member_id)
+     ))?;
+-    let Some(row) = member_rows.first() else { return Ok(None) };
++    let Some(row) = rows.first() else { return Ok(None) };
++    let email = emails(db, &format!("$member_id == {};", quote(member_id)))?.remove(member_id).unwrap_or_default();
+     let member = Member {
+         id: member_id.to_owned(),
+-        name: row.get("name")?
+-            .and_then(Concept::try_get_string)
+-            .ok_or_else(|| AppError::column("name", "string"))?
+-            .to_owned(),
+-        email: row.get("email")?
+-            .map(|concept| {
+-                concept.try_get_string().map(str::to_owned).ok_or_else(|| AppError::column("email", "string"))
+-            })
+-            .transpose()?,
+-        phone: row.get("phone")?
+-            .map(|concept| {
+-                concept.try_get_string().map(str::to_owned).ok_or_else(|| AppError::column("phone", "string"))
+-            })
+-            .transpose()?,
+-        joined: row.get("joined")?.and_then(Concept::try_get_date).ok_or_else(|| AppError::column("joined", "date"))?,
++        name: text(row, "name")?,
++        email,
++        phone: opt_text(row, "phone")?,
++        joined: date(row, "joined")?,
+     };
+-
+-    let loan_rows = db.read_rows(&format!(
+-        "
+-        match
+-          $m isa member, has member-id {};
+-          $l isa loan, links (borrower: $m, item: $b), has loan-id $loan_id, has borrowed $borrowed, has due $due;
+-          $b has isbn $isbn;
+-          try {{ $l has returned $returned; }};
+-          try {{ $l has lost $lost; }};
+-          try {{ $l has fee-cents $fee; }};
+-        ",
+-        quote(member_id)
+-    ))?;
+-    let loans = loan_rows
+-        .iter()
+-        .map(|row| {
+-            Ok(Loan {
+-                id: row.get("loan_id")?
+-                    .and_then(Concept::try_get_string)
+-                    .ok_or_else(|| AppError::column("loan_id", "string"))?
+-                    .to_owned(),
+-                member_id: member_id.to_owned(),
+-                isbn: row.get("isbn")?
+-                    .and_then(Concept::try_get_string)
+-                    .ok_or_else(|| AppError::column("isbn", "string"))?
+-                    .to_owned(),
+-                borrowed: row.get("borrowed")?
+-                    .and_then(Concept::try_get_date)
+-                    .ok_or_else(|| AppError::column("borrowed", "date"))?,
+-                due: row.get("due")?.and_then(Concept::try_get_date).ok_or_else(|| AppError::column("due", "date"))?,
+-                returned: row.get("returned")?
+-                    .map(|concept| concept.try_get_date().ok_or_else(|| AppError::column("returned", "date")))
+-                    .transpose()?,
+-                lost: row.get("lost")?
+-                    .map(|concept| concept.try_get_date().ok_or_else(|| AppError::column("lost", "date")))
+-                    .transpose()?,
+-                fee_cents: row.get("fee")?
+-                    .map(|concept| concept.try_get_integer().ok_or_else(|| AppError::column("fee", "integer")))
+-                    .transpose()?,
+-            })
+-        })
+-        .collect::<Result<Vec<_>>>()?;
++    let loans = loans_matching(db, &format!("$m isa member, has member-id {};", quote(member_id)))?;
+     Ok(Some((member, loans)))
+ }
+ 
+ /// The member's name and contact details, or `None` if there is no such member.
+ pub fn contact(db: &Db, member_id: &str) -> Result<Option<MemberSummary>> {
+-    let rows = db.read_rows(&format!(
+-        "
+-        match
+-          $m isa member, has member-id {}, has name $name;
+-          try {{ $m has email $email; }};
+-          try {{ $m has phone $phone; }};
+-        ",
+-        quote(member_id)
+-    ))?;
+-    let Some(row) = rows.first() else { return Ok(None) };
+-    Ok(Some(MemberSummary {
+-        id: member_id.to_owned(),
+-        name: row.get("name")?
+-            .and_then(Concept::try_get_string)
+-            .ok_or_else(|| AppError::column("name", "string"))?
+-            .to_owned(),
+-        email: row.get("email")?
+-            .map(|concept| {
+-                concept.try_get_string().map(str::to_owned).ok_or_else(|| AppError::column("email", "string"))
+-            })
+-            .transpose()?,
+-        phone: row.get("phone")?
+-            .map(|concept| {
+-                concept.try_get_string().map(str::to_owned).ok_or_else(|| AppError::column("phone", "string"))
+-            })
+-            .transpose()?,
+-    }))
++    Ok(summaries(db, &format!("$member_id == {};", quote(member_id)))?.into_iter().next())
+ }
+ 
+-/// Members who have not borrowed anything on or after `since`.
++/// Members who joined on or before `since` and have not borrowed anything on or after `since`.
+ pub fn inactive(db: &Db, since: NaiveDate) -> Result<Vec<MemberName>> {
+     let rows = db.read_rows(&format!(
+         "
+         match
+-          $m isa member, has member-id $member_id, has name $name;
++          $m isa member, has member-id $member_id, has name $name, has joined $joined;
++          $joined <= {since};
+           not {{ $l isa loan, links (borrower: $m), has borrowed $borrowed; $borrowed >= {since}; }};
+         "
+     ))?;
+-    rows.iter()
+-        .map(|row| {
+-            Ok(MemberName {
+-                id: row.get("member_id")?
+-                    .and_then(Concept::try_get_string)
+-                    .ok_or_else(|| AppError::column("member_id", "string"))?
+-                    .to_owned(),
+-                name: row.get("name")?
+-                    .and_then(Concept::try_get_string)
+-                    .ok_or_else(|| AppError::column("name", "string"))?
+-                    .to_owned(),
+-            })
+-        })
+-        .collect()
++    rows.iter().map(|row| Ok(MemberName { id: text(row, "member_id")?, name: text(row, "name")? })).collect()
+ }
+ 
+ /// The borrower of every loan: one entry per loan.
+@@ -207,20 +136,7 @@ pub fn top(db: &Db) -> Result<Vec<MemberName>> {
+           $m has member-id $member_id, has name $name;
+         ",
+     )?;
+-    rows.iter()
+-        .map(|row| {
+-            Ok(MemberName {
+-                id: row.get("member_id")?
+-                    .and_then(Concept::try_get_string)
+-                    .ok_or_else(|| AppError::column("member_id", "string"))?
+-                    .to_owned(),
+-                name: row.get("name")?
+-                    .and_then(Concept::try_get_string)
+-                    .ok_or_else(|| AppError::column("name", "string"))?
+-                    .to_owned(),
+-            })
+-        })
+-        .collect()
++    rows.iter().map(|row| Ok(MemberName { id: text(row, "member_id")?, name: text(row, "name")? })).collect()
+ }
+ 
+ /// The fee of every loan that carries one, with its borrower.
+@@ -235,17 +151,9 @@ pub fn fees(db: &Db) -> Result<Vec<MemberFee>> {
+     rows.iter()
+         .map(|row| {
+             Ok(MemberFee {
+-                member_id: row.get("member_id")?
+-                    .and_then(Concept::try_get_string)
+-                    .ok_or_else(|| AppError::column("member_id", "string"))?
+-                    .to_owned(),
+-                name: row.get("name")?
+-                    .and_then(Concept::try_get_string)
+-                    .ok_or_else(|| AppError::column("name", "string"))?
+-                    .to_owned(),
+-                fee_cents: row.get("fee")?
+-                    .and_then(Concept::try_get_integer)
+-                    .ok_or_else(|| AppError::column("fee", "integer"))?,
++                member_id: text(row, "member_id")?,
++                name: text(row, "name")?,
++                fee_cents: super::int(row, "fee")?,
+             })
+         })
+         .collect()
+@@ -253,48 +161,8 @@ pub fn fees(db: &Db) -> Result<Vec<MemberFee>> {
+ 
+ /// All loans of the given member, or `None` if there is no such member.
+ pub fn member_fees(db: &Db, member_id: &str) -> Result<Option<Vec<Loan>>> {
+-    let rows = db.read_rows(&format!(
+-        "
+-        match
+-          $m isa member, has member-id {};
+-          try {{
+-            $l isa loan, links (borrower: $m, item: $b), has loan-id $loan_id, has borrowed $borrowed, has due $due;
+-            $b has isbn $isbn;
+-            try {{ $l has returned $returned; }};
+-            try {{ $l has lost $lost; }};
+-            try {{ $l has fee-cents $fee; }};
+-          }};
+-        ",
+-        quote(member_id)
+-    ))?;
+-    if rows.is_empty() {
++    if !exists(db, member_id)? {
+         return Ok(None);
+     }
+-    let mut loans = Vec::new();
+-    for row in &rows {
+-        // A row without a loan id is the single row of a member who has never borrowed anything.
+-        let Some(loan_id) = row.get("loan_id")? else { continue };
+-        loans.push(Loan {
+-            id: loan_id.try_get_string().ok_or_else(|| AppError::column("loan_id", "string"))?.to_owned(),
+-            member_id: member_id.to_owned(),
+-            isbn: row.get("isbn")?
+-                .and_then(Concept::try_get_string)
+-                .ok_or_else(|| AppError::column("isbn", "string"))?
+-                .to_owned(),
+-            borrowed: row.get("borrowed")?
+-                .and_then(Concept::try_get_date)
+-                .ok_or_else(|| AppError::column("borrowed", "date"))?,
+-            due: row.get("due")?.and_then(Concept::try_get_date).ok_or_else(|| AppError::column("due", "date"))?,
+-            returned: row.get("returned")?
+-                .map(|concept| concept.try_get_date().ok_or_else(|| AppError::column("returned", "date")))
+-                .transpose()?,
+-            lost: row.get("lost")?
+-                .map(|concept| concept.try_get_date().ok_or_else(|| AppError::column("lost", "date")))
+-                .transpose()?,
+-            fee_cents: row.get("fee")?
+-                .map(|concept| concept.try_get_integer().ok_or_else(|| AppError::column("fee", "integer")))
+-                .transpose()?,
+-        });
+-    }
+-    Ok(Some(loans))
++    Ok(Some(loans_matching(db, &format!("$m isa member, has member-id {};", quote(member_id)))?))
+ }
+diff --git a/app/src/repo/mod.rs b/app/src/repo/mod.rs
+index 6e6e2b9..43b1a25 100644
+--- a/app/src/repo/mod.rs
++++ b/app/src/repo/mod.rs
+@@ -1,8 +1,81 @@
+ //! Read-side queries: one function per CLI command, each with its own TypeQL query.
+ //!
+-//! Commands whose output depends on loan status return `model::Loan`, so the status rules live in one
+-//! place; the others return small purpose-built rows holding only the columns the command needs.
+-//! Column values are extracted inline with `ConceptRow::get` and the `Concept::try_get_*` accessors.
++//! Optional attributes are read in `try` blocks, and multi-valued attributes (genre, email) are read by
++//! separate queries and merged here, so that no row is repeated. Commands whose output depends on loan
++//! status return `model::Loan`, read by `loans_matching`, so the status rules live in one place.
++use chrono::NaiveDate;
++use typedb_driver::answer::ConceptRow;
++
++use crate::{
++    db::Db,
++    error::{AppError, Result},
++    model::Loan,
++};
++
+ pub mod books;
+ pub mod loans;
+ pub mod members;
++
++pub fn text(row: &ConceptRow, var: &str) -> Result<String> {
++    opt_text(row, var)?.ok_or_else(|| AppError::column(var, "string"))
++}
++
++pub fn opt_text(row: &ConceptRow, var: &str) -> Result<Option<String>> {
++    row.get(var)?
++        .map(|concept| concept.try_get_string().map(str::to_owned).ok_or_else(|| AppError::column(var, "string")))
++        .transpose()
++}
++
++pub fn int(row: &ConceptRow, var: &str) -> Result<i64> {
++    opt_int(row, var)?.ok_or_else(|| AppError::column(var, "integer"))
++}
++
++pub fn opt_int(row: &ConceptRow, var: &str) -> Result<Option<i64>> {
++    row.get(var)?
++        .map(|concept| concept.try_get_integer().ok_or_else(|| AppError::column(var, "integer")))
++        .transpose()
++}
++
++pub fn date(row: &ConceptRow, var: &str) -> Result<NaiveDate> {
++    opt_date(row, var)?.ok_or_else(|| AppError::column(var, "date"))
++}
++
++pub fn opt_date(row: &ConceptRow, var: &str) -> Result<Option<NaiveDate>> {
++    row.get(var)?
++        .map(|concept| concept.try_get_date().ok_or_else(|| AppError::column(var, "date")))
++        .transpose()
++}
++
++/// Every loan matching `anchor`, a TypeQL statement list that binds `$m` (borrower) and `$b` (item).
++/// An empty anchor matches every loan.
++pub fn loans_matching(db: &Db, anchor: &str) -> Result<Vec<Loan>> {
++    let rows = db.read_rows(&format!(
++        "
++        match
++          {anchor}
++          $l isa loan, links (borrower: $m, item: $b), has loan-id $loan_id, has borrowed $borrowed;
++          $m has member-id $member_id;
++          $b has isbn $isbn;
++          try {{ $l has due $due; }};
++          try {{ $l has renewed $renewed; }};
++          try {{ $l has returned $returned; }};
++          try {{ $l has lost $lost; }};
++          try {{ $l has fee-cents $fee; }};
++        "
++    ))?;
++    rows.iter()
++        .map(|row| {
++            Ok(Loan {
++                id: text(row, "loan_id")?,
++                member_id: text(row, "member_id")?,
++                isbn: text(row, "isbn")?,
++                borrowed: date(row, "borrowed")?,
++                due: opt_date(row, "due")?,
++                renewed: opt_date(row, "renewed")?,
++                returned: opt_date(row, "returned")?,
++                lost: opt_date(row, "lost")?,
++                fee_cents: opt_int(row, "fee")?,
++            })
++        })
++        .collect()
++}
+diff --git a/app/src/report/books.rs b/app/src/report/books.rs
+index 9c007b8..c142726 100644
+--- a/app/src/report/books.rs
++++ b/app/src/report/books.rs
+@@ -17,36 +17,56 @@ pub fn book(book: &Book, loans: &[Loan]) -> Vec<String> {
+     borrowers.sort_unstable();
+     borrowers.dedup();
+     let borrowers = if borrowers.is_empty() { NONE.to_owned() } else { borrowers.join(", ") };
++    let genre = if book.genre.is_empty() { NONE.to_owned() } else { book.genre.join(", ") };
++    let returned = loans.iter().filter(|loan| loan.is_returned()).count();
++    let lost = loans.iter().filter(|loan| loan.is_lost()).count();
+     vec![
+         format!("book {}: {}", book.isbn, book.title),
+         format!("subtitle: {}", book.subtitle.as_deref().unwrap_or(NONE)),
+-        format!("year: {}", book.year),
+-        format!("genre: {}", book.genre.as_deref().unwrap_or(NONE)),
++        format!("year: {}", book.year.map_or(NONE.to_owned(), |year| year.to_string())),
++        format!("genre: {genre}"),
+         format!("copies: {}", book.copies),
+-        format!("loans: {}", loans.len()),
++        format!("loans: {} ({returned} returned, {lost} lost)", loans.len()),
+         format!("on loan: {}", open.len()),
+         format!("borrowers: {borrowers}"),
+     ]
+ }
+ 
+-/// Number of books per genre, most common first.
+-pub fn stats(genres: &[Option<String>]) -> Vec<String> {
++/// Number of books per genre, most common first, then the total number of books.
++/// A book counts once under each of its genres; a book without a genre counts under `(none)`.
++pub fn stats(genres: &[Vec<String>]) -> Vec<String> {
+     let mut counts: BTreeMap<&str, usize> = BTreeMap::new();
+-    for genre in genres {
+-        *counts.entry(genre.as_deref().unwrap_or(NO_GENRE)).or_default() += 1;
++    for book_genres in genres {
++        if book_genres.is_empty() {
++            *counts.entry(NO_GENRE).or_default() += 1;
++        }
++        for genre in book_genres {
++            *counts.entry(genre.as_str()).or_default() += 1;
++        }
+     }
+     let mut ordered: Vec<(&str, usize)> = counts.into_iter().collect();
+     ordered.sort_by(|a, b| b.1.cmp(&a.1).then(a.0.cmp(b.0)));
+-    ordered.iter().map(|(genre, count)| format!("{genre}: {count}")).collect()
++    let mut lines: Vec<String> = ordered.iter().map(|(genre, count)| format!("{genre}: {count}")).collect();
++    lines.push(format!("total: {}", genres.len()));
++    lines
+ }
+ 
+-/// Number of books per decade of publication, in chronological order.
+-pub fn decades(years: &[i64]) -> Vec<String> {
++/// Number of books per decade of publication, in chronological order. Books without a known year are
++/// counted on a final `unknown` line, which is left out when there are none.
++pub fn decades(years: &[Option<i64>]) -> Vec<String> {
+     let mut counts: BTreeMap<i64, usize> = BTreeMap::new();
++    let mut unknown = 0;
+     for year in years {
+-        *counts.entry(year.div_euclid(10) * 10).or_default() += 1;
++        match year {
++            Some(year) => *counts.entry(year.div_euclid(10) * 10).or_default() += 1,
++            None => unknown += 1,
++        }
+     }
+-    counts.iter().map(|(decade, count)| format!("{decade}s: {count}")).collect()
++    let mut lines: Vec<String> = counts.iter().map(|(decade, count)| format!("{decade}s: {count}")).collect();
++    if unknown > 0 {
++        lines.push(format!("unknown: {unknown}"));
++    }
++    lines
+ }
+ 
+ pub fn genre(items: &[BookSummary]) -> Vec<String> {
+@@ -58,18 +78,24 @@ pub fn never_borrowed(items: &[BookSummary]) -> Vec<String> {
+ }
+ 
+ pub fn available(availability: &Availability) -> Vec<String> {
+-    let on_loan: i64 = availability.loans.iter().filter(|loan| loan.is_open()).map(|_| 1).sum();
+-    let free = (availability.copies - on_loan).max(0);
+-    vec![format!("{} {}: {free} of {} available", availability.isbn, availability.title, availability.copies)]
++    let open: Vec<&Loan> = availability.loans.iter().filter(|loan| loan.is_open()).collect();
++    let free = (availability.copies - open.len() as i64).max(0);
++    let mut line = format!("{} {}: {free} of {} available", availability.isbn, availability.title, availability.copies);
++    if free == 0 {
++        if let Some(next) = open.iter().filter_map(|loan| loan.effective_due()).min() {
++            line.push_str(&format!(" (next due {next})"));
++        }
++    }
++    vec![line]
+ }
+ 
+-/// Books whose title or subtitle contains `query`, ignoring case.
++/// Books whose title or subtitle contains `query`, ignoring case, or whose ISBN is exactly `query`.
+ pub fn search(rows: &[(BookSummary, Option<String>)], query: &str) -> Vec<String> {
+     let needle = query.to_lowercase();
+     let matches = |text: &str| text.to_lowercase().contains(&needle);
+     book_lines(
+         rows.iter()
+-            .filter(|(book, subtitle)| matches(&book.title) || subtitle.as_deref().is_some_and(matches))
++            .filter(|(book, subtitle)| book.isbn == query || matches(&book.title) || subtitle.as_deref().is_some_and(matches))
+             .map(|(book, _)| book),
+     )
+ }
+diff --git a/app/src/report/loans.rs b/app/src/report/loans.rs
+index 47a622b..c604997 100644
+--- a/app/src/report/loans.rs
++++ b/app/src/report/loans.rs
+@@ -3,50 +3,71 @@ use std::collections::BTreeMap;
+ 
+ use chrono::NaiveDate;
+ 
+-use super::by_due;
++use super::{by_due, date_or_none};
+ use crate::model::Loan;
+ 
+ /// All of a member's loans in borrowing order, with their status.
+ pub fn history(member_id: &str, loans: &[Loan]) -> Vec<String> {
+     let mut ordered: Vec<&Loan> = loans.iter().collect();
+     ordered.sort_by(|a, b| (a.borrowed, &a.id).cmp(&(b.borrowed, &b.id)));
+-    let mut lines = vec![format!("history {member_id}: {} loans", ordered.len())];
++    let open = loans.iter().filter(|loan| loan.is_open()).count();
++    let mut lines = vec![format!("history {member_id}: {} loans ({open} open)", ordered.len())];
+     lines.extend(ordered.iter().map(|loan| {
+         let status = match (loan.lost, loan.returned) {
+             (Some(lost), _) => format!("lost {lost}"),
+             (None, Some(returned)) => format!("returned {returned}"),
+             (None, None) => "open".to_owned(),
+         };
+-        format!("  {} {} borrowed {} due {} {status}", loan.id, loan.isbn, loan.borrowed, loan.due)
++        let renewed = loan.renewed.map_or(String::new(), |renewed| format!(" renewed {renewed}"));
++        format!(
++            "  {} {} borrowed {} due {}{renewed} {status}",
++            loan.id,
++            loan.isbn,
++            loan.borrowed,
++            date_or_none(loan.due)
++        )
+     }));
+     lines
+ }
+ 
+ /// Open loans that were due before `as_of`, with how many days they are overdue.
+ pub fn overdue(loans: &[Loan], as_of: NaiveDate) -> Vec<String> {
+-    by_due(loans.iter().filter(|loan| loan.is_open() && loan.due < as_of).collect())
++    by_due(loans.iter().filter(|loan| loan.is_open() && loan.effective_due().is_some_and(|due| due < as_of)).collect())
+         .iter()
+-        .map(|loan| {
+-            let days = (as_of - loan.due).num_days();
+-            format!("{} {} {} due {} ({days} days)", loan.id, loan.member_id, loan.isbn, loan.due)
++        .filter_map(|loan| {
++            loan.effective_due().map(|due| {
++                let days = (as_of - due).num_days();
++                format!("{} {} {} due {due} ({days} days)", loan.id, loan.member_id, loan.isbn)
++            })
+         })
+         .collect()
+ }
+ 
+-/// Open loans among the given loans, which the repository has already restricted to the due-date window.
+-pub fn due_soon(loans: &[Loan]) -> Vec<String> {
+-    by_due(loans.iter().filter(|loan| loan.is_open()).collect())
+-        .iter()
+-        .map(|loan| format!("{} {} {} due {}", loan.id, loan.member_id, loan.isbn, loan.due))
+-        .collect()
++/// Open loans due between `start` and `end`, both inclusive.
++pub fn due_soon(loans: &[Loan], start: NaiveDate, end: NaiveDate) -> Vec<String> {
++    by_due(
++        loans
++            .iter()
++            .filter(|loan| loan.is_open() && loan.effective_due().is_some_and(|due| due >= start && due <= end))
++            .collect(),
++    )
++    .iter()
++    .filter_map(|loan| {
++        loan.effective_due().map(|due| format!("{} {} {} due {due}", loan.id, loan.member_id, loan.isbn))
++    })
++    .collect()
+ }
+ 
+-/// Returned loans that came back after their due date, latest first.
++/// Returned loans that came back after their effective due date, most days late first.
+ pub fn returned_late(loans: &[Loan]) -> Vec<String> {
+     let mut late: Vec<(&Loan, NaiveDate, i64)> = loans
+         .iter()
+         .filter(|loan| loan.is_returned())
+-        .filter_map(|loan| loan.returned.map(|returned| (loan, returned, (returned - loan.due).num_days())))
++        .filter_map(|loan| {
++            let due = loan.effective_due()?;
++            let returned = loan.returned?;
++            Some((loan, returned, (returned - due).num_days()))
++        })
+         .filter(|(_, _, days)| *days > 0)
+         .collect();
+     late.sort_by(|a, b| b.2.cmp(&a.2).then(a.0.id.cmp(&b.0.id)));
+@@ -55,19 +76,44 @@ pub fn returned_late(loans: &[Loan]) -> Vec<String> {
+         .collect()
+ }
+ 
+-/// Lost loans, ordered by the date they were reported lost.
++/// Lost loans, ordered by the date they were reported lost. The days after the effective due date are
++/// given when the loan has a due date.
+ pub fn lost(loans: &[Loan]) -> Vec<String> {
+     let mut lost: Vec<(&Loan, NaiveDate)> =
+         loans.iter().filter_map(|loan| loan.lost.map(|lost| (loan, lost))).collect();
+     lost.sort_by(|a, b| (a.1, &a.0.id).cmp(&(b.1, &b.0.id)));
+-    lost.iter().map(|(loan, lost)| format!("{} {} {} lost {lost}", loan.id, loan.member_id, loan.isbn)).collect()
++    lost.iter()
++        .map(|(loan, lost)| {
++            let line = format!("{} {} {} lost {lost}", loan.id, loan.member_id, loan.isbn);
++            match loan.effective_due() {
++                Some(due) => format!("{line} ({} days after due)", (*lost - due).num_days()),
++                None => line,
++            }
++        })
++        .collect()
+ }
+ 
+-/// Number of loans borrowed per calendar month, in chronological order.
++/// Number of loans borrowed per calendar month, in chronological order, including months with no loans
++/// between the first and the last month.
+ pub fn monthly(borrowed: &[NaiveDate]) -> Vec<String> {
+-    let mut counts: BTreeMap<String, usize> = BTreeMap::new();
++    let mut counts: BTreeMap<(i32, u32), usize> = BTreeMap::new();
+     for date in borrowed {
+-        *counts.entry(date.format("%Y-%m").to_string()).or_default() += 1;
++        use chrono::Datelike;
++        *counts.entry((date.year(), date.month())).or_default() += 1;
++    }
++    let (Some(&first), Some(&last)) = (counts.keys().next(), counts.keys().next_back()) else {
++        return Vec::new();
++    };
++    let mut lines = Vec::new();
++    let (mut year, mut month) = first;
++    while (year, month) <= last {
++        let count = counts.get(&(year, month)).copied().unwrap_or(0);
++        lines.push(format!("{year:04}-{month:02}: {count}"));
++        if month == 12 {
++            (year, month) = (year + 1, 1);
++        } else {
++            month += 1;
++        }
+     }
+-    counts.iter().map(|(month, count)| format!("{month}: {count}")).collect()
++    lines
+ }
+diff --git a/app/src/report/members.rs b/app/src/report/members.rs
+index c8d6f51..4a35dc9 100644
+--- a/app/src/report/members.rs
++++ b/app/src/report/members.rs
+@@ -7,41 +7,41 @@ use crate::{
+     repo::members::{MemberFee, MemberName, MemberSummary},
+ };
+ 
+-/// One line per member, ordered by member id.
++/// One line per member, ordered by name and then member id.
+ pub fn members(items: &[MemberSummary]) -> Vec<String> {
+     let mut ordered: Vec<&MemberSummary> = items.iter().collect();
+-    ordered.sort_by(|a, b| a.id.cmp(&b.id));
++    ordered.sort_by(|a, b| (&a.name, &a.id).cmp(&(&b.name, &b.id)));
+     ordered
+         .iter()
+         .map(|m| {
+-            format!(
+-                "{} {} {} {}",
+-                m.id,
+-                m.name,
+-                m.email.as_deref().unwrap_or(NONE),
+-                m.phone.as_deref().unwrap_or(NONE)
+-            )
++            let email = if m.email.is_empty() { NONE.to_owned() } else { m.email.join(",") };
++            format!("{} {} {email} {}", m.id, m.name, m.phone.as_deref().unwrap_or(NONE))
+         })
+         .collect()
+ }
+ 
+ pub fn member(member: &Member, loans: &[Loan]) -> Vec<String> {
+     let open = by_due(loans.iter().filter(|loan| loan.is_open()).collect());
++    let email = if member.email.is_empty() { NONE.to_owned() } else { member.email.join(", ") };
+     let mut lines = vec![
+         format!("member {}: {}", member.id, member.name),
+-        format!("email: {}", member.email.as_deref().unwrap_or(NONE)),
++        format!("email: {email}"),
+         format!("phone: {}", member.phone.as_deref().unwrap_or(NONE)),
+         format!("joined: {}", member.joined),
+         format!("open loans: {}", open.len()),
+     ];
+-    lines.extend(open.iter().map(|loan| format!("  {} {} due {}", loan.id, loan.isbn, loan.due)));
++    lines.extend(open.iter().map(|loan| {
++        let due = loan.effective_due().map_or(NONE.to_owned(), |due| due.to_string());
++        let renewed = if loan.renewed.is_some() { " (renewed)" } else { "" };
++        format!("  {} {} due {due}{renewed}", loan.id, loan.isbn)
++    }));
+     lines.push(format!("lost loans: {}", loans.iter().filter(|loan| loan.is_lost()).count()));
+     lines
+ }
+ 
+-/// The member's name and their preferred contact: email, else phone.
++/// The member's name and their preferred contact: the first email alphabetically, else phone.
+ pub fn contact(member: &MemberSummary) -> Vec<String> {
+-    let via = member.email.as_deref().or(member.phone.as_deref()).unwrap_or("(no contact)");
++    let via = member.email.first().map(String::as_str).or(member.phone.as_deref()).unwrap_or("(no contact)");
+     vec![format!("{} {via}", member.name)]
+ }
+ 
+@@ -53,6 +53,7 @@ pub fn inactive(items: &[MemberName]) -> Vec<String> {
+ }
+ 
+ /// The `limit` members with the most loans, given one borrower entry per loan.
++/// Ties are broken by member name, then member id.
+ pub fn top(borrowers: &[MemberName], limit: usize) -> Vec<String> {
+     let mut counts: BTreeMap<&str, (&str, usize)> = BTreeMap::new();
+     for borrower in borrowers {
+@@ -60,7 +61,7 @@ pub fn top(borrowers: &[MemberName], limit: usize) -> Vec<String> {
+     }
+     let mut ranked: Vec<(&str, &str, usize)> =
+         counts.into_iter().map(|(id, (name, count))| (id, name, count)).collect();
+-    ranked.sort_by(|a, b| b.2.cmp(&a.2).then(a.0.cmp(b.0)));
++    ranked.sort_by(|a, b| b.2.cmp(&a.2).then(a.1.cmp(b.1)).then(a.0.cmp(b.0)));
+     ranked
+         .iter()
+         .take(limit)
+@@ -69,14 +70,17 @@ pub fn top(borrowers: &[MemberName], limit: usize) -> Vec<String> {
+         .collect()
+ }
+ 
+-/// Total fees per member, highest first; members without fees are left out.
++/// Total fees per member, highest first; only members whose total is at least 1.00 are listed.
+ pub fn fees(items: &[MemberFee]) -> Vec<String> {
+     let mut totals: BTreeMap<&str, (&str, i64)> = BTreeMap::new();
+     for fee in items {
+         totals.entry(&fee.member_id).or_insert((&fee.name, 0)).1 += fee.fee_cents;
+     }
+-    let mut ranked: Vec<(&str, &str, i64)> =
+-        totals.into_iter().filter(|(_, (_, total))| *total > 0).map(|(id, (name, total))| (id, name, total)).collect();
++    let mut ranked: Vec<(&str, &str, i64)> = totals
++        .into_iter()
++        .filter(|(_, (_, total))| *total >= 100)
++        .map(|(id, (name, total))| (id, name, total))
++        .collect();
+     ranked.sort_by(|a, b| b.2.cmp(&a.2).then(a.0.cmp(b.0)));
+     ranked.iter().map(|(id, name, total)| format!("{id} {name} {}", money(*total))).collect()
+ }
+diff --git a/app/src/report/mod.rs b/app/src/report/mod.rs
+index 63f1559..7c75d68 100644
+--- a/app/src/report/mod.rs
++++ b/app/src/report/mod.rs
+@@ -3,6 +3,8 @@ pub mod books;
+ pub mod loans;
+ pub mod members;
+ 
++use chrono::NaiveDate;
++
+ use crate::{model::Loan, repo::books::BookSummary};
+ 
+ /// Placeholder printed for a missing optional value.
+@@ -16,16 +18,27 @@ fn book_lines<'a>(books: impl IntoIterator<Item = &'a BookSummary>) -> Vec<Strin
+     ordered.sort_by(|a, b| (&a.title, &a.isbn).cmp(&(&b.title, &b.isbn)));
+     ordered
+         .iter()
+-        .map(|b| format!("{}  {} ({}) [{}]", b.isbn, b.title, b.year, b.genre.as_deref().unwrap_or(NONE)))
++        .map(|b| {
++            let year = b.year.map_or("n.d.".to_owned(), |year| year.to_string());
++            let genre = if b.genre.is_empty() { NONE.to_owned() } else { b.genre.join("/") };
++            format!("{}  {} ({year}) [{genre}]", b.isbn, b.title)
++        })
+         .collect()
+ }
+ 
+-/// Order loans by due date, then loan id.
++/// Order loans by effective due date, then loan id; loans without a due date come last, by loan id.
+ fn by_due(mut loans: Vec<&Loan>) -> Vec<&Loan> {
+-    loans.sort_by(|a, b| (a.due, &a.id).cmp(&(b.due, &b.id)));
++    loans.sort_by(|a, b| {
++        (a.effective_due().is_none(), a.effective_due(), &a.id).cmp(&(b.effective_due().is_none(), b.effective_due(), &b.id))
++    });
+     loans
+ }
+ 
++/// A date, or `-` when there is none.
++fn date_or_none(date: Option<NaiveDate>) -> String {
++    date.map_or(NONE.to_owned(), |date| date.to_string())
++}
++
+ /// Render an amount in cents as `units.cents`.
+ fn money(cents: i64) -> String {
+     format!("{}.{:02}", cents.div_euclid(100), cents.rem_euclid(100))
+diff --git a/app/src/schema.rs b/app/src/schema.rs
+index 2063bf1..21bade3 100644
+--- a/app/src/schema.rs
++++ b/app/src/schema.rs
+@@ -16,6 +16,7 @@ define
+   attribute loan-id, value string;
+   attribute borrowed, value date;
+   attribute due, value date;
++  attribute renewed, value date;
+   attribute returned, value date;
+   attribute fee-cents, value integer;
+   attribute lost, value date;
+@@ -23,7 +24,7 @@ define
+   entity member,
+     owns member-id @key,
+     owns name,
+-    owns email,
++    owns email @card(0..),
+     owns phone,
+     owns joined,
+     plays loan:borrower;
+@@ -33,7 +34,7 @@ define
+     owns title,
+     owns subtitle,
+     owns year,
+-    owns genre,
++    owns genre @card(0..),
+     owns copies,
+     plays loan:item;
+ 
+@@ -43,6 +44,7 @@ define
+     owns loan-id @key,
+     owns borrowed,
+     owns due,
++    owns renewed,
+     owns returned,
+     owns fee-cents,
+     owns lost;

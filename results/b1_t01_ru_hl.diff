@@ -1,0 +1,78 @@
+diff --git a/app/src/ingest.rs b/app/src/ingest.rs
+index b0dc9f5..5b9a01e 100644
+--- a/app/src/ingest.rs
++++ b/app/src/ingest.rs
+@@ -51,6 +51,9 @@ pub fn member_query(record: &Record, line: usize) -> Result<String> {
+     if let Some(email) = optional(record, "email") {
+         parts.push(format!("has email {}", quote(email)));
+     }
++    if let Some(phone) = optional(record, "phone") {
++        parts.push(format!("has phone {}", quote(phone)));
++    }
+     Ok(format!("insert {};", parts.join(", ")))
+ }
+ 
+diff --git a/app/src/model.rs b/app/src/model.rs
+index 9fa8e34..3470030 100644
+--- a/app/src/model.rs
++++ b/app/src/model.rs
+@@ -5,6 +5,7 @@ pub struct Member {
+     pub id: String,
+     pub name: String,
+     pub email: Option<String>,
++    pub phone: Option<String>,
+     pub joined: NaiveDate,
+ }
+ 
+diff --git a/app/src/repo.rs b/app/src/repo.rs
+index 11b829c..9d41b71 100644
+--- a/app/src/repo.rs
++++ b/app/src/repo.rs
+@@ -40,6 +40,7 @@ pub fn find_member(db: &Db, member_id: &str) -> Result<Option<Member>> {
+         match
+           $m isa member, has member-id {}, has name $n, has joined $j;
+           try {{ $m has email $e; }};
++          try {{ $m has phone $p; }};
+         ",
+         quote(member_id)
+     ))?;
+@@ -48,6 +49,7 @@ pub fn find_member(db: &Db, member_id: &str) -> Result<Option<Member>> {
+         id: member_id.to_owned(),
+         name: req_string(row, "n")?,
+         email: string(row, "e")?,
++        phone: string(row, "p")?,
+         joined: req_date(row, "j")?,
+     }))
+ }
+diff --git a/app/src/report.rs b/app/src/report.rs
+index c094d79..b7cdfe3 100644
+--- a/app/src/report.rs
++++ b/app/src/report.rs
+@@ -26,6 +26,7 @@ pub fn member(m: &Member, loans: &[Loan]) -> Vec<String> {
+     let mut lines = vec![
+         format!("member {}: {}", m.id, m.name),
+         format!("email: {}", m.email.as_deref().unwrap_or(NONE)),
++        format!("phone: {}", m.phone.as_deref().unwrap_or(NONE)),
+         format!("joined: {}", m.joined.format("%Y-%m-%d")),
+         format!("open loans: {}", open_loans.len()),
+     ];
+diff --git a/app/src/schema.rs b/app/src/schema.rs
+index 4e47fe5..3f60ccf 100644
+--- a/app/src/schema.rs
++++ b/app/src/schema.rs
+@@ -3,6 +3,7 @@ define
+   attribute member-id, value string;
+   attribute name, value string;
+   attribute email, value string;
++  attribute phone, value string;
+   attribute joined, value date;
+ 
+   attribute isbn, value string;
+@@ -20,6 +21,7 @@ define
+     owns member-id @key,
+     owns name,
+     owns email,
++    owns phone,
+     owns joined,
+     plays loan:borrower;
+ 

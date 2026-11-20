@@ -1,0 +1,207 @@
+diff --git a/app/lending/ingest.py b/app/lending/ingest.py
+index 6ab9789..5808e56 100644
+--- a/app/lending/ingest.py
++++ b/app/lending/ingest.py
+@@ -46,7 +46,7 @@ def _int(text: str, file: str, line: int) -> int:
+ 
+ 
+ def parse_member(record: Record, line: int) -> Member:
+-    """Parse a members.csv record. The `deleted` column is deliberately ignored."""
++    """Parse a members.csv record."""
+     f = "members.csv"
+     return Member(
+         id=_field(record, "member_id", f, line),
+@@ -54,6 +54,7 @@ def parse_member(record: Record, line: int) -> Member:
+         email=_optional(record, "email"),
+         phone=_optional(record, "phone"),
+         joined=_date(_field(record, "joined", f, line), f, line),
++        deleted=(_optional(record, "deleted") or "").strip().lower() == "true",
+     )
+ 
+ 
+@@ -96,6 +97,8 @@ def member_query(member: Member) -> str:
+         attrs.append(f"has email {quote(member.email)}")
+     if member.phone is not None:
+         attrs.append(f"has phone {quote(member.phone)}")
++    if member.deleted:
++        attrs.append("has deleted true")
+     return "insert $m isa member, " + ", ".join(attrs) + ";"
+ 
+ 
+diff --git a/app/lending/model.py b/app/lending/model.py
+index 2cff38a..5ec9d09 100644
+--- a/app/lending/model.py
++++ b/app/lending/model.py
+@@ -36,6 +36,7 @@ class Member:
+     email: Optional[str]
+     phone: Optional[str]
+     joined: date
++    deleted: bool = False
+ 
+ 
+ @dataclass(frozen=True)
+diff --git a/app/lending/repo/books.py b/app/lending/repo/books.py
+index 375ee18..b4fdc10 100644
+--- a/app/lending/repo/books.py
++++ b/app/lending/repo/books.py
+@@ -61,6 +61,7 @@ def book_loans(db: Db, isbn: str) -> list[BookLoan]:
+           $b isa book, has isbn {quote(isbn)};
+           $l isa loan, links (borrower: $m, item: $b);
+           $m has member-id $mid;
++          not {{ $m has deleted true; }};
+           try {{ $l has returned $re; }};
+           try {{ $l has lost $lo; }};
+     """)
+@@ -133,7 +134,7 @@ def never_borrowed_books(db: Db) -> list[BookListing]:
+         match
+           $b isa book, has isbn $isbn, has title $t, has year $y;
+           try { $b has genre $g; };
+-          not { $l isa loan, links (item: $b); };
++          not { $l isa loan, links (item: $b, borrower: $m); not { $m has deleted true; }; };
+     """)
+     books: list[BookListing] = []
+     for row in rows:
+@@ -156,7 +157,8 @@ def book_availability(db: Db, isbn: str) -> Optional[BookAvailability]:
+         match
+           $b isa book, has isbn {quote(isbn)}, has title $t, has copies $c;
+           try {{
+-            $l isa loan, links (item: $b), has loan-id $lid;
++            $l isa loan, links (item: $b, borrower: $m), has loan-id $lid;
++            not {{ $m has deleted true; }};
+             not {{ $l has returned $re; }};
+             not {{ $l has lost $lo; }};
+           }};
+diff --git a/app/lending/repo/loans.py b/app/lending/repo/loans.py
+index 3bc1745..27f8354 100644
+--- a/app/lending/repo/loans.py
++++ b/app/lending/repo/loans.py
+@@ -14,6 +14,7 @@ def member_history(db: Db, member_id: str) -> Optional[list[HistoryLoan]]:
+     rows = db.read_rows(f"""
+         match
+           $m isa member, has member-id {quote(member_id)};
++          not {{ $m has deleted true; }};
+           try {{
+             $l isa loan, links (borrower: $m, item: $b), has loan-id $lid, has borrowed $bo, has due $du;
+             $b has isbn $isbn;
+@@ -53,6 +54,7 @@ def overdue_loans(db: Db, as_of: date) -> list[DueLoan]:
+         match
+           $l isa loan, links (borrower: $m, item: $b), has loan-id $lid, has due $du;
+           $m has member-id $mid;
++          not {{ $m has deleted true; }};
+           $b has isbn $isbn;
+           $du < {as_of.isoformat()};
+           not {{ $l has returned $re; }};
+@@ -78,6 +80,7 @@ def loans_due_between(db: Db, start: date, end: date) -> list[DueLoan]:
+         match
+           $l isa loan, links (borrower: $m, item: $b), has loan-id $lid, has due $du;
+           $m has member-id $mid;
++          not {{ $m has deleted true; }};
+           $b has isbn $isbn;
+           $du >= {start.isoformat()};
+           $du <= {end.isoformat()};
+@@ -104,6 +107,7 @@ def late_returns(db: Db) -> list[LateReturn]:
+         match
+           $l isa loan, links (borrower: $m), has loan-id $lid, has due $du, has returned $re;
+           $m has member-id $mid;
++          not { $m has deleted true; };
+           $re > $du;
+           not { $l has lost $lo; };
+     """)
+@@ -126,6 +130,7 @@ def lost_loans(db: Db) -> list[LostLoan]:
+         match
+           $l isa loan, links (borrower: $m, item: $b), has loan-id $lid, has lost $lo;
+           $m has member-id $mid;
++          not { $m has deleted true; };
+           $b has isbn $isbn;
+     """)
+     loans: list[LostLoan] = []
+@@ -146,7 +151,8 @@ def borrow_dates(db: Db) -> list[date]:
+     """The borrowed date of every loan: one entry per loan."""
+     rows = db.read_rows("""
+         match
+-          $l isa loan, has borrowed $bo;
++          $l isa loan, links (borrower: $m), has borrowed $bo;
++          not { $m has deleted true; };
+     """)
+     dates: list[date] = []
+     for row in rows:
+diff --git a/app/lending/repo/members.py b/app/lending/repo/members.py
+index 6b68702..bee8452 100644
+--- a/app/lending/repo/members.py
++++ b/app/lending/repo/members.py
+@@ -13,6 +13,7 @@ def list_members(db: Db) -> list[MemberContact]:
+     rows = db.read_rows("""
+         match
+           $m isa member, has member-id $mid, has name $n;
++          not { $m has deleted true; };
+           try { $m has email $e; };
+           try { $m has phone $p; };
+     """)
+@@ -36,6 +37,7 @@ def find_member(db: Db, member_id: str) -> Optional[Member]:
+     rows = db.read_rows(f"""
+         match
+           $m isa member, has member-id {quote(member_id)}, has name $n, has joined $j;
++          not {{ $m has deleted true; }};
+           try {{ $m has email $e; }};
+           try {{ $m has phone $p; }};
+     """)
+@@ -86,6 +88,7 @@ def find_contact(db: Db, member_id: str) -> Optional[MemberContact]:
+     rows = db.read_rows(f"""
+         match
+           $m isa member, has member-id {quote(member_id)}, has name $n;
++          not {{ $m has deleted true; }};
+           try {{ $m has email $e; }};
+           try {{ $m has phone $p; }};
+     """)
+@@ -108,6 +111,7 @@ def inactive_members(db: Db, since: date) -> list[MemberName]:
+     rows = db.read_rows(f"""
+         match
+           $m isa member, has member-id $mid, has name $n;
++          not {{ $m has deleted true; }};
+           not {{
+             $l isa loan, links (borrower: $m), has borrowed $bo;
+             $bo >= {since.isoformat()};
+@@ -129,6 +133,7 @@ def loan_borrowers(db: Db) -> list[MemberName]:
+         match
+           $l isa loan, links (borrower: $m);
+           $m has member-id $mid, has name $n;
++          not { $m has deleted true; };
+     """)
+     borrowers: list[MemberName] = []
+     for row in rows:
+@@ -146,6 +151,7 @@ def loan_fees(db: Db) -> list[MemberFee]:
+         match
+           $l isa loan, links (borrower: $m), has fee-cents $f;
+           $m has member-id $mid, has name $n;
++          not { $m has deleted true; };
+     """)
+     fees: list[MemberFee] = []
+     for row in rows:
+@@ -164,6 +170,7 @@ def member_fees(db: Db, member_id: str) -> Optional[list[LoanFee]]:
+     rows = db.read_rows(f"""
+         match
+           $m isa member, has member-id {quote(member_id)};
++          not {{ $m has deleted true; }};
+           try {{ $l isa loan, links (borrower: $m), has loan-id $lid, has fee-cents $f; }};
+     """)
+     if not rows:
+diff --git a/app/lending/schema.py b/app/lending/schema.py
+index 746be54..b579ada 100644
+--- a/app/lending/schema.py
++++ b/app/lending/schema.py
+@@ -5,6 +5,7 @@ define
+   attribute email, value string;
+   attribute phone, value string;
+   attribute joined, value date;
++  attribute deleted, value boolean;
+ 
+   attribute isbn, value string;
+   attribute title, value string;
+@@ -26,6 +27,7 @@ define
+     owns email,
+     owns phone,
+     owns joined,
++    owns deleted,
+     plays loan:borrower;
+ 
+   entity book,

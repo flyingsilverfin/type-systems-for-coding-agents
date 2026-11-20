@@ -1,0 +1,13 @@
+diff --git a/app/src/report.rs b/app/src/report.rs
+index 49e2b9d..c094d79 100644
+--- a/app/src/report.rs
++++ b/app/src/report.rs
+@@ -36,7 +36,7 @@ pub fn member(m: &Member, loans: &[Loan]) -> Vec<String> {
+ }
+ 
+ pub fn overdue(loans: &[Loan], as_of: NaiveDate) -> Vec<String> {
+-    let late = by_due(loans.iter().filter(|loan| loan.is_open() && loan.due <= as_of).collect());
++    let late = by_due(loans.iter().filter(|loan| loan.is_open() && loan.due < as_of).collect());
+     late.iter()
+         .map(|loan| {
+             format!(

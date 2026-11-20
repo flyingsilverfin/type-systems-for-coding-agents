@@ -1,0 +1,39 @@
+{
+ "run": "t1_bugfix_py_oh",
+ "task": "bugfix",
+ "tier": "t1",
+ "lang": "python",
+ "model": "opus",
+ "effort": "high",
+ "build_ok": true,
+ "hidden_passed": 9,
+ "hidden_total": 9,
+ "visible_passed": 1,
+ "visible_total": 1,
+ "regression_passed": 247,
+ "regression_total": 247,
+ "regression_failed": [],
+ "hidden": {
+  "delete_multiple_references": "pass",
+  "insert_column_constraints": "pass",
+  "insert_column_order": "pass",
+  "or_null_filters": "pass",
+  "or_null_select": "pass",
+  "or_null_writes": "pass",
+  "outer_join_null_keys": "pass",
+  "outer_join_null_keys_queries": "pass",
+  "update_multiple_references": "pass"
+ },
+ "tests_completed": true,
+ "grade_times": {
+  "build_s": 0.2,
+  "test_s": 6.0,
+  "total_s": 6.2
+ },
+ "checks": 3,
+ "check_build_s": 0.8,
+ "check_test_s": 16.0,
+ "last_check_ok": true,
+ "pass": true,
+ "escaped": false
+}

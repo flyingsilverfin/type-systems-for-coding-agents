@@ -1,0 +1,12 @@
+{
+ "run": "b5_abcdefg_ru_hl",
+ "task": "ABCDEFG",
+ "suite": "v3",
+ "lang": "rust",
+ "model": "haiku",
+ "effort": "low",
+ "novis": false,
+ "ws": "/home/user/agentbench/runs/b5_abcdefg_ru_hl",
+ "baseline": "012b0ccd044de6a42eb97c8b3d05d15af4381ff5",
+ "created": 1794860432.2500346
+}

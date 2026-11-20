@@ -1,0 +1,102 @@
+# Multi-line output should work fine.
+command
+command arg
+---
+Command {
+    name: "command",
+    args: [],
+    context: Context {
+        prefix: None,
+        tags: {},
+        silent: false,
+        fail: false,
+        line_number: 2,
+    },
+}
+Command {
+    name: "command",
+    args: [
+        Positional(
+            "arg",
+        ),
+    ],
+    context: Context {
+        prefix: None,
+        tags: {},
+        silent: false,
+        fail: false,
+        line_number: 3,
+    },
+}
+
+# Output that contains empty lines should automatically be prefixed with >.
+# This should be the case for empty lines at the start and end of the output,
+# as well as multiple empty lines.
+_echo "foo\n\n"
+---
+> foo
+> 
+
+_echo "\nfoo"
+---
+> 
+> foo
+
+_echo "foo\n\n\nbar"
+---
+> foo
+> 
+> 
+> bar
+
+# Empty output blocks should default to "ok", but only once, and only if none of
+# the commands produce any output.
+_echo ""
+---
+ok
+
+(command)
+(command)
+(command)
+---
+ok
+
+(command)
+command
+(command)
+---
+Command {
+    name: "command",
+    args: [],
+    context: Context {
+        prefix: None,
+        tags: {},
+        silent: false,
+        fail: false,
+        line_number: 65,
+    },
+}
+
+# Prefixes should handle empty output and output ending with a newline properly.
+prefix: _echo ""
+---
+ok
+
+prefix: _echo "\n"
+---
+prefix: 
+
+prefix: _echo "\n\n"
+---
+prefix: 
+prefix: 
+
+# Lines only containing whitespace are not considered empty, and not prefixed.
+# The output parser also handles them correctly when parsing this file.
+_echo " "
+_echo "  "
+_echo "\t"
+---
+ 
+  
+	

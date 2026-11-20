@@ -1,0 +1,173 @@
+{
+ "run": "b1_t07_ru_hl",
+ "task": "T07",
+ "lang": "rust",
+ "model": "haiku",
+ "effort": "low",
+ "ws": "/home/user/agentbench/runs/b1_t07_ru_hl",
+ "baseline": "b77b58da5799a4c0a3448787827efa24f9395ee0",
+ "created": 1794853358.805166,
+ "tampered": [],
+ "diff_shortstat": "5 files changed, 34 insertions(+), 5 deletions(-)",
+ "lines_added": 34,
+ "lines_deleted": 5,
+ "build_ok": true,
+ "build_output": "",
+ "setup_ok": true,
+ "hidden": [
+  {
+   "args": [
+    "books"
+   ],
+   "passed": true,
+   "exit": 0,
+   "expected_exit": 0
+  },
+  {
+   "args": [
+    "member",
+    "M001"
+   ],
+   "passed": true,
+   "exit": 0,
+   "expected_exit": 0
+  },
+  {
+   "args": [
+    "member",
+    "M002"
+   ],
+   "passed": true,
+   "exit": 0,
+   "expected_exit": 0
+  },
+  {
+   "args": [
+    "member",
+    "M017"
+   ],
+   "passed": true,
+   "exit": 0,
+   "expected_exit": 0
+  },
+  {
+   "args": [
+    "member",
+    "M900"
+   ],
+   "passed": true,
+   "exit": 0,
+   "expected_exit": 0
+  },
+  {
+   "args": [
+    "member",
+    "NOPE"
+   ],
+   "passed": true,
+   "exit": 1,
+   "expected_exit": 1
+  },
+  {
+   "args": [
+    "overdue",
+    "2024-05-01"
+   ],
+   "passed": true,
+   "exit": 0,
+   "expected_exit": 0
+  },
+  {
+   "args": [
+    "overdue",
+    "2024-03-15"
+   ],
+   "passed": true,
+   "exit": 0,
+   "expected_exit": 0
+  },
+  {
+   "args": [
+    "stats"
+   ],
+   "passed": true,
+   "exit": 0,
+   "expected_exit": 0
+  },
+  {
+   "args": [
+    "member",
+    "M003"
+   ],
+   "passed": true,
+   "exit": 0,
+   "expected_exit": 0
+  },
+  {
+   "args": [
+    "member",
+    "M035"
+   ],
+   "passed": true,
+   "exit": 0,
+   "expected_exit": 0
+  },
+  {
+   "args": [
+    "member",
+    "M016"
+   ],
+   "passed": true,
+   "exit": 0,
+   "expected_exit": 0
+  },
+  {
+   "args": [
+    "member",
+    "M024"
+   ],
+   "passed": true,
+   "exit": 0,
+   "expected_exit": 0
+  },
+  {
+   "args": [
+    "member",
+    "M012"
+   ],
+   "passed": true,
+   "exit": 0,
+   "expected_exit": 0
+  },
+  {
+   "args": [
+    "overdue",
+    "2024-06-30"
+   ],
+   "passed": true,
+   "exit": 0,
+   "expected_exit": 0
+  },
+  {
+   "args": [
+    "overdue",
+    "2024-09-01"
+   ],
+   "passed": true,
+   "exit": 0,
+   "expected_exit": 0
+  }
+ ],
+ "hidden_passed": 16,
+ "hidden_total": 16,
+ "regressions_failed": [],
+ "task_failed": [],
+ "structural_failures": [],
+ "pass": true,
+ "checks": 1,
+ "check_build_s": 4.7,
+ "check_test_s": 0.7,
+ "check_build_failures": 0,
+ "check_test_failures": 0,
+ "final_visible_ok": true
+}

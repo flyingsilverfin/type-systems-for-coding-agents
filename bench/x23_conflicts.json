@@ -1,0 +1,168 @@
+[
+{
+"run": "x23_alter_py_hl",
+"files": [
+"tests/sql/parser/test_lexer.py",
+"toydb/encoding/format.py",
+"toydb/sql/engine/engine.py",
+"toydb/sql/engine/local.py",
+"toydb/sql/engine/raft.py",
+"toydb/sql/execution/session.py",
+"toydb/sql/parser/lexer.py",
+"toydb/sql/types/schema.py"
+]
+},
+{
+"run": "x23_alter_py_oh",
+"files": [
+"tests/sql/parser/test_lexer.py",
+"toydb/encoding/format.py",
+"toydb/sql/engine/engine.py",
+"toydb/sql/engine/local.py",
+"toydb/sql/engine/raft.py",
+"toydb/sql/execution/session.py",
+"toydb/sql/parser/lexer.py",
+"toydb/sql/types/schema.py"
+]
+},
+{
+"run": "x23_alter_rs_hl",
+"files": [
+"src/encoding/format.rs",
+"src/sql/engine/engine.rs",
+"src/sql/engine/local.rs",
+"src/sql/engine/raft.rs",
+"src/sql/parser/lexer.rs",
+"src/sql/types/mod.rs"
+]
+},
+{
+"run": "x23_alter_rs_oh",
+"files": [
+"src/encoding/format.rs",
+"src/sql/engine/engine.rs",
+"src/sql/engine/local.rs",
+"src/sql/engine/raft.rs",
+"src/sql/execution/session.rs",
+"src/sql/parser/ast.rs",
+"src/sql/parser/lexer.rs",
+"src/sql/types/mod.rs",
+"src/sql/types/schema.rs"
+]
+},
+{
+"run": "x23_between_in_py_hl",
+"files": [
+"tests/sql/parser/test_lexer.py",
+"toydb/sql/parser/lexer.py"
+]
+},
+{
+"run": "x23_between_in_py_oh",
+"files": [
+"tests/sql/parser/test_lexer.py",
+"toydb/sql/parser/lexer.py"
+]
+},
+{
+"run": "x23_between_in_rs_oh",
+"files": [
+"src/sql/parser/lexer.rs"
+]
+},
+{
+"run": "x23_bugfix_py_hl",
+"files": [
+"toydb/sql/execution/executor.py"
+]
+},
+{
+"run": "x23_case_py_hl",
+"files": [
+"tests/sql/parser/test_lexer.py"
+]
+},
+{
+"run": "x23_case_py_oh",
+"files": [
+"tests/sql/parser/test_lexer.py"
+]
+},
+{
+"run": "x23_date_py_hl",
+"files": [
+"tests/sql/parser/test_lexer.py",
+"toydb/sql/parser/lexer.py",
+"toydb/sql/types/schema.py"
+]
+},
+{
+"run": "x23_date_py_oh",
+"files": [
+"tests/sql/parser/test_lexer.py",
+"toydb/sql/parser/lexer.py",
+"toydb/sql/types/schema.py"
+]
+},
+{
+"run": "x23_date_rs_hl",
+"files": [
+"src/sql/parser/lexer.rs",
+"src/sql/types/mod.rs",
+"src/sql/types/schema.rs"
+]
+},
+{
+"run": "x23_date_rs_oh",
+"files": [
+"src/sql/parser/lexer.rs",
+"src/sql/types/mod.rs",
+"src/sql/types/schema.rs"
+]
+},
+{
+"run": "x23_distinct_py_hl",
+"files": [
+"tests/sql/parser/test_lexer.py",
+"toydb/sql/planner/planner.py"
+]
+},
+{
+"run": "x23_distinct_py_oh",
+"files": [
+"tests/sql/parser/test_lexer.py",
+"toydb/sql/planner/planner.py"
+]
+},
+{
+"run": "x23_distinct_rs_hl",
+"files": [
+"src/sql/parser/parser.rs"
+]
+},
+{
+"run": "x23_distinct_rs_oh",
+"files": [
+"src/sql/execution/executor.rs",
+"src/sql/parser/parser.rs"
+]
+},
+{
+"run": "x23_release_py_hl",
+"files": [
+"toydb/sql/planner/planner.py"
+]
+},
+{
+"run": "x23_release_py_oh",
+"files": [
+"toydb/sql/planner/planner.py"
+]
+},
+{
+"run": "x23_release_rs_hl",
+"files": [
+"src/sql/execution/executor.rs"
+]
+}
+]

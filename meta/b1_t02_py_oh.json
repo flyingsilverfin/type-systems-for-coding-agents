@@ -1,0 +1,10 @@
+{
+ "run": "b1_t02_py_oh",
+ "task": "T02",
+ "lang": "python",
+ "model": "opus",
+ "effort": "high",
+ "ws": "/home/user/agentbench/runs/b1_t02_py_oh",
+ "baseline": "d1caa2a84dbcdff739d6152574f1d96b0665cbcf",
+ "created": 1794853417.1345108
+}

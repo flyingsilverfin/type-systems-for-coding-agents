@@ -1,0 +1,42 @@
+{
+ "run": "t1_date_rs_hl",
+ "task": "date",
+ "tier": "t1",
+ "lang": "rust",
+ "model": "haiku",
+ "effort": "low",
+ "build_ok": true,
+ "hidden_passed": 12,
+ "hidden_total": 12,
+ "visible_passed": 1,
+ "visible_total": 1,
+ "regression_passed": 210,
+ "regression_total": 210,
+ "regression_failed": [],
+ "hidden": {
+  "aggregates": "pass",
+  "arithmetic": "pass",
+  "arithmetic_errors": "pass",
+  "comparisons": "pass",
+  "index_unique": "pass",
+  "joins_references": "pass",
+  "literal_syntax": "pass",
+  "literals": "pass",
+  "order_group": "pass",
+  "plans": "pass",
+  "primary_key": "pass",
+  "schema_writes": "pass"
+ },
+ "tests_completed": true,
+ "grade_times": {
+  "build_s": 5.2,
+  "test_s": 1.0,
+  "total_s": 6.2
+ },
+ "checks": 2,
+ "check_build_s": 3.9,
+ "check_test_s": 2.1,
+ "last_check_ok": true,
+ "pass": true,
+ "escaped": false
+}

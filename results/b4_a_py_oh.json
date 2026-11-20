@@ -1,0 +1,456 @@
+{
+ "run": "b4_a_py_oh",
+ "task": "A",
+ "suite": "v3",
+ "lang": "python",
+ "model": "opus",
+ "effort": "high",
+ "novis": false,
+ "ws": "/home/user/agentbench/runs/b4_a_py_oh",
+ "baseline": "70cb9189fa62baa41c9eaa6385bfc32844746cb2",
+ "created": 1794861363.0100281,
+ "tampered": [],
+ "diff_shortstat": "4 files changed, 43 insertions(+), 24 deletions(-)",
+ "lines_added": 43,
+ "lines_deleted": 24,
+ "build_ok": true,
+ "build_output": "",
+ "setup_ok": true,
+ "hidden": [
+  {
+   "args": [
+    "books"
+   ],
+   "passed": true,
+   "exit": 0,
+   "expected_exit": 0
+  },
+  {
+   "args": [
+    "book",
+    "9781000000001"
+   ],
+   "passed": true,
+   "exit": 0,
+   "expected_exit": 0
+  },
+  {
+   "args": [
+    "book",
+    "9781000000002"
+   ],
+   "passed": true,
+   "exit": 0,
+   "expected_exit": 0
+  },
+  {
+   "args": [
+    "book",
+    "0000"
+   ],
+   "passed": true,
+   "exit": 1,
+   "expected_exit": 1
+  },
+  {
+   "args": [
+    "members"
+   ],
+   "passed": true,
+   "exit": 0,
+   "expected_exit": 0
+  },
+  {
+   "args": [
+    "member",
+    "M001"
+   ],
+   "passed": true,
+   "exit": 0,
+   "expected_exit": 0
+  },
+  {
+   "args": [
+    "member",
+    "M005"
+   ],
+   "passed": true,
+   "exit": 0,
+   "expected_exit": 0
+  },
+  {
+   "args": [
+    "member",
+    "M900"
+   ],
+   "passed": true,
+   "exit": 0,
+   "expected_exit": 0
+  },
+  {
+   "args": [
+    "member",
+    "M003"
+   ],
+   "passed": true,
+   "exit": 0,
+   "expected_exit": 0
+  },
+  {
+   "args": [
+    "member",
+    "NOPE"
+   ],
+   "passed": true,
+   "exit": 1,
+   "expected_exit": 1
+  },
+  {
+   "args": [
+    "history",
+    "M003"
+   ],
+   "passed": true,
+   "exit": 0,
+   "expected_exit": 0
+  },
+  {
+   "args": [
+    "history",
+    "M016"
+   ],
+   "passed": true,
+   "exit": 0,
+   "expected_exit": 0
+  },
+  {
+   "args": [
+    "history",
+    "M900"
+   ],
+   "passed": true,
+   "exit": 0,
+   "expected_exit": 0
+  },
+  {
+   "args": [
+    "overdue",
+    "2024-05-01"
+   ],
+   "passed": true,
+   "exit": 0,
+   "expected_exit": 0
+  },
+  {
+   "args": [
+    "overdue",
+    "2024-07-15"
+   ],
+   "passed": true,
+   "exit": 0,
+   "expected_exit": 0
+  },
+  {
+   "args": [
+    "due-soon",
+    "2024-04-20",
+    "14"
+   ],
+   "passed": true,
+   "exit": 0,
+   "expected_exit": 0
+  },
+  {
+   "args": [
+    "due-soon",
+    "2024-06-01",
+    "0"
+   ],
+   "passed": true,
+   "exit": 0,
+   "expected_exit": 0
+  },
+  {
+   "args": [
+    "returned-late"
+   ],
+   "passed": true,
+   "exit": 0,
+   "expected_exit": 0
+  },
+  {
+   "args": [
+    "lost"
+   ],
+   "passed": true,
+   "exit": 0,
+   "expected_exit": 0
+  },
+  {
+   "args": [
+    "fees"
+   ],
+   "passed": true,
+   "exit": 0,
+   "expected_exit": 0
+  },
+  {
+   "args": [
+    "member-fees",
+    "M004"
+   ],
+   "passed": true,
+   "exit": 0,
+   "expected_exit": 0
+  },
+  {
+   "args": [
+    "member-fees",
+    "M900"
+   ],
+   "passed": true,
+   "exit": 0,
+   "expected_exit": 0
+  },
+  {
+   "args": [
+    "stats"
+   ],
+   "passed": true,
+   "exit": 0,
+   "expected_exit": 0
+  },
+  {
+   "args": [
+    "decades"
+   ],
+   "passed": true,
+   "exit": 0,
+   "expected_exit": 0
+  },
+  {
+   "args": [
+    "genre",
+    "fiction"
+   ],
+   "passed": true,
+   "exit": 0,
+   "expected_exit": 0
+  },
+  {
+   "args": [
+    "genre",
+    "(none)"
+   ],
+   "passed": true,
+   "exit": 0,
+   "expected_exit": 0
+  },
+  {
+   "args": [
+    "never-borrowed"
+   ],
+   "passed": true,
+   "exit": 0,
+   "expected_exit": 0
+  },
+  {
+   "args": [
+    "available",
+    "9781000000001"
+   ],
+   "passed": true,
+   "exit": 0,
+   "expected_exit": 0
+  },
+  {
+   "args": [
+    "available",
+    "9781000000003"
+   ],
+   "passed": true,
+   "exit": 0,
+   "expected_exit": 0
+  },
+  {
+   "args": [
+    "top",
+    "5"
+   ],
+   "passed": true,
+   "exit": 0,
+   "expected_exit": 0
+  },
+  {
+   "args": [
+    "top",
+    "x"
+   ],
+   "passed": true,
+   "exit": 1,
+   "expected_exit": 1
+  },
+  {
+   "args": [
+    "search",
+    "ATLAS"
+   ],
+   "passed": true,
+   "exit": 0,
+   "expected_exit": 0
+  },
+  {
+   "args": [
+    "search",
+    "with, commas"
+   ],
+   "passed": true,
+   "exit": 0,
+   "expected_exit": 0
+  },
+  {
+   "args": [
+    "monthly"
+   ],
+   "passed": true,
+   "exit": 0,
+   "expected_exit": 0
+  },
+  {
+   "args": [
+    "inactive",
+    "2024-05-01"
+   ],
+   "passed": true,
+   "exit": 0,
+   "expected_exit": 0
+  },
+  {
+   "args": [
+    "contact",
+    "M001"
+   ],
+   "passed": true,
+   "exit": 0,
+   "expected_exit": 0
+  },
+  {
+   "args": [
+    "contact",
+    "M005"
+   ],
+   "passed": true,
+   "exit": 0,
+   "expected_exit": 0
+  },
+  {
+   "args": [
+    "contact",
+    "M900"
+   ],
+   "passed": true,
+   "exit": 0,
+   "expected_exit": 0
+  },
+  {
+   "args": [
+    "contact",
+    "M009"
+   ],
+   "passed": true,
+   "exit": 0,
+   "expected_exit": 0
+  },
+  {
+   "args": [
+    "contact",
+    "M002"
+   ],
+   "passed": true,
+   "exit": 0,
+   "expected_exit": 0
+  },
+  {
+   "args": [
+    "contact",
+    "XX"
+   ],
+   "passed": true,
+   "exit": 1,
+   "expected_exit": 1
+  },
+  {
+   "args": [
+    "book",
+    "9782252123341"
+   ],
+   "passed": true,
+   "exit": 0,
+   "expected_exit": 0
+  },
+  {
+   "args": [
+    "book",
+    "9788137036703"
+   ],
+   "passed": true,
+   "exit": 0,
+   "expected_exit": 0
+  },
+  {
+   "args": [
+    "genre",
+    "science"
+   ],
+   "passed": true,
+   "exit": 0,
+   "expected_exit": 0
+  },
+  {
+   "args": [
+    "search",
+    "Signal"
+   ],
+   "passed": true,
+   "exit": 0,
+   "expected_exit": 0
+  },
+  {
+   "args": [
+    "decades"
+   ],
+   "passed": true,
+   "exit": 0,
+   "expected_exit": 0
+  },
+  {
+   "args": [
+    "never-borrowed"
+   ],
+   "passed": true,
+   "exit": 0,
+   "expected_exit": 0
+  },
+  {
+   "args": [
+    "genre",
+    "(none)"
+   ],
+   "passed": true,
+   "exit": 0,
+   "expected_exit": 0
+  }
+ ],
+ "hidden_passed": 48,
+ "hidden_total": 48,
+ "regressions_failed": [],
+ "task_failed": [],
+ "structural_failures": [],
+ "pass": true,
+ "checks": 1,
+ "check_build_s": 0.1,
+ "check_test_s": 2.1,
+ "check_build_failures": 0,
+ "check_test_failures": 0,
+ "final_visible_ok": true
+}

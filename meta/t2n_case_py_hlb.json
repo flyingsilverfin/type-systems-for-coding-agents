@@ -1,0 +1,14 @@
+{
+ "run": "t2n_case_py_hlb",
+ "task": "case",
+ "suite": "toydb-t2",
+ "tier": "t2",
+ "lang": "python",
+ "model": "haiku",
+ "effort": "low",
+ "ws": "/home/user/agentbench/runs/t2n_case_py_hlb",
+ "hint": false,
+ "baseline": "1879aed2190ef360beaaac2a1b4a9a021a420bc3",
+ "created": 1794991582.7450538,
+ "warm_ok": true
+}

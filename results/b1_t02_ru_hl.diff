@@ -1,0 +1,85 @@
+diff --git a/app/src/ingest.rs b/app/src/ingest.rs
+index b0dc9f5..c244344 100644
+--- a/app/src/ingest.rs
++++ b/app/src/ingest.rs
+@@ -65,6 +65,9 @@ pub fn book_query(record: &Record, line: usize) -> Result<String> {
+         quote(isbn),
+         quote(title)
+     )];
++    if let Some(subtitle) = optional(record, "subtitle") {
++        parts.push(format!("has subtitle {}", quote(subtitle)));
++    }
+     if let Some(genre) = optional(record, "genre") {
+         parts.push(format!("has genre {}", quote(genre)));
+     }
+diff --git a/app/src/model.rs b/app/src/model.rs
+index 9fa8e34..7af1f87 100644
+--- a/app/src/model.rs
++++ b/app/src/model.rs
+@@ -12,6 +12,7 @@ pub struct Member {
+ pub struct Book {
+     pub isbn: String,
+     pub title: String,
++    pub subtitle: Option<String>,
+     pub year: i64,
+     pub genre: Option<String>,
+     pub copies: i64,
+diff --git a/app/src/repo.rs b/app/src/repo.rs
+index 11b829c..5452dbe 100644
+--- a/app/src/repo.rs
++++ b/app/src/repo.rs
+@@ -19,6 +19,7 @@ pub fn list_books(db: &Db) -> Result<Vec<Book>> {
+         match
+           $b isa book, has isbn $isbn, has title $t, has year $y, has copies $c;
+           try { $b has genre $g; };
++          try { $b has subtitle $s; };
+         ",
+     )?;
+     rows.iter()
+@@ -26,6 +27,7 @@ pub fn list_books(db: &Db) -> Result<Vec<Book>> {
+             Ok(Book {
+                 isbn: req_string(row, "isbn")?,
+                 title: req_string(row, "t")?,
++                subtitle: string(row, "s")?,
+                 year: req_integer(row, "y")?,
+                 genre: string(row, "g")?,
+                 copies: req_integer(row, "c")?,
+diff --git a/app/src/report.rs b/app/src/report.rs
+index c094d79..e45ba8f 100644
+--- a/app/src/report.rs
++++ b/app/src/report.rs
+@@ -17,7 +17,13 @@ pub fn books(items: &[Book]) -> Vec<String> {
+     ordered.sort_by(|a, b| (&a.title, &a.isbn).cmp(&(&b.title, &b.isbn)));
+     ordered
+         .iter()
+-        .map(|b| format!("{}  {} ({}) [{}]", b.isbn, b.title, b.year, b.genre.as_deref().unwrap_or(NONE)))
++        .map(|b| {
++            let title = match &b.subtitle {
++                Some(subtitle) => format!("{}: {}", b.title, subtitle),
++                None => b.title.clone(),
++            };
++            format!("{}  {} ({}) [{}]", b.isbn, title, b.year, b.genre.as_deref().unwrap_or(NONE))
++        })
+         .collect()
+ }
+ 
+diff --git a/app/src/schema.rs b/app/src/schema.rs
+index 4e47fe5..5806a0f 100644
+--- a/app/src/schema.rs
++++ b/app/src/schema.rs
+@@ -7,6 +7,7 @@ define
+ 
+   attribute isbn, value string;
+   attribute title, value string;
++  attribute subtitle, value string;
+   attribute year, value integer;
+   attribute genre, value string;
+   attribute copies, value integer;
+@@ -26,6 +27,7 @@ define
+   entity book,
+     owns isbn @key,
+     owns title,
++    owns subtitle,
+     owns year,
+     owns genre,
+     owns copies,

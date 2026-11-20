@@ -1,0 +1,13 @@
+{
+ "run": "t2_alter_py_hl",
+ "task": "alter",
+ "suite": "toydb-t2",
+ "tier": "t2",
+ "lang": "python",
+ "model": "haiku",
+ "effort": "low",
+ "ws": "/home/user/agentbench/runs/t2_alter_py_hl",
+ "baseline": "ccc3b12863254dabb1003ef0b95ba3bdbe559085",
+ "created": 1794976358.475572,
+ "warm_ok": true
+}

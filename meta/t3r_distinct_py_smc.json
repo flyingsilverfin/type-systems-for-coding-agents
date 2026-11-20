@@ -1,0 +1,15 @@
+{
+ "run": "t3r_distinct_py_smc",
+ "task": "distinct",
+ "suite": "toydb-t3",
+ "tier": "t3",
+ "lang": "python",
+ "model": "sonnet",
+ "effort": "medium",
+ "ws": "/home/user/agentbench/runs/t3r_distinct_py_smc",
+ "hint": true,
+ "readme_from": "t2",
+ "baseline": "49f6e4af60bdfb96483a2f3e67c73b66b3d0ca1a",
+ "created": 1795152332.2832618,
+ "warm_ok": true
+}

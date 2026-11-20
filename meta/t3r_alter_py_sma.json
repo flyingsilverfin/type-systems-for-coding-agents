@@ -1,0 +1,15 @@
+{
+ "run": "t3r_alter_py_sma",
+ "task": "alter",
+ "suite": "toydb-t3",
+ "tier": "t3",
+ "lang": "python",
+ "model": "sonnet",
+ "effort": "medium",
+ "ws": "/home/user/agentbench/runs/t3r_alter_py_sma",
+ "hint": true,
+ "readme_from": "t2",
+ "baseline": "69fdf3f2ea48fa91f315635e251a992b97260b05",
+ "created": 1795151057.3627062,
+ "warm_ok": true
+}

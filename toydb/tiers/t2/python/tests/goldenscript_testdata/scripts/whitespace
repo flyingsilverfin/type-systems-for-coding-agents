@@ -1,0 +1,49 @@
+
+
+
+
+# Tests that empty lines and whitespace is preserved.
+
+
+
+command
+---
+Command {
+    name: "command",
+    args: [],
+    context: Context {
+        prefix: None,
+        tags: {},
+        silent: false,
+        fail: false,
+        line_number: 9,
+    },
+}
+
+
+  # Comment.
+
+
+	# Another comment after a tab.
+
+command     arg
+---
+Command {
+    name: "command",
+    args: [
+        Positional(
+            "arg",
+        ),
+    ],
+    context: Context {
+        prefix: None,
+        tags: {},
+        silent: false,
+        fail: false,
+        line_number: 29,
+    },
+}
+
+
+
+

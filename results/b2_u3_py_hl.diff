@@ -1,0 +1,184 @@
+diff --git a/app/lending/db.py b/app/lending/db.py
+index 419a1f2..7ee9f86 100644
+--- a/app/lending/db.py
++++ b/app/lending/db.py
+@@ -2,6 +2,7 @@
+ from __future__ import annotations
+ 
+ from typedb.driver import (
++    Concept,
+     ConceptRow,
+     Credentials,
+     DriverOptions,
+@@ -11,6 +12,9 @@ from typedb.driver import (
+     TypeDBDriverException,
+ )
+ 
++from datetime import date
++from typing import Optional
++
+ from lending.config import Config
+ from lending.errors import AppError
+ 
+@@ -59,6 +63,15 @@ class Db:
+             return list(answer.as_concept_rows())
+ 
+ 
++def get_date(concept: Concept) -> Optional[date]:
++    """The date value of a concept as a `datetime.date`, or None if it is not a date.
++
++    Since driver 3.13, `try_get_date` returns the driver's `Date`, which has no ordering or arithmetic.
++    """
++    value = concept.try_get_date()
++    return None if value is None else value.to_date()
++
++
+ def quote(value: str) -> str:
+     """Render a Python string as a TypeQL string literal."""
+     escaped = value.replace("\\", "\\\\").replace('"', '\\"')
+diff --git a/app/lending/repo/books.py b/app/lending/repo/books.py
+index 375ee18..6762d51 100644
+--- a/app/lending/repo/books.py
++++ b/app/lending/repo/books.py
+@@ -4,7 +4,7 @@ from __future__ import annotations
+ from datetime import date
+ from typing import Optional
+ 
+-from lending.db import Db, quote
++from lending.db import Db, get_date, quote
+ from lending.errors import DataError
+ from lending.model import Book, BookAvailability, BookListing, BookLoan
+ 
+@@ -69,10 +69,10 @@ def book_loans(db: Db, isbn: str) -> list[BookLoan]:
+         if (concept := row.get("mid")) is None or (member_id := concept.try_get_string()) is None:
+             raise DataError("$mid: expected a string")
+         returned: Optional[date] = None
+-        if (concept := row.get("re")) is not None and (returned := concept.try_get_date()) is None:
++        if (concept := row.get("re")) is not None and (returned := get_date(concept)) is None:
+             raise DataError("$re: expected a date")
+         lost: Optional[date] = None
+-        if (concept := row.get("lo")) is not None and (lost := concept.try_get_date()) is None:
++        if (concept := row.get("lo")) is not None and (lost := get_date(concept)) is None:
+             raise DataError("$lo: expected a date")
+         loans.append(BookLoan(member_id=member_id, returned=returned, lost=lost))
+     return loans
+diff --git a/app/lending/repo/loans.py b/app/lending/repo/loans.py
+index 3bc1745..768386f 100644
+--- a/app/lending/repo/loans.py
++++ b/app/lending/repo/loans.py
+@@ -4,7 +4,7 @@ from __future__ import annotations
+ from datetime import date
+ from typing import Optional
+ 
+-from lending.db import Db, quote
++from lending.db import Db, get_date, quote
+ from lending.errors import DataError
+ from lending.model import DueLoan, HistoryLoan, LateReturn, LostLoan
+ 
+@@ -31,15 +31,15 @@ def member_history(db: Db, member_id: str) -> Optional[list[HistoryLoan]]:
+             raise DataError("$lid: expected a string")
+         if (concept := row.get("isbn")) is None or (isbn := concept.try_get_string()) is None:
+             raise DataError("$isbn: expected a string")
+-        if (concept := row.get("bo")) is None or (borrowed := concept.try_get_date()) is None:
++        if (concept := row.get("bo")) is None or (borrowed := get_date(concept)) is None:
+             raise DataError("$bo: expected a date")
+-        if (concept := row.get("du")) is None or (due := concept.try_get_date()) is None:
++        if (concept := row.get("du")) is None or (due := get_date(concept)) is None:
+             raise DataError("$du: expected a date")
+         returned: Optional[date] = None
+-        if (concept := row.get("re")) is not None and (returned := concept.try_get_date()) is None:
++        if (concept := row.get("re")) is not None and (returned := get_date(concept)) is None:
+             raise DataError("$re: expected a date")
+         lost: Optional[date] = None
+-        if (concept := row.get("lo")) is not None and (lost := concept.try_get_date()) is None:
++        if (concept := row.get("lo")) is not None and (lost := get_date(concept)) is None:
+             raise DataError("$lo: expected a date")
+         loans.append(
+             HistoryLoan(id=loan_id, isbn=isbn, borrowed=borrowed, due=due, returned=returned, lost=lost)
+@@ -66,7 +66,7 @@ def overdue_loans(db: Db, as_of: date) -> list[DueLoan]:
+             raise DataError("$mid: expected a string")
+         if (concept := row.get("isbn")) is None or (isbn := concept.try_get_string()) is None:
+             raise DataError("$isbn: expected a string")
+-        if (concept := row.get("du")) is None or (due := concept.try_get_date()) is None:
++        if (concept := row.get("du")) is None or (due := get_date(concept)) is None:
+             raise DataError("$du: expected a date")
+         loans.append(DueLoan(id=loan_id, member_id=member_id, isbn=isbn, due=due))
+     return loans
+@@ -92,7 +92,7 @@ def loans_due_between(db: Db, start: date, end: date) -> list[DueLoan]:
+             raise DataError("$mid: expected a string")
+         if (concept := row.get("isbn")) is None or (isbn := concept.try_get_string()) is None:
+             raise DataError("$isbn: expected a string")
+-        if (concept := row.get("du")) is None or (due := concept.try_get_date()) is None:
++        if (concept := row.get("du")) is None or (due := get_date(concept)) is None:
+             raise DataError("$du: expected a date")
+         loans.append(DueLoan(id=loan_id, member_id=member_id, isbn=isbn, due=due))
+     return loans
+@@ -113,9 +113,9 @@ def late_returns(db: Db) -> list[LateReturn]:
+             raise DataError("$lid: expected a string")
+         if (concept := row.get("mid")) is None or (member_id := concept.try_get_string()) is None:
+             raise DataError("$mid: expected a string")
+-        if (concept := row.get("du")) is None or (due := concept.try_get_date()) is None:
++        if (concept := row.get("du")) is None or (due := get_date(concept)) is None:
+             raise DataError("$du: expected a date")
+-        if (concept := row.get("re")) is None or (returned := concept.try_get_date()) is None:
++        if (concept := row.get("re")) is None or (returned := get_date(concept)) is None:
+             raise DataError("$re: expected a date")
+         loans.append(LateReturn(id=loan_id, member_id=member_id, due=due, returned=returned))
+     return loans
+@@ -136,7 +136,7 @@ def lost_loans(db: Db) -> list[LostLoan]:
+             raise DataError("$mid: expected a string")
+         if (concept := row.get("isbn")) is None or (isbn := concept.try_get_string()) is None:
+             raise DataError("$isbn: expected a string")
+-        if (concept := row.get("lo")) is None or (lost := concept.try_get_date()) is None:
++        if (concept := row.get("lo")) is None or (lost := get_date(concept)) is None:
+             raise DataError("$lo: expected a date")
+         loans.append(LostLoan(id=loan_id, member_id=member_id, isbn=isbn, lost=lost))
+     return loans
+@@ -150,7 +150,7 @@ def borrow_dates(db: Db) -> list[date]:
+     """)
+     dates: list[date] = []
+     for row in rows:
+-        if (concept := row.get("bo")) is None or (borrowed := concept.try_get_date()) is None:
++        if (concept := row.get("bo")) is None or (borrowed := get_date(concept)) is None:
+             raise DataError("$bo: expected a date")
+         dates.append(borrowed)
+     return dates
+diff --git a/app/lending/repo/members.py b/app/lending/repo/members.py
+index 6b68702..f443229 100644
+--- a/app/lending/repo/members.py
++++ b/app/lending/repo/members.py
+@@ -4,7 +4,7 @@ from __future__ import annotations
+ from datetime import date
+ from typing import Optional
+ 
+-from lending.db import Db, quote
++from lending.db import Db, get_date, quote
+ from lending.errors import DataError
+ from lending.model import LoanFee, Member, MemberContact, MemberFee, MemberLoan, MemberName
+ 
+@@ -44,7 +44,7 @@ def find_member(db: Db, member_id: str) -> Optional[Member]:
+     row = rows[0]
+     if (concept := row.get("n")) is None or (name := concept.try_get_string()) is None:
+         raise DataError("$n: expected a string")
+-    if (concept := row.get("j")) is None or (joined := concept.try_get_date()) is None:
++    if (concept := row.get("j")) is None or (joined := get_date(concept)) is None:
+         raise DataError("$j: expected a date")
+     email: Optional[str] = None
+     if (concept := row.get("e")) is not None and (email := concept.try_get_string()) is None:
+@@ -70,13 +70,13 @@ def member_loans(db: Db, member_id: str) -> list[MemberLoan]:
+             raise DataError("$lid: expected a string")
+         if (concept := row.get("isbn")) is None or (isbn := concept.try_get_string()) is None:
+             raise DataError("$isbn: expected a string")
+-        if (concept := row.get("du")) is None or (due := concept.try_get_date()) is None:
++        if (concept := row.get("du")) is None or (due := get_date(concept)) is None:
+             raise DataError("$du: expected a date")
+         returned: Optional[date] = None
+-        if (concept := row.get("re")) is not None and (returned := concept.try_get_date()) is None:
++        if (concept := row.get("re")) is not None and (returned := get_date(concept)) is None:
+             raise DataError("$re: expected a date")
+         lost: Optional[date] = None
+-        if (concept := row.get("lo")) is not None and (lost := concept.try_get_date()) is None:
++        if (concept := row.get("lo")) is not None and (lost := get_date(concept)) is None:
+             raise DataError("$lo: expected a date")
+         loans.append(MemberLoan(id=loan_id, isbn=isbn, due=due, returned=returned, lost=lost))
+     return loans

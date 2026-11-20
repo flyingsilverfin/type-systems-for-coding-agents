@@ -1,0 +1,137 @@
+{
+ "run": "b1_t05_ru_hl",
+ "task": "T05",
+ "lang": "rust",
+ "model": "haiku",
+ "effort": "low",
+ "ws": "/home/user/agentbench/runs/b1_t05_ru_hl",
+ "baseline": "b46bb7648e0cdb43afe7fa1a8828340381c4ddd1",
+ "created": 1794853359.3463864,
+ "tampered": [],
+ "diff_shortstat": "2 files changed, 33 insertions(+)",
+ "lines_added": 33,
+ "lines_deleted": 0,
+ "build_ok": true,
+ "build_output": "",
+ "setup_ok": true,
+ "hidden": [
+  {
+   "args": [
+    "books"
+   ],
+   "passed": true,
+   "exit": 0,
+   "expected_exit": 0
+  },
+  {
+   "args": [
+    "member",
+    "M001"
+   ],
+   "passed": true,
+   "exit": 0,
+   "expected_exit": 0
+  },
+  {
+   "args": [
+    "member",
+    "M002"
+   ],
+   "passed": true,
+   "exit": 0,
+   "expected_exit": 0
+  },
+  {
+   "args": [
+    "member",
+    "M017"
+   ],
+   "passed": true,
+   "exit": 0,
+   "expected_exit": 0
+  },
+  {
+   "args": [
+    "member",
+    "M900"
+   ],
+   "passed": true,
+   "exit": 0,
+   "expected_exit": 0
+  },
+  {
+   "args": [
+    "member",
+    "NOPE"
+   ],
+   "passed": true,
+   "exit": 1,
+   "expected_exit": 1
+  },
+  {
+   "args": [
+    "overdue",
+    "2024-05-01"
+   ],
+   "passed": true,
+   "exit": 0,
+   "expected_exit": 0
+  },
+  {
+   "args": [
+    "overdue",
+    "2024-03-15"
+   ],
+   "passed": true,
+   "exit": 0,
+   "expected_exit": 0
+  },
+  {
+   "args": [
+    "stats"
+   ],
+   "passed": true,
+   "exit": 0,
+   "expected_exit": 0
+  },
+  {
+   "args": [
+    "available",
+    "9781000000001"
+   ],
+   "passed": true,
+   "exit": 0,
+   "expected_exit": 0
+  },
+  {
+   "args": [
+    "available",
+    "9781000000003"
+   ],
+   "passed": true,
+   "exit": 0,
+   "expected_exit": 0
+  },
+  {
+   "args": [
+    "available",
+    "0000"
+   ],
+   "passed": true,
+   "exit": 1,
+   "expected_exit": 1
+  }
+ ],
+ "hidden_passed": 12,
+ "hidden_total": 12,
+ "regressions_failed": [],
+ "task_failed": [],
+ "structural_failures": [],
+ "pass": true,
+ "checks": 1,
+ "check_build_s": 4.8,
+ "check_test_s": 0.9,
+ "check_build_failures": 0,
+ "check_test_failures": 0,
+ "final_visible_ok": true
+}

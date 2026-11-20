@@ -1,0 +1,15 @@
+{
+ "run": "t3r_between_in_py_ohc",
+ "task": "between_in",
+ "suite": "toydb-t3",
+ "tier": "t3",
+ "lang": "python",
+ "model": "opus",
+ "effort": "high",
+ "ws": "/home/user/agentbench/runs/t3r_between_in_py_ohc",
+ "hint": true,
+ "readme_from": "t2",
+ "baseline": "ad921f65c079382249b98d7848da08fc7eb9d312",
+ "created": 1795152818.3158658,
+ "warm_ok": true
+}

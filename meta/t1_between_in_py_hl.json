@@ -1,0 +1,13 @@
+{
+ "run": "t1_between_in_py_hl",
+ "task": "between_in",
+ "suite": "toydb-t1",
+ "tier": "t1",
+ "lang": "python",
+ "model": "haiku",
+ "effort": "low",
+ "ws": "/home/user/agentbench/runs/t1_between_in_py_hl",
+ "baseline": "bdd15b55e6c3aab3961b6a60b5bd0cfcc2ec45d8",
+ "created": 1794950506.7595894,
+ "warm_ok": true
+}

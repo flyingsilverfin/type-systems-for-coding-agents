@@ -1,0 +1,77 @@
+diff --git a/app/lending/__main__.py b/app/lending/__main__.py
+index 35fceee..32faa84 100644
+--- a/app/lending/__main__.py
++++ b/app/lending/__main__.py
+@@ -17,7 +17,8 @@ commands:
+   books                list all books
+   member <member-id>   show a member and their open loans
+   overdue <date>       list open loans due before <date> (YYYY-MM-DD)
+-  stats                count books per genre"""
++  stats                count books per genre
++  top <n>              rank the n members with the most loans"""
+ 
+ 
+ def arg(args: list[str], index: int, usage: str) -> str:
+@@ -33,6 +34,16 @@ def parse_date(text: str) -> date:
+         raise UsageError(f"invalid date '{text}', expected YYYY-MM-DD") from None
+ 
+ 
++def parse_count(text: str) -> int:
++    try:
++        n = int(text)
++    except ValueError:
++        raise UsageError(f"invalid count '{text}', expected a non-negative integer") from None
++    if n < 0:
++        raise UsageError(f"invalid count '{text}', expected a non-negative integer")
++    return n
++
++
+ def emit(lines: list[str]) -> None:
+     for line in lines:
+         print(line)
+@@ -66,6 +77,9 @@ def run(args: list[str]) -> None:
+             emit(report.overdue(repo.all_loans(db), as_of))
+         elif command == "stats":
+             emit(report.genre_stats(repo.list_books(db)))
++        elif command == "top":
++            n = parse_count(arg(args, 1, "top <n>"))
++            emit(report.top_borrowers(repo.all_loans(db), repo.member_names(db), n))
+         else:
+             raise UsageError(f"unknown command '{command}'\n{USAGE}")
+     finally:
+diff --git a/app/lending/repo.py b/app/lending/repo.py
+index 9c978a3..c3b5bae 100644
+--- a/app/lending/repo.py
++++ b/app/lending/repo.py
+@@ -33,6 +33,14 @@ def list_books(db: Db) -> list[Book]:
+     ]
+ 
+ 
++def member_names(db: Db) -> dict[str, str]:
++    rows = db.read_rows("""
++        match
++          $m isa member, has member-id $mid, has name $n;
++    """)
++    return {req_string(row, "mid"): req_string(row, "n") for row in rows}
++
++
+ def find_member(db: Db, member_id: str) -> Optional[Member]:
+     rows = db.read_rows(f"""
+         match
+diff --git a/app/lending/report.py b/app/lending/report.py
+index 69a91e5..1db4f13 100644
+--- a/app/lending/report.py
++++ b/app/lending/report.py
+@@ -42,3 +42,12 @@ def genre_stats(items: list[Book]) -> list[str]:
+     counts = Counter(b.genre if b.genre is not None else "(none)" for b in items)
+     ordered = sorted(counts.items(), key=lambda kv: (-kv[1], kv[0]))
+     return [f"{genre}: {count}" for genre, count in ordered]
++
++
++def top_borrowers(loans: list[Loan], names: dict[str, str], n: int) -> list[str]:
++    counts = Counter(loan.member_id for loan in loans)
++    ordered = sorted(counts.items(), key=lambda kv: (-kv[1], kv[0]))[:n]
++    return [
++        f"{rank}. {member_id} {names.get(member_id, NONE)} ({count} loans)"
++        for rank, (member_id, count) in enumerate(ordered, start=1)
++    ]

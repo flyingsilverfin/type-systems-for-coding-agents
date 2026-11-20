@@ -1,0 +1,308 @@
+diff --git a/app/src/ingest.rs b/app/src/ingest.rs
+index d9efd50..1cc2b25 100644
+--- a/app/src/ingest.rs
++++ b/app/src/ingest.rs
+@@ -48,8 +48,10 @@ pub fn member_query(record: &Record, line: usize) -> Result<String> {
+         quote(name),
+         joined.format("%Y-%m-%d")
+     )];
+-    if let Some(email) = optional(record, "email") {
+-        parts.push(format!("has email {}", quote(email)));
++    if let Some(emails) = optional(record, "email") {
++        let unique: std::collections::BTreeSet<&str> =
++            emails.split(';').map(str::trim).filter(|email| !email.is_empty()).collect();
++        parts.extend(unique.into_iter().map(|email| format!("has email {}", quote(email))));
+     }
+     if let Some(phone) = optional(record, "phone") {
+         parts.push(format!("has phone {}", quote(phone)));
+diff --git a/app/src/main.rs b/app/src/main.rs
+index 2bb4795..693ef8d 100644
+--- a/app/src/main.rs
++++ b/app/src/main.rs
+@@ -28,7 +28,7 @@ commands:
+   member <member-id>        show a member, their open loans and lost loans
+   history <member-id>       list all loans of a member with their status
+   overdue <date>            list open loans due before <date> (YYYY-MM-DD)
+-  due-soon <date> <days>    list open loans due within <days> days from <date>
++  due-soon <date> [<days>]  list open loans due within <days> (default 7) days from <date>
+   returned-late             list returned loans that came back after their due date
+   lost                      list lost loans
+   fees                      total fees per member
+@@ -111,8 +111,11 @@ fn run(args: &[String]) -> Result<()> {
+             emit(report::loans::overdue(&repo::loans::overdue(&db, as_of)?, as_of));
+         }
+         "due-soon" => {
+-            let start = parse_date(arg(args, 1, "due-soon <date> <days>")?)?;
+-            let days = parse_count(arg(args, 2, "due-soon <date> <days>")?)?;
++            let start = parse_date(arg(args, 1, "due-soon <date> [<days>]")?)?;
++            let days = match args.get(2) {
++                Some(text) => parse_count(text)?,
++                None => 7,
++            };
+             let end = start
+                 .checked_add_days(Days::new(days))
+                 .ok_or_else(|| AppError::Usage(format!("{days} days after {start} is out of range")))?;
+diff --git a/app/src/model.rs b/app/src/model.rs
+index 1d534d2..ad870d2 100644
+--- a/app/src/model.rs
++++ b/app/src/model.rs
+@@ -4,7 +4,8 @@ use chrono::NaiveDate;
+ pub struct Member {
+     pub id: String,
+     pub name: String,
+-    pub email: Option<String>,
++    /// All email addresses, sorted, without duplicates.
++    pub email: Vec<String>,
+     pub phone: Option<String>,
+     pub joined: NaiveDate,
+ }
+diff --git a/app/src/repo/members.rs b/app/src/repo/members.rs
+index a7011c6..79301ac 100644
+--- a/app/src/repo/members.rs
++++ b/app/src/repo/members.rs
+@@ -1,4 +1,6 @@
+ //! Queries behind the member commands: members, member, contact, inactive, top, fees, member-fees.
++use std::collections::{BTreeMap, BTreeSet};
++
+ use chrono::NaiveDate;
+ use typedb_driver::concept::Concept;
+ 
+@@ -13,7 +15,8 @@ use crate::{
+ pub struct MemberSummary {
+     pub id: String,
+     pub name: String,
+-    pub email: Option<String>,
++    /// All email addresses, sorted, without duplicates.
++    pub email: Vec<String>,
+     pub phone: Option<String>,
+ }
+ 
+@@ -32,31 +35,58 @@ pub struct MemberFee {
+     pub fee_cents: i64,
+ }
+ 
++/// The email addresses of one member (or of all members), keyed by member id; each list is sorted and deduplicated.
++fn emails(db: &Db, member_id: Option<&str>) -> Result<BTreeMap<String, Vec<String>>> {
++    let id_pattern = match member_id {
++        Some(id) => format!("has member-id {}", quote(id)),
++        None => "has member-id $member_id".to_owned(),
++    };
++    let rows = db.read_rows(&format!(
++        "
++        match
++          $m isa member, {id_pattern}, has email $email;
++        "
++    ))?;
++    let mut sets: BTreeMap<String, BTreeSet<String>> = BTreeMap::new();
++    for row in &rows {
++        let id = match member_id {
++            Some(id) => id.to_owned(),
++            None => row.get("member_id")?
++                .and_then(Concept::try_get_string)
++                .ok_or_else(|| AppError::column("member_id", "string"))?
++                .to_owned(),
++        };
++        let email = row.get("email")?
++            .and_then(Concept::try_get_string)
++            .ok_or_else(|| AppError::column("email", "string"))?
++            .to_owned();
++        sets.entry(id).or_default().insert(email);
++    }
++    Ok(sets.into_iter().map(|(id, set)| (id, set.into_iter().collect())).collect())
++}
++
+ pub fn members(db: &Db) -> Result<Vec<MemberSummary>> {
+     let rows = db.read_rows(
+         "
+         match
+           $m isa member, has member-id $member_id, has name $name;
+-          try { $m has email $email; };
+           try { $m has phone $phone; };
+         ",
+     )?;
++    let mut emails = emails(db, None)?;
+     rows.iter()
+         .map(|row| {
++            let id = row.get("member_id")?
++                .and_then(Concept::try_get_string)
++                .ok_or_else(|| AppError::column("member_id", "string"))?
++                .to_owned();
+             Ok(MemberSummary {
+-                id: row.get("member_id")?
+-                    .and_then(Concept::try_get_string)
+-                    .ok_or_else(|| AppError::column("member_id", "string"))?
+-                    .to_owned(),
++                email: emails.remove(&id).unwrap_or_default(),
++                id,
+                 name: row.get("name")?
+                     .and_then(Concept::try_get_string)
+                     .ok_or_else(|| AppError::column("name", "string"))?
+                     .to_owned(),
+-                email: row.get("email")?
+-                    .map(|concept| {
+-                        concept.try_get_string().map(str::to_owned).ok_or_else(|| AppError::column("email", "string"))
+-                    })
+-                    .transpose()?,
+                 phone: row.get("phone")?
+                     .map(|concept| {
+                         concept.try_get_string().map(str::to_owned).ok_or_else(|| AppError::column("phone", "string"))
+@@ -73,7 +103,6 @@ pub fn member(db: &Db, member_id: &str) -> Result<Option<(Member, Vec<Loan>)>> {
+         "
+         match
+           $m isa member, has member-id {}, has name $name, has joined $joined;
+-          try {{ $m has email $email; }};
+           try {{ $m has phone $phone; }};
+         ",
+         quote(member_id)
+@@ -85,11 +114,7 @@ pub fn member(db: &Db, member_id: &str) -> Result<Option<(Member, Vec<Loan>)>> {
+             .and_then(Concept::try_get_string)
+             .ok_or_else(|| AppError::column("name", "string"))?
+             .to_owned(),
+-        email: row.get("email")?
+-            .map(|concept| {
+-                concept.try_get_string().map(str::to_owned).ok_or_else(|| AppError::column("email", "string"))
+-            })
+-            .transpose()?,
++        email: emails(db, Some(member_id))?.remove(member_id).unwrap_or_default(),
+         phone: row.get("phone")?
+             .map(|concept| {
+                 concept.try_get_string().map(str::to_owned).ok_or_else(|| AppError::column("phone", "string"))
+@@ -148,7 +173,6 @@ pub fn contact(db: &Db, member_id: &str) -> Result<Option<MemberSummary>> {
+         "
+         match
+           $m isa member, has member-id {}, has name $name;
+-          try {{ $m has email $email; }};
+           try {{ $m has phone $phone; }};
+         ",
+         quote(member_id)
+@@ -160,11 +184,7 @@ pub fn contact(db: &Db, member_id: &str) -> Result<Option<MemberSummary>> {
+             .and_then(Concept::try_get_string)
+             .ok_or_else(|| AppError::column("name", "string"))?
+             .to_owned(),
+-        email: row.get("email")?
+-            .map(|concept| {
+-                concept.try_get_string().map(str::to_owned).ok_or_else(|| AppError::column("email", "string"))
+-            })
+-            .transpose()?,
++        email: emails(db, Some(member_id))?.remove(member_id).unwrap_or_default(),
+         phone: row.get("phone")?
+             .map(|concept| {
+                 concept.try_get_string().map(str::to_owned).ok_or_else(|| AppError::column("phone", "string"))
+@@ -173,12 +193,13 @@ pub fn contact(db: &Db, member_id: &str) -> Result<Option<MemberSummary>> {
+     }))
+ }
+ 
+-/// Members who have not borrowed anything on or after `since`.
++/// Members who joined on or before `since` and have not borrowed anything on or after it.
+ pub fn inactive(db: &Db, since: NaiveDate) -> Result<Vec<MemberName>> {
+     let rows = db.read_rows(&format!(
+         "
+         match
+-          $m isa member, has member-id $member_id, has name $name;
++          $m isa member, has member-id $member_id, has name $name, has joined $joined;
++          $joined <= {since};
+           not {{ $l isa loan, links (borrower: $m), has borrowed $borrowed; $borrowed >= {since}; }};
+         "
+     ))?;
+diff --git a/app/src/report/books.rs b/app/src/report/books.rs
+index 9c007b8..efdbdc1 100644
+--- a/app/src/report/books.rs
++++ b/app/src/report/books.rs
+@@ -69,7 +69,9 @@ pub fn search(rows: &[(BookSummary, Option<String>)], query: &str) -> Vec<String
+     let matches = |text: &str| text.to_lowercase().contains(&needle);
+     book_lines(
+         rows.iter()
+-            .filter(|(book, subtitle)| matches(&book.title) || subtitle.as_deref().is_some_and(matches))
++            .filter(|(book, subtitle)| {
++                book.isbn == query || matches(&book.title) || subtitle.as_deref().is_some_and(matches)
++            })
+             .map(|(book, _)| book),
+     )
+ }
+diff --git a/app/src/report/loans.rs b/app/src/report/loans.rs
+index 47a622b..9c223c6 100644
+--- a/app/src/report/loans.rs
++++ b/app/src/report/loans.rs
+@@ -10,7 +10,8 @@ use crate::model::Loan;
+ pub fn history(member_id: &str, loans: &[Loan]) -> Vec<String> {
+     let mut ordered: Vec<&Loan> = loans.iter().collect();
+     ordered.sort_by(|a, b| (a.borrowed, &a.id).cmp(&(b.borrowed, &b.id)));
+-    let mut lines = vec![format!("history {member_id}: {} loans", ordered.len())];
++    let open = ordered.iter().filter(|loan| loan.is_open()).count();
++    let mut lines = vec![format!("history {member_id}: {} loans ({open} open)", ordered.len())];
+     lines.extend(ordered.iter().map(|loan| {
+         let status = match (loan.lost, loan.returned) {
+             (Some(lost), _) => format!("lost {lost}"),
+diff --git a/app/src/report/members.rs b/app/src/report/members.rs
+index c8d6f51..2feac88 100644
+--- a/app/src/report/members.rs
++++ b/app/src/report/members.rs
+@@ -18,7 +18,7 @@ pub fn members(items: &[MemberSummary]) -> Vec<String> {
+                 "{} {} {} {}",
+                 m.id,
+                 m.name,
+-                m.email.as_deref().unwrap_or(NONE),
++                if m.email.is_empty() { NONE.to_owned() } else { m.email.join(",") },
+                 m.phone.as_deref().unwrap_or(NONE)
+             )
+         })
+@@ -29,7 +29,7 @@ pub fn member(member: &Member, loans: &[Loan]) -> Vec<String> {
+     let open = by_due(loans.iter().filter(|loan| loan.is_open()).collect());
+     let mut lines = vec![
+         format!("member {}: {}", member.id, member.name),
+-        format!("email: {}", member.email.as_deref().unwrap_or(NONE)),
++        format!("email: {}", if member.email.is_empty() { NONE.to_owned() } else { member.email.join(", ") }),
+         format!("phone: {}", member.phone.as_deref().unwrap_or(NONE)),
+         format!("joined: {}", member.joined),
+         format!("open loans: {}", open.len()),
+@@ -39,9 +39,9 @@ pub fn member(member: &Member, loans: &[Loan]) -> Vec<String> {
+     lines
+ }
+ 
+-/// The member's name and their preferred contact: email, else phone.
++/// The member's name and their preferred contact: the alphabetically first email, else phone.
+ pub fn contact(member: &MemberSummary) -> Vec<String> {
+-    let via = member.email.as_deref().or(member.phone.as_deref()).unwrap_or("(no contact)");
++    let via = member.email.iter().min().map(String::as_str).or(member.phone.as_deref()).unwrap_or("(no contact)");
+     vec![format!("{} {via}", member.name)]
+ }
+ 
+@@ -60,7 +60,7 @@ pub fn top(borrowers: &[MemberName], limit: usize) -> Vec<String> {
+     }
+     let mut ranked: Vec<(&str, &str, usize)> =
+         counts.into_iter().map(|(id, (name, count))| (id, name, count)).collect();
+-    ranked.sort_by(|a, b| b.2.cmp(&a.2).then(a.0.cmp(b.0)));
++    ranked.sort_by(|a, b| b.2.cmp(&a.2).then(a.1.cmp(b.1)).then(a.0.cmp(b.0)));
+     ranked
+         .iter()
+         .take(limit)
+@@ -69,14 +69,14 @@ pub fn top(borrowers: &[MemberName], limit: usize) -> Vec<String> {
+         .collect()
+ }
+ 
+-/// Total fees per member, highest first; members without fees are left out.
++/// Total fees per member, highest first; members whose total is below 1.00 are left out.
+ pub fn fees(items: &[MemberFee]) -> Vec<String> {
+     let mut totals: BTreeMap<&str, (&str, i64)> = BTreeMap::new();
+     for fee in items {
+         totals.entry(&fee.member_id).or_insert((&fee.name, 0)).1 += fee.fee_cents;
+     }
+     let mut ranked: Vec<(&str, &str, i64)> =
+-        totals.into_iter().filter(|(_, (_, total))| *total > 0).map(|(id, (name, total))| (id, name, total)).collect();
++        totals.into_iter().filter(|(_, (_, total))| *total >= 100).map(|(id, (name, total))| (id, name, total)).collect();
+     ranked.sort_by(|a, b| b.2.cmp(&a.2).then(a.0.cmp(b.0)));
+     ranked.iter().map(|(id, name, total)| format!("{id} {name} {}", money(*total))).collect()
+ }
+diff --git a/app/src/schema.rs b/app/src/schema.rs
+index 2063bf1..8879809 100644
+--- a/app/src/schema.rs
++++ b/app/src/schema.rs
+@@ -23,7 +23,7 @@ define
+   entity member,
+     owns member-id @key,
+     owns name,
+-    owns email,
++    owns email @card(0..),
+     owns phone,
+     owns joined,
+     plays loan:borrower;

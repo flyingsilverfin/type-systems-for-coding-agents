@@ -1,0 +1,82 @@
+[
+ {
+  "run": "t2n_case_rs_hla",
+  "model": "haiku",
+  "effort": "low"
+ },
+ {
+  "run": "t2n_case_py_hla",
+  "model": "haiku",
+  "effort": "low"
+ },
+ {
+  "run": "t2n_date_rs_hla",
+  "model": "haiku",
+  "effort": "low"
+ },
+ {
+  "run": "t2n_date_py_hla",
+  "model": "haiku",
+  "effort": "low"
+ },
+ {
+  "run": "t2n_distinct_rs_hla",
+  "model": "haiku",
+  "effort": "low"
+ },
+ {
+  "run": "t2n_distinct_py_hla",
+  "model": "haiku",
+  "effort": "low"
+ },
+ {
+  "run": "t2n_release_rs_hla",
+  "model": "haiku",
+  "effort": "low"
+ },
+ {
+  "run": "t2n_release_py_hla",
+  "model": "haiku",
+  "effort": "low"
+ },
+ {
+  "run": "t2n_case_rs_hlb",
+  "model": "haiku",
+  "effort": "low"
+ },
+ {
+  "run": "t2n_case_py_hlb",
+  "model": "haiku",
+  "effort": "low"
+ },
+ {
+  "run": "t2n_date_rs_hlb",
+  "model": "haiku",
+  "effort": "low"
+ },
+ {
+  "run": "t2n_date_py_hlb",
+  "model": "haiku",
+  "effort": "low"
+ },
+ {
+  "run": "t2n_distinct_rs_hlb",
+  "model": "haiku",
+  "effort": "low"
+ },
+ {
+  "run": "t2n_distinct_py_hlb",
+  "model": "haiku",
+  "effort": "low"
+ },
+ {
+  "run": "t2n_release_rs_hlb",
+  "model": "haiku",
+  "effort": "low"
+ },
+ {
+  "run": "t2n_release_py_hlb",
+  "model": "haiku",
+  "effort": "low"
+ }
+]

@@ -1,0 +1,15 @@
+{
+ "run": "t3r_date_py_ohb",
+ "task": "date",
+ "suite": "toydb-t3",
+ "tier": "t3",
+ "lang": "python",
+ "model": "opus",
+ "effort": "high",
+ "ws": "/home/user/agentbench/runs/t3r_date_py_ohb",
+ "hint": true,
+ "readme_from": "t2",
+ "baseline": "0abd457acb9c467fdd09b6890f71c1f95d73505a",
+ "created": 1795151375.3462455,
+ "warm_ok": true
+}

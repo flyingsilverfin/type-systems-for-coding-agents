@@ -1,0 +1,10 @@
+{
+ "run": "b1_t04_py_hl",
+ "task": "T04",
+ "lang": "python",
+ "model": "haiku",
+ "effort": "low",
+ "ws": "/home/user/agentbench/runs/b1_t04_py_hl",
+ "baseline": "dce4914f1a27872839d25f3acbf542d21e4e8828",
+ "created": 1794853257.096953
+}

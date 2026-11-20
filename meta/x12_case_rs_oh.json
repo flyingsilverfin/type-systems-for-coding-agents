@@ -1,0 +1,16 @@
+{
+ "run": "x12_case_rs_oh",
+ "task": "case",
+ "suite": "toydb-t1",
+ "tier": "t2",
+ "lang": "rust",
+ "model": "opus",
+ "effort": "high",
+ "ws": "/home/user/agentbench/runs/x12_case_rs_oh",
+ "baseline": "73c7a521bef7a44f5808efb4e7ed3bea91c297ed",
+ "created": 1794950547.5011113,
+ "warm_ok": true,
+ "transplant_of": "t1_case_rs_oh",
+ "apply_ok": true,
+ "apply_err": ""
+}

@@ -1,0 +1,15 @@
+{
+ "run": "t3r_case_rs_hlc",
+ "task": "case",
+ "suite": "toydb-t3",
+ "tier": "t3",
+ "lang": "rust",
+ "model": "haiku",
+ "effort": "low",
+ "ws": "/home/user/agentbench/runs/t3r_case_rs_hlc",
+ "hint": true,
+ "readme_from": "t2",
+ "baseline": "d11d26ef5bef8ce9225c9993e3267cff9f04cc33",
+ "created": 1795122688.087051,
+ "warm_ok": true
+}

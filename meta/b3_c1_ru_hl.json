@@ -1,0 +1,12 @@
+{
+ "run": "b3_c1_ru_hl",
+ "task": "C1",
+ "suite": "v2",
+ "lang": "rust",
+ "model": "haiku",
+ "effort": "low",
+ "novis": true,
+ "ws": "/home/user/agentbench/runs/b3_c1_ru_hl",
+ "baseline": "441ae2024bfa0c76173e6e3e28b19a6e684d049d",
+ "created": 1794857757.553625
+}

@@ -1,0 +1,82 @@
+# Statement digests: transaction statements, EXPLAIN, failed and rolled-back
+# statements, and separate sessions.
+
+> CREATE TABLE t (id INT PRIMARY KEY, v STRING, n INT)
+> INSERT INTO t VALUES (1, 'a', 10), (2, 'b', 20), (3, NULL, 30)
+---
+ok
+
+# BEGIN TRANSACTION and BEGIN READ WRITE are BEGIN. Statements of a rolled-back
+# transaction stay counted, with their rows. Failed statements are errors
+# (including COMMIT outside a transaction and BEGIN with an invalid version).
+> BEGIN TRANSACTION
+> UPDATE t SET n = 0 WHERE id = 1
+> ROLLBACK
+> begin read write
+> COMMIT
+> BEGIN READ ONLY
+> SELECT * FROM t WHERE id = 2
+!> UPDATE t SET n = 0 WHERE id = 2
+> ROLLBACK
+> BEGIN TRANSACTION READ ONLY AS OF SYSTEM TIME 2
+> SELECT COUNT(*) FROM t
+> COMMIT
+!> COMMIT
+!> BEGIN AS OF SYSTEM TIME 2
+!> BEGIN READ ONLY AS OF SYSTEM TIME 99
+---
+2, 'b', 20
+Error: read-only transaction
+0
+Error: invalid input: not in a transaction
+Error: invalid input: can't start read-write transaction in a given version
+Error: invalid input: version 99 does not exist
+
+# EXPLAIN is followed by the digest of the explained statement. A statement that
+# doesn't parse is not recorded.
+> EXPLAIN SELECT * FROM t WHERE id = 1
+!> EXPLAIN SELECT * FROM nosuch
+!> EXPLAIN EXPLAIN SELECT 1
+---
+Error: invalid input: table nosuch does not exist
+Error: invalid input: cannot nest EXPLAIN statements
+
+> SHOW STATEMENTS
+---
+'CREATE TABLE t (id INTEGER PRIMARY KEY, v STRING, n INTEGER)', 1, 0, 0
+'INSERT INTO t VALUES (?, ?, ?), (?, ?, ?), (?, ?, ?)', 1, 0, 3
+'BEGIN', 2, 0, 0
+'UPDATE t SET n = ? WHERE id = ?', 2, 1, 1
+'ROLLBACK', 2, 0, 0
+'COMMIT', 3, 1, 0
+'BEGIN READ ONLY', 1, 0, 0
+'SELECT * FROM t WHERE id = ?', 1, 0, 1
+'BEGIN READ ONLY AS OF SYSTEM TIME ?', 2, 1, 0
+'SELECT count(*) FROM t', 1, 0, 1
+'BEGIN AS OF SYSTEM TIME ?', 1, 1, 0
+'EXPLAIN SELECT * FROM t WHERE id = ?', 1, 0, 0
+'EXPLAIN SELECT * FROM nosuch', 1, 1, 0
+
+# Other sessions have their own statistics; SHOW STATEMENTS works inside a
+# transaction.
+a:> BEGIN
+a:> SELECT v FROM t WHERE id = 3
+b:> SELECT v FROM t WHERE id = 3
+a:> SHOW STATEMENTS
+b:> SHOW STATEMENTS
+a:> ROLLBACK
+a:> SHOW STATEMENTS
+---
+a: NULL
+b: NULL
+a: 'BEGIN', 1, 0, 0
+a: 'SELECT v FROM t WHERE id = ?', 1, 0, 1
+b: 'SELECT v FROM t WHERE id = ?', 1, 0, 1
+a: 'BEGIN', 1, 0, 0
+a: 'SELECT v FROM t WHERE id = ?', 1, 0, 1
+a: 'ROLLBACK', 1, 0, 0
+
+# The first session is unaffected by the others.
+[json]> SHOW STATEMENTS
+---
+{"result":"select","columns":["digest","calls","errors","rows"],"rows":[["CREATE TABLE t (id INTEGER PRIMARY KEY, v STRING, n INTEGER)",1,0,0],["INSERT INTO t VALUES (?, ?, ?), (?, ?, ?), (?, ?, ?)",1,0,3],["BEGIN",2,0,0],["UPDATE t SET n = ? WHERE id = ?",2,1,1],["ROLLBACK",2,0,0],["COMMIT",3,1,0],["BEGIN READ ONLY",1,0,0],["SELECT * FROM t WHERE id = ?",1,0,1],["BEGIN READ ONLY AS OF SYSTEM TIME ?",2,1,0],["SELECT count(*) FROM t",1,0,1],["BEGIN AS OF SYSTEM TIME ?",1,1,0],["EXPLAIN SELECT * FROM t WHERE id = ?",1,0,0],["EXPLAIN SELECT * FROM nosuch",1,1,0]]}

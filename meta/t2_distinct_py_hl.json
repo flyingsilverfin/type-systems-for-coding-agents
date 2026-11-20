@@ -1,0 +1,13 @@
+{
+ "run": "t2_distinct_py_hl",
+ "task": "distinct",
+ "suite": "toydb-t2",
+ "tier": "t2",
+ "lang": "python",
+ "model": "haiku",
+ "effort": "low",
+ "ws": "/home/user/agentbench/runs/t2_distinct_py_hl",
+ "baseline": "1d02ad1908d6cc204ca340d94a378581eebb7cc9",
+ "created": 1794976263.3522596,
+ "warm_ok": true
+}

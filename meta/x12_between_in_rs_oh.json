@@ -1,0 +1,16 @@
+{
+ "run": "x12_between_in_rs_oh",
+ "task": "between_in",
+ "suite": "toydb-t1",
+ "tier": "t2",
+ "lang": "rust",
+ "model": "opus",
+ "effort": "high",
+ "ws": "/home/user/agentbench/runs/x12_between_in_rs_oh",
+ "baseline": "62d18d17048050b54b514b937a9dfcd6c1ccea72",
+ "created": 1794950516.6256244,
+ "warm_ok": true,
+ "transplant_of": "t1_between_in_rs_oh",
+ "apply_ok": true,
+ "apply_err": ""
+}

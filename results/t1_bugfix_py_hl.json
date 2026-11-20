@@ -1,0 +1,39 @@
+{
+ "run": "t1_bugfix_py_hl",
+ "task": "bugfix",
+ "tier": "t1",
+ "lang": "python",
+ "model": "haiku",
+ "effort": "low",
+ "build_ok": true,
+ "hidden_passed": 9,
+ "hidden_total": 9,
+ "visible_passed": 1,
+ "visible_total": 1,
+ "regression_passed": 247,
+ "regression_total": 247,
+ "regression_failed": [],
+ "hidden": {
+  "delete_multiple_references": "pass",
+  "insert_column_constraints": "pass",
+  "insert_column_order": "pass",
+  "or_null_filters": "pass",
+  "or_null_select": "pass",
+  "or_null_writes": "pass",
+  "outer_join_null_keys": "pass",
+  "outer_join_null_keys_queries": "pass",
+  "update_multiple_references": "pass"
+ },
+ "tests_completed": true,
+ "grade_times": {
+  "build_s": 0.3,
+  "test_s": 5.9,
+  "total_s": 6.2
+ },
+ "checks": 3,
+ "check_build_s": 0.7,
+ "check_test_s": 15.3,
+ "last_check_ok": true,
+ "pass": true,
+ "escaped": false
+}

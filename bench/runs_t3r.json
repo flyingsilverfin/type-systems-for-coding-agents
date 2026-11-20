@@ -1,0 +1,170 @@
+[
+{
+"run": "t3r_between_in_rs_hla",
+"task": "between_in",
+"lang": "rust",
+"model": "haiku",
+"effort": "low"
+},
+{
+"run": "t3r_between_in_py_hla",
+"task": "between_in",
+"lang": "python",
+"model": "haiku",
+"effort": "low"
+},
+{
+"run": "t3r_between_in_rs_hlb",
+"task": "between_in",
+"lang": "rust",
+"model": "haiku",
+"effort": "low"
+},
+{
+"run": "t3r_between_in_py_hlb",
+"task": "between_in",
+"lang": "python",
+"model": "haiku",
+"effort": "low"
+},
+{
+"run": "t3r_case_rs_hla",
+"task": "case",
+"lang": "rust",
+"model": "haiku",
+"effort": "low"
+},
+{
+"run": "t3r_case_py_hla",
+"task": "case",
+"lang": "python",
+"model": "haiku",
+"effort": "low"
+},
+{
+"run": "t3r_case_rs_hlb",
+"task": "case",
+"lang": "rust",
+"model": "haiku",
+"effort": "low"
+},
+{
+"run": "t3r_case_py_hlb",
+"task": "case",
+"lang": "python",
+"model": "haiku",
+"effort": "low"
+},
+{
+"run": "t3r_date_rs_hla",
+"task": "date",
+"lang": "rust",
+"model": "haiku",
+"effort": "low"
+},
+{
+"run": "t3r_date_py_hla",
+"task": "date",
+"lang": "python",
+"model": "haiku",
+"effort": "low"
+},
+{
+"run": "t3r_date_rs_hlb",
+"task": "date",
+"lang": "rust",
+"model": "haiku",
+"effort": "low"
+},
+{
+"run": "t3r_date_py_hlb",
+"task": "date",
+"lang": "python",
+"model": "haiku",
+"effort": "low"
+},
+{
+"run": "t3r_distinct_rs_hla",
+"task": "distinct",
+"lang": "rust",
+"model": "haiku",
+"effort": "low"
+},
+{
+"run": "t3r_distinct_py_hla",
+"task": "distinct",
+"lang": "python",
+"model": "haiku",
+"effort": "low"
+},
+{
+"run": "t3r_distinct_rs_hlb",
+"task": "distinct",
+"lang": "rust",
+"model": "haiku",
+"effort": "low"
+},
+{
+"run": "t3r_distinct_py_hlb",
+"task": "distinct",
+"lang": "python",
+"model": "haiku",
+"effort": "low"
+},
+{
+"run": "t3r_alter_rs_hla",
+"task": "alter",
+"lang": "rust",
+"model": "haiku",
+"effort": "low"
+},
+{
+"run": "t3r_alter_py_hla",
+"task": "alter",
+"lang": "python",
+"model": "haiku",
+"effort": "low"
+},
+{
+"run": "t3r_alter_rs_hlb",
+"task": "alter",
+"lang": "rust",
+"model": "haiku",
+"effort": "low"
+},
+{
+"run": "t3r_alter_py_hlb",
+"task": "alter",
+"lang": "python",
+"model": "haiku",
+"effort": "low"
+},
+{
+"run": "t3r_release_rs_hla",
+"task": "release",
+"lang": "rust",
+"model": "haiku",
+"effort": "low"
+},
+{
+"run": "t3r_release_py_hla",
+"task": "release",
+"lang": "python",
+"model": "haiku",
+"effort": "low"
+},
+{
+"run": "t3r_release_rs_hlb",
+"task": "release",
+"lang": "rust",
+"model": "haiku",
+"effort": "low"
+},
+{
+"run": "t3r_release_py_hlb",
+"task": "release",
+"lang": "python",
+"model": "haiku",
+"effort": "low"
+}
+]

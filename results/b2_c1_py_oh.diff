@@ -1,0 +1,93 @@
+diff --git a/app/lending/ingest.py b/app/lending/ingest.py
+index 6ab9789..8a33645 100644
+--- a/app/lending/ingest.py
++++ b/app/lending/ingest.py
+@@ -89,7 +89,7 @@ def parse_loan(record: Record, line: int) -> Loan:
+ def member_query(member: Member) -> str:
+     attrs = [
+         f"has member-id {quote(member.id)}",
+-        f"has name {quote(member.name)}",
++        f"has full-name {quote(member.name)}",
+         f"has joined {member.joined.isoformat()}",
+     ]
+     if member.email is not None:
+diff --git a/app/lending/repo/members.py b/app/lending/repo/members.py
+index 6b68702..72bc977 100644
+--- a/app/lending/repo/members.py
++++ b/app/lending/repo/members.py
+@@ -12,7 +12,7 @@ from lending.model import LoanFee, Member, MemberContact, MemberFee, MemberLoan,
+ def list_members(db: Db) -> list[MemberContact]:
+     rows = db.read_rows("""
+         match
+-          $m isa member, has member-id $mid, has name $n;
++          $m isa member, has member-id $mid, has full-name $n;
+           try { $m has email $e; };
+           try { $m has phone $p; };
+     """)
+@@ -35,7 +35,7 @@ def list_members(db: Db) -> list[MemberContact]:
+ def find_member(db: Db, member_id: str) -> Optional[Member]:
+     rows = db.read_rows(f"""
+         match
+-          $m isa member, has member-id {quote(member_id)}, has name $n, has joined $j;
++          $m isa member, has member-id {quote(member_id)}, has full-name $n, has joined $j;
+           try {{ $m has email $e; }};
+           try {{ $m has phone $p; }};
+     """)
+@@ -85,7 +85,7 @@ def member_loans(db: Db, member_id: str) -> list[MemberLoan]:
+ def find_contact(db: Db, member_id: str) -> Optional[MemberContact]:
+     rows = db.read_rows(f"""
+         match
+-          $m isa member, has member-id {quote(member_id)}, has name $n;
++          $m isa member, has member-id {quote(member_id)}, has full-name $n;
+           try {{ $m has email $e; }};
+           try {{ $m has phone $p; }};
+     """)
+@@ -107,7 +107,7 @@ def inactive_members(db: Db, since: date) -> list[MemberName]:
+     """Members with no loan borrowed on or after `since`."""
+     rows = db.read_rows(f"""
+         match
+-          $m isa member, has member-id $mid, has name $n;
++          $m isa member, has member-id $mid, has full-name $n;
+           not {{
+             $l isa loan, links (borrower: $m), has borrowed $bo;
+             $bo >= {since.isoformat()};
+@@ -128,7 +128,7 @@ def loan_borrowers(db: Db) -> list[MemberName]:
+     rows = db.read_rows("""
+         match
+           $l isa loan, links (borrower: $m);
+-          $m has member-id $mid, has name $n;
++          $m has member-id $mid, has full-name $n;
+     """)
+     borrowers: list[MemberName] = []
+     for row in rows:
+@@ -145,7 +145,7 @@ def loan_fees(db: Db) -> list[MemberFee]:
+     rows = db.read_rows("""
+         match
+           $l isa loan, links (borrower: $m), has fee-cents $f;
+-          $m has member-id $mid, has name $n;
++          $m has member-id $mid, has full-name $n;
+     """)
+     fees: list[MemberFee] = []
+     for row in rows:
+diff --git a/app/lending/schema.py b/app/lending/schema.py
+index 746be54..6292393 100644
+--- a/app/lending/schema.py
++++ b/app/lending/schema.py
+@@ -1,7 +1,7 @@
+ SCHEMA = """
+ define
+   attribute member-id, value string;
+-  attribute name, value string;
++  attribute full-name, value string;
+   attribute email, value string;
+   attribute phone, value string;
+   attribute joined, value date;
+@@ -22,7 +22,7 @@ define
+ 
+   entity member,
+     owns member-id @key,
+-    owns name,
++    owns full-name,
+     owns email,
+     owns phone,
+     owns joined,

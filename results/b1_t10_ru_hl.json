@@ -1,0 +1,119 @@
+{
+ "run": "b1_t10_ru_hl",
+ "task": "T10",
+ "lang": "rust",
+ "model": "haiku",
+ "effort": "low",
+ "ws": "/home/user/agentbench/runs/b1_t10_ru_hl",
+ "baseline": "e2430ca442f9f81992f014488b0d5b68071529d6",
+ "created": 1794853414.3568814,
+ "tampered": [],
+ "diff_shortstat": "1 file changed, 1 insertion(+), 1 deletion(-)",
+ "lines_added": 1,
+ "lines_deleted": 1,
+ "build_ok": true,
+ "build_output": "",
+ "setup_ok": true,
+ "hidden": [
+  {
+   "args": [
+    "books"
+   ],
+   "passed": true,
+   "exit": 0,
+   "expected_exit": 0
+  },
+  {
+   "args": [
+    "member",
+    "M001"
+   ],
+   "passed": true,
+   "exit": 0,
+   "expected_exit": 0
+  },
+  {
+   "args": [
+    "member",
+    "M002"
+   ],
+   "passed": true,
+   "exit": 0,
+   "expected_exit": 0
+  },
+  {
+   "args": [
+    "member",
+    "M017"
+   ],
+   "passed": true,
+   "exit": 0,
+   "expected_exit": 0
+  },
+  {
+   "args": [
+    "member",
+    "M900"
+   ],
+   "passed": true,
+   "exit": 0,
+   "expected_exit": 0
+  },
+  {
+   "args": [
+    "member",
+    "NOPE"
+   ],
+   "passed": true,
+   "exit": 1,
+   "expected_exit": 1
+  },
+  {
+   "args": [
+    "overdue",
+    "2024-05-01"
+   ],
+   "passed": true,
+   "exit": 0,
+   "expected_exit": 0
+  },
+  {
+   "args": [
+    "overdue",
+    "2024-03-15"
+   ],
+   "passed": true,
+   "exit": 0,
+   "expected_exit": 0
+  },
+  {
+   "args": [
+    "stats"
+   ],
+   "passed": true,
+   "exit": 0,
+   "expected_exit": 0
+  },
+  {
+   "args": [
+    "overdue",
+    "2024-05-01"
+   ],
+   "passed": true,
+   "exit": 0,
+   "expected_exit": 0
+  }
+ ],
+ "hidden_passed": 10,
+ "hidden_total": 10,
+ "regressions_failed": [],
+ "task_failed": [],
+ "structural_failures": [],
+ "pass": true,
+ "checks": 1,
+ "check_build_s": 11.0,
+ "check_test_s": 0.8,
+ "check_build_failures": 0,
+ "check_test_failures": 0,
+ "final_visible_ok": true
+}

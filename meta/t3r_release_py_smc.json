@@ -1,0 +1,15 @@
+{
+ "run": "t3r_release_py_smc",
+ "task": "release",
+ "suite": "toydb-t3",
+ "tier": "t3",
+ "lang": "python",
+ "model": "sonnet",
+ "effort": "medium",
+ "ws": "/home/user/agentbench/runs/t3r_release_py_smc",
+ "hint": true,
+ "readme_from": "t2",
+ "baseline": "5403201b9263b5171ba5f0f67170ea9360c9b14b",
+ "created": 1795152210.0141401,
+ "warm_ok": true
+}

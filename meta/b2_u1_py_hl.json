@@ -1,0 +1,11 @@
+{
+ "run": "b2_u1_py_hl",
+ "task": "U1",
+ "suite": "v2",
+ "lang": "python",
+ "model": "haiku",
+ "effort": "low",
+ "ws": "/home/user/agentbench/runs/b2_u1_py_hl",
+ "baseline": "27c650fe7dfc47abedd87c0d1cf94d018f1ff342",
+ "created": 1794856241.0115895
+}

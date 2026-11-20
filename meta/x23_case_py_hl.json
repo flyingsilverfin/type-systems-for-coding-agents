@@ -1,0 +1,20 @@
+{
+ "run": "x23_case_py_hl",
+ "task": "case",
+ "suite": "toydb-t2",
+ "tier": "t3",
+ "lang": "python",
+ "model": "haiku",
+ "effort": "low",
+ "ws": "/home/user/agentbench/runs/x23_case_py_hl",
+ "baseline": "161695dde20274f6ee98b3aba730b4de40bce7cc",
+ "created": 1794976059.3043237,
+ "warm_ok": true,
+ "transplant_of": "t2_case_py_hl",
+ "apply_ok": false,
+ "merge_conflicts": {
+  "tests/sql/parser/test_lexer.py": 1
+ },
+ "files_changed": 8,
+ "files_fast": 3
+}

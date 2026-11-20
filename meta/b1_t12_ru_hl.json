@@ -1,0 +1,10 @@
+{
+ "run": "b1_t12_ru_hl",
+ "task": "T12",
+ "lang": "rust",
+ "model": "haiku",
+ "effort": "low",
+ "ws": "/home/user/agentbench/runs/b1_t12_ru_hl",
+ "baseline": "c1ecd5a8144c2d491b9c07e022c033de0518b6b0",
+ "created": 1794853416.450932
+}

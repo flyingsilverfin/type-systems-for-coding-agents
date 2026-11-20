@@ -1,0 +1,12 @@
+{
+ "run": "b5_cg_py_hl",
+ "task": "CG",
+ "suite": "v3",
+ "lang": "python",
+ "model": "haiku",
+ "effort": "low",
+ "novis": false,
+ "ws": "/home/user/agentbench/runs/b5_cg_py_hl",
+ "baseline": "713cd01f1af894e60ad10c17ffb7aec400c778bd",
+ "created": 1794860189.3644257
+}

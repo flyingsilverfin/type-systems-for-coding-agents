@@ -1,0 +1,18 @@
+{
+ "run": "x23_release_rs_oh",
+ "task": "release",
+ "suite": "toydb-t2",
+ "tier": "t3",
+ "lang": "rust",
+ "model": "opus",
+ "effort": "high",
+ "ws": "/home/user/agentbench/runs/x23_release_rs_oh",
+ "baseline": "0383fe58a542d215bc1e367e10f2d7de24df5b54",
+ "created": 1794976482.448964,
+ "warm_ok": true,
+ "transplant_of": "t2_release_rs_oh",
+ "apply_ok": true,
+ "merge_conflicts": {},
+ "files_changed": 9,
+ "files_fast": 4
+}

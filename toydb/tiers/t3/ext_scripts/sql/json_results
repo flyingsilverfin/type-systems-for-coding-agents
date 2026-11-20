@@ -1,0 +1,61 @@
+# JSON output: the results of writes, schema changes and transaction control.
+
+[json]> CREATE TABLE v (id INT PRIMARY KEY, b BOOLEAN, i INT)
+[json]> INSERT INTO v VALUES (1, TRUE, 1), (2, FALSE, 2), (3, NULL, 3)
+---
+{"result":"create_table","table":"v"}
+{"result":"insert","count":3}
+
+[json]> UPDATE v SET i = 10 WHERE id = 3
+[json]> UPDATE v SET i = 0 WHERE id > 100
+[json]> DELETE FROM v WHERE id = 2
+[json]> INSERT INTO v (id) VALUES (7), (8)
+---
+{"result":"update","count":1}
+{"result":"update","count":0}
+{"result":"delete","count":1}
+{"result":"insert","count":2}
+
+# DROP TABLE reports whether the table existed. Table names are given as
+# stored, never quoted.
+[json]> DROP TABLE IF EXISTS nosuch
+[json]> CREATE TABLE "Select" (id INT PRIMARY KEY)
+[json]> DROP TABLE "Select"
+---
+{"result":"drop_table","table":"nosuch","existed":false}
+{"result":"create_table","table":"Select"}
+{"result":"drop_table","table":"Select","existed":true}
+
+# Transaction control. Every read-write statement so far ran in an implicit
+# transaction of its own (versions 1-9), so the next one is 10. A read-only
+# transaction reads at the next version without allocating it.
+[json]> BEGIN
+[json]> INSERT INTO v VALUES (9, TRUE, 9)
+[json]> COMMIT
+---
+{"result":"begin","version":10,"read_only":false}
+{"result":"insert","count":1}
+{"result":"commit","version":10}
+
+[json]> BEGIN READ ONLY
+[json]> SELECT id FROM v
+[json]> ROLLBACK
+---
+{"result":"begin","version":11,"read_only":true}
+{"result":"select","columns":["v.id"],"rows":[[1],[3],[7],[8],[9]]}
+{"result":"rollback","version":11}
+
+[json]> BEGIN TRANSACTION
+[json]> DELETE FROM v WHERE id > 5
+[json]> ROLLBACK
+[json]> SELECT COUNT(*) FROM v
+---
+{"result":"begin","version":11,"read_only":false}
+{"result":"delete","count":3}
+{"result":"rollback","version":11}
+{"result":"select","columns":[null],"rows":[[5]]}
+
+# Without the tag, write results print nothing, as before.
+> INSERT INTO v VALUES (11, FALSE, 11)
+---
+ok

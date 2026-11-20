@@ -1,0 +1,20 @@
+# ALTER TABLE adds, renames and drops columns of an existing table.
+
+> CREATE TABLE t (id INT PRIMARY KEY, name STRING, note STRING)
+> INSERT INTO t VALUES (1, 'a', 'x'), (2, 'b', 'y')
+> ALTER TABLE t ADD COLUMN score INT NOT NULL DEFAULT 0
+> ALTER TABLE t RENAME COLUMN name TO label
+> ALTER TABLE t DROP COLUMN note
+[header]> SELECT * FROM t
+---
+t.id, t.label, t.score
+1, 'a', 0
+2, 'b', 0
+
+schema t
+---
+CREATE TABLE t (
+  id INTEGER PRIMARY KEY,
+  label STRING DEFAULT NULL,
+  score INTEGER NOT NULL DEFAULT 0
+)

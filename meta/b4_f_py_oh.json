@@ -1,0 +1,12 @@
+{
+ "run": "b4_f_py_oh",
+ "task": "F",
+ "suite": "v3",
+ "lang": "python",
+ "model": "opus",
+ "effort": "high",
+ "novis": false,
+ "ws": "/home/user/agentbench/runs/b4_f_py_oh",
+ "baseline": "3d09ea788d54c606fc24bcdeba9d2296f8d1049d",
+ "created": 1794861564.5552452
+}

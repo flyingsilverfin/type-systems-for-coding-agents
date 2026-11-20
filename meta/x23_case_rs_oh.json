@@ -1,0 +1,18 @@
+{
+ "run": "x23_case_rs_oh",
+ "task": "case",
+ "suite": "toydb-t2",
+ "tier": "t3",
+ "lang": "rust",
+ "model": "opus",
+ "effort": "high",
+ "ws": "/home/user/agentbench/runs/x23_case_rs_oh",
+ "baseline": "9208515e76f4ba963137d66ee95a3ab8038f3774",
+ "created": 1794976086.7476764,
+ "warm_ok": true,
+ "transplant_of": "t2_case_rs_oh",
+ "apply_ok": true,
+ "merge_conflicts": {},
+ "files_changed": 6,
+ "files_fast": 2
+}

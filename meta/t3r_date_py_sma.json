@@ -1,0 +1,15 @@
+{
+ "run": "t3r_date_py_sma",
+ "task": "date",
+ "suite": "toydb-t3",
+ "tier": "t3",
+ "lang": "python",
+ "model": "sonnet",
+ "effort": "medium",
+ "ws": "/home/user/agentbench/runs/t3r_date_py_sma",
+ "hint": true,
+ "readme_from": "t2",
+ "baseline": "0ac1ebf358e317f72eda6f11bfa018533e83d4b9",
+ "created": 1795150570.8827975,
+ "warm_ok": true
+}

@@ -1,0 +1,62 @@
+# JSON output: plans of INSERT, UPDATE, DELETE, CREATE TABLE and DROP TABLE.
+# EXPLAIN never executes the statement.
+
+> CREATE TABLE item (id INT PRIMARY KEY, name STRING INDEX, price FLOAT, qty INT)
+> INSERT INTO item VALUES (1, 'apple', 1.5, 10), (2, 'pear', 2.25, 0), (3, 'fig', NULL, 7)
+---
+ok
+
+# INSERT: all rows of the Values node are written, whatever the plan display
+# abbreviates.
+[json]> EXPLAIN INSERT INTO item VALUES (4, 'kiwi', 0.5, 3)
+[json]> EXPLAIN INSERT INTO item (id, name) VALUES (5, 'a'), (6, 'b')
+---
+{"result":"explain","plan":{"statement":"insert","table":"item","source":{"node":"values","rows":[[{"constant":4},{"constant":"kiwi"},{"constant":0.5},{"constant":3}]]}}}
+{"result":"explain","plan":{"statement":"insert","table":"item","source":{"node":"values","rows":[[{"constant":5},{"constant":"a"}],[{"constant":6},{"constant":"b"}]]}}}
+
+# UPDATE: the assignments in plan display order (by column name), with the
+# expressions resolved against the source. DEFAULT is the default value.
+[json]> EXPLAIN UPDATE item SET qty = qty + 1, price = 0.0 WHERE id = 1
+[json]> EXPLAIN UPDATE item SET name = DEFAULT WHERE id = 6
+---
+{"result":"explain","plan":{"statement":"update","table":"item","set":[{"column":"price","expr":{"constant":0.0}},{"column":"qty","expr":{"op":"_ + _","args":[{"column":3,"label":"item.qty"},{"constant":1}]}}],"source":{"node":"key_lookup","table":"item","alias":null,"keys":[1]}}}
+{"result":"explain","plan":{"statement":"update","table":"item","set":[{"column":"name","expr":{"constant":null}}],"source":{"node":"key_lookup","table":"item","alias":null,"keys":[6]}}}
+
+# DELETE, with and without a filter.
+[json]> EXPLAIN DELETE FROM item WHERE qty < 5
+[json]> EXPLAIN DELETE FROM item
+---
+{"result":"explain","plan":{"statement":"delete","table":"item","source":{"node":"scan","table":"item","alias":null,"filter":{"op":"_ < _","args":[{"column":3,"label":"item.qty"},{"constant":5}]}}}}
+{"result":"explain","plan":{"statement":"delete","table":"item","source":{"node":"scan","table":"item","alias":null,"filter":null}}}
+
+# Schema statements show only the table name, like their plan display.
+[json]> EXPLAIN CREATE TABLE z (id INT PRIMARY KEY)
+[json]> EXPLAIN DROP TABLE IF EXISTS nosuch
+[json]> EXPLAIN DROP TABLE item
+---
+{"result":"explain","plan":{"statement":"create_table","table":"z"}}
+{"result":"explain","plan":{"statement":"drop_table","table":"nosuch"}}
+{"result":"explain","plan":{"statement":"drop_table","table":"item"}}
+
+# Nothing was executed.
+> SELECT * FROM item
+---
+1, 'apple', 1.5, 10
+2, 'pear', 2.25, 0
+3, 'fig', NULL, 7
+
+schema
+---
+CREATE TABLE item (
+  id INTEGER PRIMARY KEY,
+  name STRING DEFAULT NULL INDEX,
+  price FLOAT DEFAULT NULL,
+  qty INTEGER DEFAULT NULL
+)
+
+# Errors while planning are reported as usual.
+[json]!> EXPLAIN INSERT INTO nosuch VALUES (1)
+[json]!> EXPLAIN UPDATE item SET nope = 1
+---
+Error: invalid input: table nosuch does not exist
+Error: invalid input: unknown column nope

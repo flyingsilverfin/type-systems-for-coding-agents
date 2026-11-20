@@ -1,0 +1,16 @@
+{
+ "run": "x12_case_py_oh",
+ "task": "case",
+ "suite": "toydb-t1",
+ "tier": "t2",
+ "lang": "python",
+ "model": "opus",
+ "effort": "high",
+ "ws": "/home/user/agentbench/runs/x12_case_py_oh",
+ "baseline": "86bcae9b7474c671b892c1198d92308f4c017649",
+ "created": 1794950553.1127908,
+ "warm_ok": true,
+ "transplant_of": "t1_case_py_oh",
+ "apply_ok": true,
+ "apply_err": ""
+}

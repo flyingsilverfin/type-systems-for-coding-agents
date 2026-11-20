@@ -1,0 +1,506 @@
+[
+{
+"run": "t3r_date_rs_sma",
+"task": "date",
+"lang": "rust",
+"model": "sonnet",
+"effort": "medium"
+},
+{
+"run": "t3r_date_py_sma",
+"task": "date",
+"lang": "python",
+"model": "sonnet",
+"effort": "medium"
+},
+{
+"run": "t3r_date_rs_oha",
+"task": "date",
+"lang": "rust",
+"model": "opus",
+"effort": "high"
+},
+{
+"run": "t3r_date_py_oha",
+"task": "date",
+"lang": "python",
+"model": "opus",
+"effort": "high"
+},
+{
+"run": "t3r_release_rs_sma",
+"task": "release",
+"lang": "rust",
+"model": "sonnet",
+"effort": "medium"
+},
+{
+"run": "t3r_release_py_sma",
+"task": "release",
+"lang": "python",
+"model": "sonnet",
+"effort": "medium"
+},
+{
+"run": "t3r_release_rs_oha",
+"task": "release",
+"lang": "rust",
+"model": "opus",
+"effort": "high"
+},
+{
+"run": "t3r_release_py_oha",
+"task": "release",
+"lang": "python",
+"model": "opus",
+"effort": "high"
+},
+{
+"run": "t3r_distinct_rs_sma",
+"task": "distinct",
+"lang": "rust",
+"model": "sonnet",
+"effort": "medium"
+},
+{
+"run": "t3r_distinct_py_sma",
+"task": "distinct",
+"lang": "python",
+"model": "sonnet",
+"effort": "medium"
+},
+{
+"run": "t3r_distinct_rs_oha",
+"task": "distinct",
+"lang": "rust",
+"model": "opus",
+"effort": "high"
+},
+{
+"run": "t3r_distinct_py_oha",
+"task": "distinct",
+"lang": "python",
+"model": "opus",
+"effort": "high"
+},
+{
+"run": "t3r_case_rs_sma",
+"task": "case",
+"lang": "rust",
+"model": "sonnet",
+"effort": "medium"
+},
+{
+"run": "t3r_case_py_sma",
+"task": "case",
+"lang": "python",
+"model": "sonnet",
+"effort": "medium"
+},
+{
+"run": "t3r_case_rs_oha",
+"task": "case",
+"lang": "rust",
+"model": "opus",
+"effort": "high"
+},
+{
+"run": "t3r_case_py_oha",
+"task": "case",
+"lang": "python",
+"model": "opus",
+"effort": "high"
+},
+{
+"run": "t3r_alter_rs_sma",
+"task": "alter",
+"lang": "rust",
+"model": "sonnet",
+"effort": "medium"
+},
+{
+"run": "t3r_alter_py_sma",
+"task": "alter",
+"lang": "python",
+"model": "sonnet",
+"effort": "medium"
+},
+{
+"run": "t3r_alter_rs_oha",
+"task": "alter",
+"lang": "rust",
+"model": "opus",
+"effort": "high"
+},
+{
+"run": "t3r_alter_py_oha",
+"task": "alter",
+"lang": "python",
+"model": "opus",
+"effort": "high"
+},
+{
+"run": "t3r_between_in_rs_sma",
+"task": "between_in",
+"lang": "rust",
+"model": "sonnet",
+"effort": "medium"
+},
+{
+"run": "t3r_between_in_py_sma",
+"task": "between_in",
+"lang": "python",
+"model": "sonnet",
+"effort": "medium"
+},
+{
+"run": "t3r_between_in_rs_oha",
+"task": "between_in",
+"lang": "rust",
+"model": "opus",
+"effort": "high"
+},
+{
+"run": "t3r_between_in_py_oha",
+"task": "between_in",
+"lang": "python",
+"model": "opus",
+"effort": "high"
+},
+{
+"run": "t3r_date_rs_smb",
+"task": "date",
+"lang": "rust",
+"model": "sonnet",
+"effort": "medium"
+},
+{
+"run": "t3r_date_py_smb",
+"task": "date",
+"lang": "python",
+"model": "sonnet",
+"effort": "medium"
+},
+{
+"run": "t3r_date_rs_ohb",
+"task": "date",
+"lang": "rust",
+"model": "opus",
+"effort": "high"
+},
+{
+"run": "t3r_date_py_ohb",
+"task": "date",
+"lang": "python",
+"model": "opus",
+"effort": "high"
+},
+{
+"run": "t3r_release_rs_smb",
+"task": "release",
+"lang": "rust",
+"model": "sonnet",
+"effort": "medium"
+},
+{
+"run": "t3r_release_py_smb",
+"task": "release",
+"lang": "python",
+"model": "sonnet",
+"effort": "medium"
+},
+{
+"run": "t3r_release_rs_ohb",
+"task": "release",
+"lang": "rust",
+"model": "opus",
+"effort": "high"
+},
+{
+"run": "t3r_release_py_ohb",
+"task": "release",
+"lang": "python",
+"model": "opus",
+"effort": "high"
+},
+{
+"run": "t3r_distinct_rs_smb",
+"task": "distinct",
+"lang": "rust",
+"model": "sonnet",
+"effort": "medium"
+},
+{
+"run": "t3r_distinct_py_smb",
+"task": "distinct",
+"lang": "python",
+"model": "sonnet",
+"effort": "medium"
+},
+{
+"run": "t3r_distinct_rs_ohb",
+"task": "distinct",
+"lang": "rust",
+"model": "opus",
+"effort": "high"
+},
+{
+"run": "t3r_distinct_py_ohb",
+"task": "distinct",
+"lang": "python",
+"model": "opus",
+"effort": "high"
+},
+{
+"run": "t3r_case_rs_smb",
+"task": "case",
+"lang": "rust",
+"model": "sonnet",
+"effort": "medium"
+},
+{
+"run": "t3r_case_py_smb",
+"task": "case",
+"lang": "python",
+"model": "sonnet",
+"effort": "medium"
+},
+{
+"run": "t3r_case_rs_ohb",
+"task": "case",
+"lang": "rust",
+"model": "opus",
+"effort": "high"
+},
+{
+"run": "t3r_case_py_ohb",
+"task": "case",
+"lang": "python",
+"model": "opus",
+"effort": "high"
+},
+{
+"run": "t3r_alter_rs_smb",
+"task": "alter",
+"lang": "rust",
+"model": "sonnet",
+"effort": "medium"
+},
+{
+"run": "t3r_alter_py_smb",
+"task": "alter",
+"lang": "python",
+"model": "sonnet",
+"effort": "medium"
+},
+{
+"run": "t3r_alter_rs_ohb",
+"task": "alter",
+"lang": "rust",
+"model": "opus",
+"effort": "high"
+},
+{
+"run": "t3r_alter_py_ohb",
+"task": "alter",
+"lang": "python",
+"model": "opus",
+"effort": "high"
+},
+{
+"run": "t3r_between_in_rs_smb",
+"task": "between_in",
+"lang": "rust",
+"model": "sonnet",
+"effort": "medium"
+},
+{
+"run": "t3r_between_in_py_smb",
+"task": "between_in",
+"lang": "python",
+"model": "sonnet",
+"effort": "medium"
+},
+{
+"run": "t3r_between_in_rs_ohb",
+"task": "between_in",
+"lang": "rust",
+"model": "opus",
+"effort": "high"
+},
+{
+"run": "t3r_between_in_py_ohb",
+"task": "between_in",
+"lang": "python",
+"model": "opus",
+"effort": "high"
+},
+{
+"run": "t3r_date_rs_smc",
+"task": "date",
+"lang": "rust",
+"model": "sonnet",
+"effort": "medium"
+},
+{
+"run": "t3r_date_py_smc",
+"task": "date",
+"lang": "python",
+"model": "sonnet",
+"effort": "medium"
+},
+{
+"run": "t3r_date_rs_ohc",
+"task": "date",
+"lang": "rust",
+"model": "opus",
+"effort": "high"
+},
+{
+"run": "t3r_date_py_ohc",
+"task": "date",
+"lang": "python",
+"model": "opus",
+"effort": "high"
+},
+{
+"run": "t3r_release_rs_smc",
+"task": "release",
+"lang": "rust",
+"model": "sonnet",
+"effort": "medium"
+},
+{
+"run": "t3r_release_py_smc",
+"task": "release",
+"lang": "python",
+"model": "sonnet",
+"effort": "medium"
+},
+{
+"run": "t3r_release_rs_ohc",
+"task": "release",
+"lang": "rust",
+"model": "opus",
+"effort": "high"
+},
+{
+"run": "t3r_release_py_ohc",
+"task": "release",
+"lang": "python",
+"model": "opus",
+"effort": "high"
+},
+{
+"run": "t3r_distinct_rs_smc",
+"task": "distinct",
+"lang": "rust",
+"model": "sonnet",
+"effort": "medium"
+},
+{
+"run": "t3r_distinct_py_smc",
+"task": "distinct",
+"lang": "python",
+"model": "sonnet",
+"effort": "medium"
+},
+{
+"run": "t3r_distinct_rs_ohc",
+"task": "distinct",
+"lang": "rust",
+"model": "opus",
+"effort": "high"
+},
+{
+"run": "t3r_distinct_py_ohc",
+"task": "distinct",
+"lang": "python",
+"model": "opus",
+"effort": "high"
+},
+{
+"run": "t3r_case_rs_smc",
+"task": "case",
+"lang": "rust",
+"model": "sonnet",
+"effort": "medium"
+},
+{
+"run": "t3r_case_py_smc",
+"task": "case",
+"lang": "python",
+"model": "sonnet",
+"effort": "medium"
+},
+{
+"run": "t3r_case_rs_ohc",
+"task": "case",
+"lang": "rust",
+"model": "opus",
+"effort": "high"
+},
+{
+"run": "t3r_case_py_ohc",
+"task": "case",
+"lang": "python",
+"model": "opus",
+"effort": "high"
+},
+{
+"run": "t3r_alter_rs_smc",
+"task": "alter",
+"lang": "rust",
+"model": "sonnet",
+"effort": "medium"
+},
+{
+"run": "t3r_alter_py_smc",
+"task": "alter",
+"lang": "python",
+"model": "sonnet",
+"effort": "medium"
+},
+{
+"run": "t3r_alter_rs_ohc",
+"task": "alter",
+"lang": "rust",
+"model": "opus",
+"effort": "high"
+},
+{
+"run": "t3r_alter_py_ohc",
+"task": "alter",
+"lang": "python",
+"model": "opus",
+"effort": "high"
+},
+{
+"run": "t3r_between_in_rs_smc",
+"task": "between_in",
+"lang": "rust",
+"model": "sonnet",
+"effort": "medium"
+},
+{
+"run": "t3r_between_in_py_smc",
+"task": "between_in",
+"lang": "python",
+"model": "sonnet",
+"effort": "medium"
+},
+{
+"run": "t3r_between_in_rs_ohc",
+"task": "between_in",
+"lang": "rust",
+"model": "opus",
+"effort": "high"
+},
+{
+"run": "t3r_between_in_py_ohc",
+"task": "between_in",
+"lang": "python",
+"model": "opus",
+"effort": "high"
+}
+]

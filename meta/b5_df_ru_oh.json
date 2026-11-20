@@ -1,0 +1,12 @@
+{
+ "run": "b5_df_ru_oh",
+ "task": "DF",
+ "suite": "v3",
+ "lang": "rust",
+ "model": "opus",
+ "effort": "high",
+ "novis": false,
+ "ws": "/home/user/agentbench/runs/b5_df_ru_oh",
+ "baseline": "191e2bf5c2afd59a835c0ef579bcde1112ac2343",
+ "created": 1794860432.226902
+}

@@ -1,0 +1,31 @@
+# Release notes: one example of each change.
+
+> CREATE TABLE IF NOT EXISTS item (id INT PRIMARY KEY, name STRING, price INT, sale BOOLEAN)
+> CREATE TABLE IF NOT EXISTS item (id INT PRIMARY KEY)
+> INSERT INTO item VALUES (1, 'Apple', -5, TRUE), (2, 'pear', 12, FALSE), (3, 'Plum', 20, TRUE)
+---
+ok
+
+# NOT LIKE, and the functions ABS, UPPER and LENGTH.
+> SELECT id, ABS(price), UPPER(name), LENGTH(name) FROM item WHERE name NOT LIKE 'p%' ORDER BY id
+---
+1, 5, 'APPLE', 5
+3, 20, 'PLUM', 4
+
+# The aggregates BOOL_AND and BOOL_OR.
+> SELECT BOOL_AND(sale), BOOL_OR(sale) FROM item
+---
+FALSE, TRUE
+
+# INSERT ... SELECT, and the function LOWER.
+> INSERT INTO item SELECT id + 10, LOWER(name), price, NOT sale FROM item WHERE sale
+---
+ok
+
+# A key listed twice is looked up once.
+[plan]> SELECT id, name FROM item WHERE id = 13 OR id = 1 OR id = 13
+---
+Projection: item.id, item.name
+└─ KeyLookup: item (13, 1)
+13, 'plum'
+1, 'Apple'

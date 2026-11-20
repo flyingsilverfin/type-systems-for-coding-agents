@@ -1,0 +1,14 @@
+{
+ "run": "t3_release_py_oh",
+ "task": "release",
+ "suite": "toydb-t3",
+ "tier": "t3",
+ "lang": "python",
+ "model": "opus",
+ "effort": "high",
+ "ws": "/home/user/agentbench/runs/t3_release_py_oh",
+ "hint": true,
+ "baseline": "21a98e9c5884fc275dc37d9e3bc522f3b5b112d5",
+ "created": 1795025662.6638596,
+ "warm_ok": true
+}

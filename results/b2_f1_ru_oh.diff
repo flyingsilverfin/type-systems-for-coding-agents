@@ -1,0 +1,130 @@
+diff --git a/app/src/main.rs b/app/src/main.rs
+index 2bb4795..30e038a 100644
+--- a/app/src/main.rs
++++ b/app/src/main.rs
+@@ -38,6 +38,7 @@ commands:
+   genre <genre>             list books of a genre ('(none)' for books without one)
+   never-borrowed            list books that have never been lent out
+   available <isbn>          show how many copies of a book are available
++  borrowers <isbn>          list every member who has borrowed a book, with their loan counts
+   top <n>                   list the <n> members with the most loans
+   search <text>             list books whose title or subtitle contains <text>
+   monthly                   count loans per month borrowed
+@@ -139,6 +140,11 @@ fn run(args: &[String]) -> Result<()> {
+             let availability = repo::books::available(&db, isbn)?.ok_or_else(|| no_such_book(isbn))?;
+             emit(report::books::available(&availability));
+         }
++        "borrowers" => {
++            let isbn = arg(args, 1, "borrowers <isbn>")?;
++            let loans = repo::books::borrowers(&db, isbn)?.ok_or_else(|| no_such_book(isbn))?;
++            emit(report::books::borrowers(isbn, &loans));
++        }
+         "top" => {
+             let limit = parse_count(arg(args, 1, "top <n>")?)?;
+             emit(report::members::top(&repo::members::top(&db)?, limit));
+diff --git a/app/src/repo/books.rs b/app/src/repo/books.rs
+index 984154c..ea92fa6 100644
+--- a/app/src/repo/books.rs
++++ b/app/src/repo/books.rs
+@@ -1,10 +1,12 @@
+-//! Queries behind the book commands: books, book, stats, decades, genre, never-borrowed, available, search.
++//! Queries behind the book commands: books, book, stats, decades, genre, never-borrowed, available, search,
++//! borrowers.
+ use typedb_driver::concept::Concept;
+ 
+ use crate::{
+     db::{quote, Db},
+     error::{AppError, Result},
+     model::{Book, Loan},
++    repo::members::MemberName,
+ };
+ 
+ /// The columns of a book listing line.
+@@ -333,3 +335,46 @@ pub fn search(db: &Db) -> Result<Vec<(BookSummary, Option<String>)>> {
+         })
+         .collect()
+ }
++
++/// One entry per loan of the book: the loan id with its borrower's id and name, or `None` if there is no such book.
++pub fn borrowers(db: &Db, isbn: &str) -> Result<Option<Vec<(String, MemberName)>>> {
++    let book_rows = db.read_rows(&format!(
++        "
++        match
++          $b isa book, has isbn {};
++        ",
++        quote(isbn)
++    ))?;
++    if book_rows.is_empty() {
++        return Ok(None);
++    }
++    let rows = db.read_rows(&format!(
++        "
++        match
++          $b isa book, has isbn {};
++          $l isa loan, links (borrower: $m, item: $b), has loan-id $loan_id;
++          $m has member-id $member_id, has name $name;
++        ",
++        quote(isbn)
++    ))?;
++    rows.iter()
++        .map(|row| {
++            let loan_id = row.get("loan_id")?
++                .and_then(Concept::try_get_string)
++                .ok_or_else(|| AppError::column("loan_id", "string"))?
++                .to_owned();
++            let member = MemberName {
++                id: row.get("member_id")?
++                    .and_then(Concept::try_get_string)
++                    .ok_or_else(|| AppError::column("member_id", "string"))?
++                    .to_owned(),
++                name: row.get("name")?
++                    .and_then(Concept::try_get_string)
++                    .ok_or_else(|| AppError::column("name", "string"))?
++                    .to_owned(),
++            };
++            Ok((loan_id, member))
++        })
++        .collect::<Result<Vec<_>>>()
++        .map(Some)
++}
+diff --git a/app/src/report/books.rs b/app/src/report/books.rs
+index 9c007b8..2a9501b 100644
+--- a/app/src/report/books.rs
++++ b/app/src/report/books.rs
+@@ -1,10 +1,13 @@
+ //! Output of the book commands.
+-use std::collections::BTreeMap;
++use std::collections::{BTreeMap, BTreeSet};
+ 
+ use super::{book_lines, NONE, NO_GENRE};
+ use crate::{
+     model::{Book, Loan},
+-    repo::books::{Availability, BookSummary},
++    repo::{
++        books::{Availability, BookSummary},
++        members::MemberName,
++    },
+ };
+ 
+ pub fn books(items: &[BookSummary]) -> Vec<String> {
+@@ -73,3 +76,20 @@ pub fn search(rows: &[(BookSummary, Option<String>)], query: &str) -> Vec<String
+             .map(|(book, _)| book),
+     )
+ }
++
++/// Every member who ever borrowed the book, with their number of loans of it: most loans first, then member id.
++pub fn borrowers(isbn: &str, loans: &[(String, MemberName)]) -> Vec<String> {
++    let mut seen: BTreeSet<&str> = BTreeSet::new();
++    let mut counts: BTreeMap<&str, (&str, usize)> = BTreeMap::new();
++    for (loan_id, member) in loans {
++        if seen.insert(loan_id) {
++            counts.entry(&member.id).or_insert((&member.name, 0)).1 += 1;
++        }
++    }
++    let mut ranked: Vec<(&str, &str, usize)> =
++        counts.into_iter().map(|(id, (name, count))| (id, name, count)).collect();
++    ranked.sort_by(|a, b| b.2.cmp(&a.2).then(a.0.cmp(b.0)));
++    let mut lines = vec![format!("borrowers {isbn}: {} members", ranked.len())];
++    lines.extend(ranked.iter().map(|(id, name, count)| format!("  {id} {name} ({count} loans)")));
++    lines
++}

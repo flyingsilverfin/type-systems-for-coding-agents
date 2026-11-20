@@ -1,0 +1,1 @@
+Moved to [`architecture/index.md`](architecture/index.md).

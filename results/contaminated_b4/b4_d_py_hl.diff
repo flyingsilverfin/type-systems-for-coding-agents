@@ -1,0 +1,211 @@
+diff --git a/app/lending/ingest.py b/app/lending/ingest.py
+index 6ab9789..31367e6 100644
+--- a/app/lending/ingest.py
++++ b/app/lending/ingest.py
+@@ -38,6 +38,13 @@ def _date(text: str, file: str, line: int) -> date:
+         raise CsvError(file, line, f"invalid date '{text}'") from None
+ 
+ 
++def parse_emails(text: Optional[str]) -> tuple[str, ...]:
++    """Split a `;`-separated email field into sorted, de-duplicated addresses."""
++    if text is None:
++        return ()
++    return tuple(sorted({part.strip() for part in text.split(";") if part.strip() != ""}))
++
++
+ def _int(text: str, file: str, line: int) -> int:
+     try:
+         return int(text)
+@@ -51,7 +58,7 @@ def parse_member(record: Record, line: int) -> Member:
+     return Member(
+         id=_field(record, "member_id", f, line),
+         name=_field(record, "name", f, line),
+-        email=_optional(record, "email"),
++        emails=parse_emails(_optional(record, "email")),
+         phone=_optional(record, "phone"),
+         joined=_date(_field(record, "joined", f, line), f, line),
+     )
+@@ -92,10 +99,9 @@ def member_query(member: Member) -> str:
+         f"has name {quote(member.name)}",
+         f"has joined {member.joined.isoformat()}",
+     ]
+-    if member.email is not None:
+-        attrs.append(f"has email {quote(member.email)}")
+     if member.phone is not None:
+         attrs.append(f"has phone {quote(member.phone)}")
++    attrs += [f"has email {quote(address)}" for address in member.emails]
+     return "insert $m isa member, " + ", ".join(attrs) + ";"
+ 
+ 
+diff --git a/app/lending/model.py b/app/lending/model.py
+index 2cff38a..85cb5cd 100644
+--- a/app/lending/model.py
++++ b/app/lending/model.py
+@@ -33,7 +33,7 @@ class LoanStatus:
+ class Member:
+     id: str
+     name: str
+-    email: Optional[str]
++    emails: tuple[str, ...]
+     phone: Optional[str]
+     joined: date
+ 
+@@ -67,7 +67,7 @@ class MemberContact:
+     """members, contact"""
+     id: str
+     name: str
+-    email: Optional[str]
++    emails: tuple[str, ...]
+     phone: Optional[str]
+ 
+ 
+diff --git a/app/lending/repo/members.py b/app/lending/repo/members.py
+index 6b68702..b836a11 100644
+--- a/app/lending/repo/members.py
++++ b/app/lending/repo/members.py
+@@ -16,20 +16,43 @@ def list_members(db: Db) -> list[MemberContact]:
+           try { $m has email $e; };
+           try { $m has phone $p; };
+     """)
+-    members: list[MemberContact] = []
++    by_id: dict[str, dict] = {}
+     for row in rows:
+         if (concept := row.get("mid")) is None or (member_id := concept.try_get_string()) is None:
+             raise DataError("$mid: expected a string")
+         if (concept := row.get("n")) is None or (name := concept.try_get_string()) is None:
+             raise DataError("$n: expected a string")
+-        email: Optional[str] = None
++        entry = by_id.setdefault(member_id, {"name": name, "emails": set(), "phone": None})
+         if (concept := row.get("e")) is not None and (email := concept.try_get_string()) is None:
+             raise DataError("$e: expected a string")
+-        phone: Optional[str] = None
++        elif concept is not None:
++            entry["emails"].add(email)
+         if (concept := row.get("p")) is not None and (phone := concept.try_get_string()) is None:
+             raise DataError("$p: expected a string")
+-        members.append(MemberContact(id=member_id, name=name, email=email, phone=phone))
+-    return members
++        elif concept is not None:
++            entry["phone"] = phone
++    return [
++        MemberContact(id=mid, name=e["name"], emails=tuple(sorted(e["emails"])), phone=e["phone"])
++        for mid, e in by_id.items()
++    ]
++
++
++def _read_contact(rows) -> tuple[str, tuple[str, ...], Optional[str]]:
++    """Name, sorted distinct emails and phone of a member from the rows of a per-member query."""
++    name: Optional[str] = None
++    emails: set[str] = set()
++    phone: Optional[str] = None
++    for row in rows:
++        if (concept := row.get("n")) is None or (name := concept.try_get_string()) is None:
++            raise DataError("$n: expected a string")
++        if (concept := row.get("e")) is not None:
++            if (email := concept.try_get_string()) is None:
++                raise DataError("$e: expected a string")
++            emails.add(email)
++        if (concept := row.get("p")) is not None:
++            if (phone := concept.try_get_string()) is None:
++                raise DataError("$p: expected a string")
++    return name, tuple(sorted(emails)), phone
+ 
+ 
+ def find_member(db: Db, member_id: str) -> Optional[Member]:
+@@ -41,18 +64,10 @@ def find_member(db: Db, member_id: str) -> Optional[Member]:
+     """)
+     if not rows:
+         return None
+-    row = rows[0]
+-    if (concept := row.get("n")) is None or (name := concept.try_get_string()) is None:
+-        raise DataError("$n: expected a string")
+-    if (concept := row.get("j")) is None or (joined := concept.try_get_date()) is None:
++    name, emails, phone = _read_contact(rows)
++    if (concept := rows[0].get("j")) is None or (joined := concept.try_get_date()) is None:
+         raise DataError("$j: expected a date")
+-    email: Optional[str] = None
+-    if (concept := row.get("e")) is not None and (email := concept.try_get_string()) is None:
+-        raise DataError("$e: expected a string")
+-    phone: Optional[str] = None
+-    if (concept := row.get("p")) is not None and (phone := concept.try_get_string()) is None:
+-        raise DataError("$p: expected a string")
+-    return Member(id=member_id, name=name, email=email, phone=phone, joined=joined)
++    return Member(id=member_id, name=name, emails=emails, phone=phone, joined=joined)
+ 
+ 
+ def member_loans(db: Db, member_id: str) -> list[MemberLoan]:
+@@ -91,16 +106,8 @@ def find_contact(db: Db, member_id: str) -> Optional[MemberContact]:
+     """)
+     if not rows:
+         return None
+-    row = rows[0]
+-    if (concept := row.get("n")) is None or (name := concept.try_get_string()) is None:
+-        raise DataError("$n: expected a string")
+-    email: Optional[str] = None
+-    if (concept := row.get("e")) is not None and (email := concept.try_get_string()) is None:
+-        raise DataError("$e: expected a string")
+-    phone: Optional[str] = None
+-    if (concept := row.get("p")) is not None and (phone := concept.try_get_string()) is None:
+-        raise DataError("$p: expected a string")
+-    return MemberContact(id=member_id, name=name, email=email, phone=phone)
++    name, emails, phone = _read_contact(rows)
++    return MemberContact(id=member_id, name=name, emails=emails, phone=phone)
+ 
+ 
+ def inactive_members(db: Db, since: date) -> list[MemberName]:
+diff --git a/app/lending/report/members.py b/app/lending/report/members.py
+index fa92ffa..ada7320 100644
+--- a/app/lending/report/members.py
++++ b/app/lending/report/members.py
+@@ -4,7 +4,11 @@ from __future__ import annotations
+ from collections import Counter
+ 
+ from lending.model import LoanFee, Member, MemberContact, MemberFee, MemberLoan, MemberName
+-from lending.report import or_none
++from lending.report import NONE, or_none
++
++
++def _emails(emails: tuple[str, ...], separator: str) -> str:
++    return separator.join(emails) if emails else NONE
+ 
+ 
+ def money(cents: int) -> str:
+@@ -13,14 +17,14 @@ def money(cents: int) -> str:
+ 
+ def members(items: list[MemberContact]) -> list[str]:
+     ordered = sorted(items, key=lambda m: m.id)
+-    return [f"{m.id} {m.name} {or_none(m.email)} {or_none(m.phone)}" for m in ordered]
++    return [f"{m.id} {m.name} {_emails(m.emails, ',')} {or_none(m.phone)}" for m in ordered]
+ 
+ 
+ def member(m: Member, loans: list[MemberLoan]) -> list[str]:
+     open_loans = sorted((loan for loan in loans if loan.is_open()), key=lambda loan: (loan.due, loan.id))
+     lines = [
+         f"member {m.id}: {m.name}",
+-        f"email: {or_none(m.email)}",
++        f"email: {_emails(m.emails, ', ')}",
+         f"phone: {or_none(m.phone)}",
+         f"joined: {m.joined.isoformat()}",
+         f"open loans: {len(open_loans)}",
+@@ -31,7 +35,7 @@ def member(m: Member, loans: list[MemberLoan]) -> list[str]:
+ 
+ 
+ def contact(m: MemberContact) -> list[str]:
+-    via = m.email or m.phone or "(no contact)"
++    via = (m.emails[0] if m.emails else None) or m.phone or "(no contact)"
+     return [f"{m.name} {via}"]
+ 
+ 
+diff --git a/app/lending/schema.py b/app/lending/schema.py
+index 746be54..eb1f9a3 100644
+--- a/app/lending/schema.py
++++ b/app/lending/schema.py
+@@ -23,7 +23,7 @@ define
+   entity member,
+     owns member-id @key,
+     owns name,
+-    owns email,
++    owns email @card(0..),
+     owns phone,
+     owns joined,
+     plays loan:borrower;

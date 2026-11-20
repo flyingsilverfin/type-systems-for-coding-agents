@@ -1,0 +1,21 @@
+{
+ "run": "x23_distinct_py_oh",
+ "task": "distinct",
+ "suite": "toydb-t2",
+ "tier": "t3",
+ "lang": "python",
+ "model": "opus",
+ "effort": "high",
+ "ws": "/home/user/agentbench/runs/x23_distinct_py_oh",
+ "baseline": "e240ab0b7d1b81b48b5a0344caacbed9563fd69a",
+ "created": 1794976310.139393,
+ "warm_ok": true,
+ "transplant_of": "t2_distinct_py_oh",
+ "apply_ok": false,
+ "merge_conflicts": {
+  "tests/sql/parser/test_lexer.py": 1,
+  "toydb/sql/planner/planner.py": 1
+ },
+ "files_changed": 9,
+ "files_fast": 3
+}

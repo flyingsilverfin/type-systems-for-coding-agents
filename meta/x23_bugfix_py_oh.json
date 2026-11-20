@@ -1,0 +1,18 @@
+{
+ "run": "x23_bugfix_py_oh",
+ "task": "bugfix",
+ "suite": "toydb-t2",
+ "tier": "t3",
+ "lang": "python",
+ "model": "opus",
+ "effort": "high",
+ "ws": "/home/user/agentbench/runs/x23_bugfix_py_oh",
+ "baseline": "8058f2c1257b20b049f3342199453886930fcf8e",
+ "created": 1794976600.0903864,
+ "warm_ok": true,
+ "transplant_of": "t2_bugfix_py_oh",
+ "apply_ok": true,
+ "merge_conflicts": {},
+ "files_changed": 4,
+ "files_fast": 2
+}

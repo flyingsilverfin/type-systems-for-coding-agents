@@ -1,0 +1,16 @@
+{
+ "run": "x12_distinct_rs_oh",
+ "task": "distinct",
+ "suite": "toydb-t1",
+ "tier": "t2",
+ "lang": "rust",
+ "model": "opus",
+ "effort": "high",
+ "ws": "/home/user/agentbench/runs/x12_distinct_rs_oh",
+ "baseline": "469aa4a15c18626cc785cd27e01a34647e98ce24",
+ "created": 1794950599.3094475,
+ "warm_ok": true,
+ "transplant_of": "t1_distinct_rs_oh",
+ "apply_ok": true,
+ "apply_err": ""
+}

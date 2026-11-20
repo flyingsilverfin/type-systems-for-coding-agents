@@ -1,0 +1,42 @@
+{
+ "run": "t1_release_rs_hl",
+ "task": "release",
+ "tier": "t1",
+ "lang": "rust",
+ "model": "haiku",
+ "effort": "low",
+ "build_ok": true,
+ "hidden_passed": 12,
+ "hidden_total": 12,
+ "visible_passed": 1,
+ "visible_total": 1,
+ "regression_passed": 210,
+ "regression_total": 210,
+ "regression_failed": [],
+ "hidden": {
+  "bool_aggregates": "pass",
+  "bool_aggregates_group": "pass",
+  "create_if_not_exists": "pass",
+  "create_if_not_exists_txn": "pass",
+  "functions": "pass",
+  "functions_queries": "pass",
+  "insert_select": "pass",
+  "insert_select_errors": "pass",
+  "insert_select_txn": "pass",
+  "lookup_dedup": "pass",
+  "not_like": "pass",
+  "not_like_syntax": "pass"
+ },
+ "tests_completed": true,
+ "grade_times": {
+  "build_s": 5.4,
+  "test_s": 1.1,
+  "total_s": 6.6
+ },
+ "checks": 3,
+ "check_build_s": 9.0,
+ "check_test_s": 4.9,
+ "last_check_ok": true,
+ "pass": true,
+ "escaped": false
+}

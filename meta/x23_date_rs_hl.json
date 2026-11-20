@@ -1,0 +1,22 @@
+{
+ "run": "x23_date_rs_hl",
+ "task": "date",
+ "suite": "toydb-t2",
+ "tier": "t3",
+ "lang": "rust",
+ "model": "haiku",
+ "effort": "low",
+ "ws": "/home/user/agentbench/runs/x23_date_rs_hl",
+ "baseline": "38f44f57ec36bab9d1e2e146f59db2a4cb694724",
+ "created": 1794976138.324574,
+ "warm_ok": true,
+ "transplant_of": "t2_date_rs_hl",
+ "apply_ok": false,
+ "merge_conflicts": {
+  "src/sql/parser/lexer.rs": 3,
+  "src/sql/types/mod.rs": 1,
+  "src/sql/types/schema.rs": 1
+ },
+ "files_changed": 11,
+ "files_fast": 5
+}

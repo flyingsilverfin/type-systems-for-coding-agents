@@ -1,0 +1,176 @@
+diff --git a/app/lending/ingest.py b/app/lending/ingest.py
+index 6ab9789..1f22191 100644
+--- a/app/lending/ingest.py
++++ b/app/lending/ingest.py
+@@ -71,6 +71,7 @@ def parse_book(record: Record, line: int) -> Book:
+ 
+ def parse_loan(record: Record, line: int) -> Loan:
+     f = "loans.csv"
++    due = _optional(record, "due")
+     returned = _optional(record, "returned")
+     lost = _optional(record, "lost")
+     fee_cents = _optional(record, "fee_cents")
+@@ -79,7 +80,7 @@ def parse_loan(record: Record, line: int) -> Loan:
+         member_id=_field(record, "member_id", f, line),
+         isbn=_field(record, "isbn", f, line),
+         borrowed=_date(_field(record, "borrowed", f, line), f, line),
+-        due=_date(_field(record, "due", f, line), f, line),
++        due=_date(due, f, line) if due is not None else None,
+         returned=_date(returned, f, line) if returned is not None else None,
+         lost=_date(lost, f, line) if lost is not None else None,
+         fee_cents=_int(fee_cents, f, line) if fee_cents is not None else None,
+@@ -118,8 +119,9 @@ def loan_query(loan: Loan) -> str:
+     attrs = [
+         f"has loan-id {quote(loan.id)}",
+         f"has borrowed {loan.borrowed.isoformat()}",
+-        f"has due {loan.due.isoformat()}",
+     ]
++    if loan.due is not None:
++        attrs.append(f"has due {loan.due.isoformat()}")
+     if loan.returned is not None:
+         attrs.append(f"has returned {loan.returned.isoformat()}")
+     if loan.lost is not None:
+diff --git a/app/lending/model.py b/app/lending/model.py
+index 2cff38a..83b63fb 100644
+--- a/app/lending/model.py
++++ b/app/lending/model.py
+@@ -54,7 +54,7 @@ class Loan(LoanStatus):
+     member_id: str
+     isbn: str
+     borrowed: date
+-    due: date
++    due: Optional[date]
+     returned: Optional[date]
+     lost: Optional[date]
+     fee_cents: Optional[int]
+@@ -83,7 +83,7 @@ class MemberLoan(LoanStatus):
+     """member"""
+     id: str
+     isbn: str
+-    due: date
++    due: Optional[date]
+     returned: Optional[date]
+     lost: Optional[date]
+ 
+@@ -135,7 +135,7 @@ class HistoryLoan:
+     id: str
+     isbn: str
+     borrowed: date
+-    due: date
++    due: Optional[date]
+     returned: Optional[date]
+     lost: Optional[date]
+ 
+diff --git a/app/lending/repo/loans.py b/app/lending/repo/loans.py
+index 3bc1745..900611d 100644
+--- a/app/lending/repo/loans.py
++++ b/app/lending/repo/loans.py
+@@ -15,8 +15,9 @@ def member_history(db: Db, member_id: str) -> Optional[list[HistoryLoan]]:
+         match
+           $m isa member, has member-id {quote(member_id)};
+           try {{
+-            $l isa loan, links (borrower: $m, item: $b), has loan-id $lid, has borrowed $bo, has due $du;
++            $l isa loan, links (borrower: $m, item: $b), has loan-id $lid, has borrowed $bo;
+             $b has isbn $isbn;
++            try {{ $l has due $du; }};
+             try {{ $l has returned $re; }};
+             try {{ $l has lost $lo; }};
+           }};
+@@ -33,7 +34,8 @@ def member_history(db: Db, member_id: str) -> Optional[list[HistoryLoan]]:
+             raise DataError("$isbn: expected a string")
+         if (concept := row.get("bo")) is None or (borrowed := concept.try_get_date()) is None:
+             raise DataError("$bo: expected a date")
+-        if (concept := row.get("du")) is None or (due := concept.try_get_date()) is None:
++        due: Optional[date] = None
++        if (concept := row.get("du")) is not None and (due := concept.try_get_date()) is None:
+             raise DataError("$du: expected a date")
+         returned: Optional[date] = None
+         if (concept := row.get("re")) is not None and (returned := concept.try_get_date()) is None:
+diff --git a/app/lending/repo/members.py b/app/lending/repo/members.py
+index 6b68702..2fb92e6 100644
+--- a/app/lending/repo/members.py
++++ b/app/lending/repo/members.py
+@@ -59,8 +59,9 @@ def member_loans(db: Db, member_id: str) -> list[MemberLoan]:
+     rows = db.read_rows(f"""
+         match
+           $m isa member, has member-id {quote(member_id)};
+-          $l isa loan, links (borrower: $m, item: $b), has loan-id $lid, has due $du;
++          $l isa loan, links (borrower: $m, item: $b), has loan-id $lid;
+           $b has isbn $isbn;
++          try {{ $l has due $du; }};
+           try {{ $l has returned $re; }};
+           try {{ $l has lost $lo; }};
+     """)
+@@ -70,7 +71,8 @@ def member_loans(db: Db, member_id: str) -> list[MemberLoan]:
+             raise DataError("$lid: expected a string")
+         if (concept := row.get("isbn")) is None or (isbn := concept.try_get_string()) is None:
+             raise DataError("$isbn: expected a string")
+-        if (concept := row.get("du")) is None or (due := concept.try_get_date()) is None:
++        due: Optional[date] = None
++        if (concept := row.get("du")) is not None and (due := concept.try_get_date()) is None:
+             raise DataError("$du: expected a date")
+         returned: Optional[date] = None
+         if (concept := row.get("re")) is not None and (returned := concept.try_get_date()) is None:
+diff --git a/app/lending/report/loans.py b/app/lending/report/loans.py
+index 19a2594..0397b28 100644
+--- a/app/lending/report/loans.py
++++ b/app/lending/report/loans.py
+@@ -5,6 +5,7 @@ from collections import Counter
+ from datetime import date
+ 
+ from lending.model import DueLoan, HistoryLoan, LateReturn, LostLoan
++from lending.report import NONE
+ 
+ 
+ def _by_due(loans: list[DueLoan]) -> list[DueLoan]:
+@@ -23,7 +24,7 @@ def history(member_id: str, loans: list[HistoryLoan]) -> list[str]:
+     ordered = sorted(loans, key=lambda loan: (loan.borrowed, loan.id))
+     lines = [f"history {member_id}: {len(ordered)} loans"]
+     lines += [
+-        f"  {loan.id} {loan.isbn} borrowed {loan.borrowed.isoformat()} due {loan.due.isoformat()} {_status(loan)}"
++        f"  {loan.id} {loan.isbn} borrowed {loan.borrowed.isoformat()} due {loan.due.isoformat() if loan.due is not None else NONE} {_status(loan)}"
+         for loan in ordered
+     ]
+     return lines
+diff --git a/app/lending/report/members.py b/app/lending/report/members.py
+index fa92ffa..6be16b5 100644
+--- a/app/lending/report/members.py
++++ b/app/lending/report/members.py
+@@ -2,9 +2,15 @@
+ from __future__ import annotations
+ 
+ from collections import Counter
++from datetime import date
++from typing import Optional
+ 
+ from lending.model import LoanFee, Member, MemberContact, MemberFee, MemberLoan, MemberName
+-from lending.report import or_none
++from lending.report import NONE, or_none
++
++
++def _due(due: Optional[date]) -> str:
++    return due.isoformat() if due is not None else NONE
+ 
+ 
+ def money(cents: int) -> str:
+@@ -17,7 +23,10 @@ def members(items: list[MemberContact]) -> list[str]:
+ 
+ 
+ def member(m: Member, loans: list[MemberLoan]) -> list[str]:
+-    open_loans = sorted((loan for loan in loans if loan.is_open()), key=lambda loan: (loan.due, loan.id))
++    open_all = [loan for loan in loans if loan.is_open()]
++    dated = sorted((loan for loan in open_all if loan.due is not None), key=lambda loan: (loan.due, loan.id))
++    undated = sorted((loan for loan in open_all if loan.due is None), key=lambda loan: loan.id)
++    open_loans = dated + undated
+     lines = [
+         f"member {m.id}: {m.name}",
+         f"email: {or_none(m.email)}",
+@@ -25,7 +34,7 @@ def member(m: Member, loans: list[MemberLoan]) -> list[str]:
+         f"joined: {m.joined.isoformat()}",
+         f"open loans: {len(open_loans)}",
+     ]
+-    lines += [f"  {loan.id} {loan.isbn} due {loan.due.isoformat()}" for loan in open_loans]
++    lines += [f"  {loan.id} {loan.isbn} due {_due(loan.due)}" for loan in open_loans]
+     lines.append(f"lost loans: {sum(1 for loan in loans if loan.is_lost())}")
+     return lines
+ 

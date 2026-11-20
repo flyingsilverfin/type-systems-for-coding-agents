@@ -1,0 +1,13 @@
+{
+ "run": "t1_between_in_rs_hl",
+ "task": "between_in",
+ "suite": "toydb-t1",
+ "tier": "t1",
+ "lang": "rust",
+ "model": "haiku",
+ "effort": "low",
+ "ws": "/home/user/agentbench/runs/t1_between_in_rs_hl",
+ "baseline": "6bc85766fe8623dfec082e092d4dc706a5c34b4e",
+ "created": 1794950501.581596,
+ "warm_ok": true
+}

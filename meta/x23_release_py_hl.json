@@ -1,0 +1,20 @@
+{
+ "run": "x23_release_py_hl",
+ "task": "release",
+ "suite": "toydb-t2",
+ "tier": "t3",
+ "lang": "python",
+ "model": "haiku",
+ "effort": "low",
+ "ws": "/home/user/agentbench/runs/x23_release_py_hl",
+ "baseline": "890b3b5edb99c463d383dc66de5b771b6b0d6c2f",
+ "created": 1794976457.561392,
+ "warm_ok": true,
+ "transplant_of": "t2_release_py_hl",
+ "apply_ok": false,
+ "merge_conflicts": {
+  "toydb/sql/planner/planner.py": 2
+ },
+ "files_changed": 9,
+ "files_fast": 4
+}

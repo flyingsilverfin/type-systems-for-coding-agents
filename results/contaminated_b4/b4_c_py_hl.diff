@@ -1,0 +1,384 @@
+diff --git a/app/lending/ingest.py b/app/lending/ingest.py
+index 6ab9789..3f1d97e 100644
+--- a/app/lending/ingest.py
++++ b/app/lending/ingest.py
+@@ -57,6 +57,13 @@ def parse_member(record: Record, line: int) -> Member:
+     )
+ 
+ 
++def _genres(text: Optional[str]) -> tuple[str, ...]:
++    """Split a `;`-separated genre field into its distinct, non-empty genres, sorted."""
++    if text is None:
++        return ()
++    return tuple(sorted({part.strip() for part in text.split(";") if part.strip()}))
++
++
+ def parse_book(record: Record, line: int) -> Book:
+     f = "books.csv"
+     return Book(
+@@ -64,7 +71,7 @@ def parse_book(record: Record, line: int) -> Book:
+         title=_field(record, "title", f, line),
+         subtitle=_optional(record, "subtitle"),
+         year=_int(_field(record, "year", f, line), f, line),
+-        genre=_optional(record, "genre"),
++        genres=_genres(_optional(record, "genre")),
+         copies=_int(_field(record, "copies", f, line), f, line),
+     )
+ 
+@@ -108,8 +115,8 @@ def book_query(book: Book) -> str:
+     ]
+     if book.subtitle is not None:
+         attrs.append(f"has subtitle {quote(book.subtitle)}")
+-    if book.genre is not None:
+-        attrs.append(f"has genre {quote(book.genre)}")
++    for genre in book.genres:
++        attrs.append(f"has genre {quote(genre)}")
+     return "insert $b isa book, " + ", ".join(attrs) + ";"
+ 
+ 
+diff --git a/app/lending/model.py b/app/lending/model.py
+index 2cff38a..1ca73ed 100644
+--- a/app/lending/model.py
++++ b/app/lending/model.py
+@@ -44,7 +44,7 @@ class Book:
+     title: str
+     subtitle: Optional[str]
+     year: int
+-    genre: Optional[str]
++    genres: tuple[str, ...]
+     copies: int
+ 
+ 
+@@ -109,7 +109,7 @@ class BookListing:
+     isbn: str
+     title: str
+     year: int
+-    genre: Optional[str]
++    genres: tuple[str, ...]
+ 
+ 
+ @dataclass(frozen=True)
+diff --git a/app/lending/repo/books.py b/app/lending/repo/books.py
+index 375ee18..6e491b3 100644
+--- a/app/lending/repo/books.py
++++ b/app/lending/repo/books.py
+@@ -1,6 +1,7 @@
+ """Book-centred queries: books, book, stats, decades, genre, never-borrowed, available, search."""
+ from __future__ import annotations
+ 
++from collections import defaultdict
+ from datetime import date
+ from typing import Optional
+ 
+@@ -9,25 +10,53 @@ from lending.errors import DataError
+ from lending.model import Book, BookAvailability, BookListing, BookLoan
+ 
+ 
+-def list_books(db: Db) -> list[BookListing]:
+-    rows = db.read_rows("""
++# A book with several genres matches one row per genre in TypeQL, so every query that
++# returns books groups its rows by isbn here, giving one listing per book.
++
++def _string(row, key: str) -> str:
++    if (concept := row.get(key)) is None or (value := concept.try_get_string()) is None:
++        raise DataError(f"${key}: expected a string")
++    return value
++
++
++def _optional_string(row, key: str) -> Optional[str]:
++    if (concept := row.get(key)) is None:
++        return None
++    if (value := concept.try_get_string()) is None:
++        raise DataError(f"${key}: expected a string")
++    return value
++
++
++def _integer(row, key: str) -> int:
++    if (concept := row.get(key)) is None or (value := concept.try_get_integer()) is None:
++        raise DataError(f"${key}: expected an integer")
++    return value
++
++
++def _listings(rows) -> list[BookListing]:
++    """One listing per book, from rows that carry isbn, t, y and optionally g (one row per genre)."""
++    titles: dict[str, tuple[str, int]] = {}
++    genres: dict[str, set[str]] = defaultdict(set)
++    for row in rows:
++        isbn = _string(row, "isbn")
++        titles.setdefault(isbn, (_string(row, "t"), _integer(row, "y")))
++        if (genre := _optional_string(row, "g")) is not None:
++            genres[isbn].add(genre)
++    return [
++        BookListing(isbn=isbn, title=title, year=year, genres=tuple(sorted(genres[isbn])))
++        for isbn, (title, year) in titles.items()
++    ]
++
++
++_LISTING_MATCH = """
+         match
+           $b isa book, has isbn $isbn, has title $t, has year $y;
+           try { $b has genre $g; };
+-    """)
+-    books: list[BookListing] = []
+-    for row in rows:
+-        if (concept := row.get("isbn")) is None or (isbn := concept.try_get_string()) is None:
+-            raise DataError("$isbn: expected a string")
+-        if (concept := row.get("t")) is None or (title := concept.try_get_string()) is None:
+-            raise DataError("$t: expected a string")
+-        if (concept := row.get("y")) is None or (year := concept.try_get_integer()) is None:
+-            raise DataError("$y: expected an integer")
+-        genre: Optional[str] = None
+-        if (concept := row.get("g")) is not None and (genre := concept.try_get_string()) is None:
+-            raise DataError("$g: expected a string")
+-        books.append(BookListing(isbn=isbn, title=title, year=year, genre=genre))
+-    return books
++"""
++
++
++def list_books(db: Db) -> list[BookListing]:
++    return _listings(db.read_rows(_LISTING_MATCH))
+ 
+ 
+ def find_book(db: Db, isbn: str) -> Optional[Book]:
+@@ -39,20 +68,16 @@ def find_book(db: Db, isbn: str) -> Optional[Book]:
+     """)
+     if not rows:
+         return None
+-    row = rows[0]
+-    if (concept := row.get("t")) is None or (title := concept.try_get_string()) is None:
+-        raise DataError("$t: expected a string")
+-    if (concept := row.get("y")) is None or (year := concept.try_get_integer()) is None:
+-        raise DataError("$y: expected an integer")
+-    if (concept := row.get("c")) is None or (copies := concept.try_get_integer()) is None:
+-        raise DataError("$c: expected an integer")
+-    subtitle: Optional[str] = None
+-    if (concept := row.get("s")) is not None and (subtitle := concept.try_get_string()) is None:
+-        raise DataError("$s: expected a string")
+-    genre: Optional[str] = None
+-    if (concept := row.get("g")) is not None and (genre := concept.try_get_string()) is None:
+-        raise DataError("$g: expected a string")
+-    return Book(isbn=isbn, title=title, subtitle=subtitle, year=year, genre=genre, copies=copies)
++    first = rows[0]
++    genres = sorted({g for row in rows if (g := _optional_string(row, "g")) is not None})
++    return Book(
++        isbn=isbn,
++        title=_string(first, "t"),
++        subtitle=_optional_string(first, "s"),
++        year=_integer(first, "y"),
++        genres=tuple(genres),
++        copies=_integer(first, "c"),
++    )
+ 
+ 
+ def book_loans(db: Db, isbn: str) -> list[BookLoan]:
+@@ -66,8 +91,7 @@ def book_loans(db: Db, isbn: str) -> list[BookLoan]:
+     """)
+     loans: list[BookLoan] = []
+     for row in rows:
+-        if (concept := row.get("mid")) is None or (member_id := concept.try_get_string()) is None:
+-            raise DataError("$mid: expected a string")
++        member_id = _string(row, "mid")
+         returned: Optional[date] = None
+         if (concept := row.get("re")) is not None and (returned := concept.try_get_date()) is None:
+             raise DataError("$re: expected a date")
+@@ -78,20 +102,20 @@ def book_loans(db: Db, isbn: str) -> list[BookLoan]:
+     return loans
+ 
+ 
+-def book_genres(db: Db) -> list[Optional[str]]:
+-    """The genre of every book (None for books without one): one entry per book."""
++def book_genres(db: Db) -> list[tuple[str, ...]]:
++    """The genres of every book (an empty tuple for books without one): one entry per book."""
+     rows = db.read_rows("""
+         match
+-          $b isa book;
++          $b isa book, has isbn $isbn;
+           try { $b has genre $g; };
+     """)
+-    genres: list[Optional[str]] = []
++    genres: dict[str, set[str]] = defaultdict(set)
+     for row in rows:
+-        genre: Optional[str] = None
+-        if (concept := row.get("g")) is not None and (genre := concept.try_get_string()) is None:
+-            raise DataError("$g: expected a string")
+-        genres.append(genre)
+-    return genres
++        isbn = _string(row, "isbn")
++        genres.setdefault(isbn, set())  # a book with no genres still counts
++        if (genre := _optional_string(row, "g")) is not None:
++            genres[isbn].add(genre)
++    return [tuple(sorted(g)) for g in genres.values()]
+ 
+ 
+ def book_years(db: Db) -> list[int]:
+@@ -100,32 +124,15 @@ def book_years(db: Db) -> list[int]:
+         match
+           $b isa book, has year $y;
+     """)
+-    years: list[int] = []
+-    for row in rows:
+-        if (concept := row.get("y")) is None or (year := concept.try_get_integer()) is None:
+-            raise DataError("$y: expected an integer")
+-        years.append(year)
+-    return years
++    return [_integer(row, "y") for row in rows]
+ 
+ 
+ def books_in_genre(db: Db, genre: Optional[str]) -> list[BookListing]:
+-    """Books with the given genre, or books with no genre at all when `genre` is None."""
+-    genre_pattern = f"$b has genre {quote(genre)};" if genre is not None else "not { $b has genre $any; };"
+-    rows = db.read_rows(f"""
+-        match
+-          $b isa book, has isbn $isbn, has title $t, has year $y;
+-          {genre_pattern}
+-    """)
+-    books: list[BookListing] = []
+-    for row in rows:
+-        if (concept := row.get("isbn")) is None or (isbn := concept.try_get_string()) is None:
+-            raise DataError("$isbn: expected a string")
+-        if (concept := row.get("t")) is None or (title := concept.try_get_string()) is None:
+-            raise DataError("$t: expected a string")
+-        if (concept := row.get("y")) is None or (year := concept.try_get_integer()) is None:
+-            raise DataError("$y: expected an integer")
+-        books.append(BookListing(isbn=isbn, title=title, year=year, genre=genre))
+-    return books
++    """Books with the given genre among their genres, or books with no genre at all when `genre` is None."""
++    listings = list_books(db)
++    if genre is None:
++        return [b for b in listings if not b.genres]
++    return [b for b in listings if genre in b.genres]
+ 
+ 
+ def never_borrowed_books(db: Db) -> list[BookListing]:
+@@ -135,19 +142,7 @@ def never_borrowed_books(db: Db) -> list[BookListing]:
+           try { $b has genre $g; };
+           not { $l isa loan, links (item: $b); };
+     """)
+-    books: list[BookListing] = []
+-    for row in rows:
+-        if (concept := row.get("isbn")) is None or (isbn := concept.try_get_string()) is None:
+-            raise DataError("$isbn: expected a string")
+-        if (concept := row.get("t")) is None or (title := concept.try_get_string()) is None:
+-            raise DataError("$t: expected a string")
+-        if (concept := row.get("y")) is None or (year := concept.try_get_integer()) is None:
+-            raise DataError("$y: expected an integer")
+-        genre: Optional[str] = None
+-        if (concept := row.get("g")) is not None and (genre := concept.try_get_string()) is None:
+-            raise DataError("$g: expected a string")
+-        books.append(BookListing(isbn=isbn, title=title, year=year, genre=genre))
+-    return books
++    return _listings(rows)
+ 
+ 
+ def book_availability(db: Db, isbn: str) -> Optional[BookAvailability]:
+@@ -164,17 +159,13 @@ def book_availability(db: Db, isbn: str) -> Optional[BookAvailability]:
+     if not rows:
+         return None
+     first = rows[0]
+-    if (concept := first.get("t")) is None or (title := concept.try_get_string()) is None:
+-        raise DataError("$t: expected a string")
+-    if (concept := first.get("c")) is None or (copies := concept.try_get_integer()) is None:
+-        raise DataError("$c: expected an integer")
++    title = _string(first, "t")
++    copies = _integer(first, "c")
+     open_loan_ids: list[str] = []
+     for row in rows:
+         if row.get("l") is None:
+             continue  # the book exists but has no open loans
+-        if (concept := row.get("lid")) is None or (loan_id := concept.try_get_string()) is None:
+-            raise DataError("$lid: expected a string")
+-        open_loan_ids.append(loan_id)
++        open_loan_ids.append(_string(row, "lid"))
+     return BookAvailability(isbn=isbn, title=title, copies=copies, open_loan_ids=tuple(open_loan_ids))
+ 
+ 
+@@ -187,20 +178,10 @@ def search_books(db: Db, text: str) -> list[BookListing]:
+           try { $b has genre $g; };
+     """)
+     needle = text.lower()
+-    books: list[BookListing] = []
+-    for row in rows:
+-        if (concept := row.get("isbn")) is None or (isbn := concept.try_get_string()) is None:
+-            raise DataError("$isbn: expected a string")
+-        if (concept := row.get("t")) is None or (title := concept.try_get_string()) is None:
+-            raise DataError("$t: expected a string")
+-        if (concept := row.get("y")) is None or (year := concept.try_get_integer()) is None:
+-            raise DataError("$y: expected an integer")
+-        subtitle: Optional[str] = None
+-        if (concept := row.get("s")) is not None and (subtitle := concept.try_get_string()) is None:
+-            raise DataError("$s: expected a string")
+-        genre: Optional[str] = None
+-        if (concept := row.get("g")) is not None and (genre := concept.try_get_string()) is None:
+-            raise DataError("$g: expected a string")
+-        if needle in title.lower() or (subtitle is not None and needle in subtitle.lower()):
+-            books.append(BookListing(isbn=isbn, title=title, year=year, genre=genre))
+-    return books
++    matching = {
++        _string(row, "isbn")
++        for row in rows
++        if needle in _string(row, "t").lower()
++        or (subtitle := _optional_string(row, "s")) is not None and needle in subtitle.lower()
++    }
++    return _listings([row for row in rows if _string(row, "isbn") in matching])
+diff --git a/app/lending/report/books.py b/app/lending/report/books.py
+index c907470..28e376b 100644
+--- a/app/lending/report/books.py
++++ b/app/lending/report/books.py
+@@ -2,7 +2,6 @@
+ from __future__ import annotations
+ 
+ from collections import Counter
+-from typing import Optional
+ 
+ from lending.model import Book, BookAvailability, BookListing, BookLoan
+ from lending.report import NONE, or_none
+@@ -10,9 +9,13 @@ from lending.report import NONE, or_none
+ NO_GENRE = "(none)"
+ 
+ 
++def _genres(genres: tuple[str, ...]) -> str:
++    return "/".join(genres) if genres else NONE
++
++
+ def _listing(items: list[BookListing]) -> list[str]:
+     ordered = sorted(items, key=lambda b: (b.title, b.isbn))
+-    return [f"{b.isbn}  {b.title} ({b.year}) [{or_none(b.genre)}]" for b in ordered]
++    return [f"{b.isbn}  {b.title} ({b.year}) [{_genres(b.genres)}]" for b in ordered]
+ 
+ 
+ def books(items: list[BookListing]) -> list[str]:
+@@ -26,7 +29,7 @@ def book(b: Book, loans: list[BookLoan]) -> list[str]:
+         f"book {b.isbn}: {b.title}",
+         f"subtitle: {or_none(b.subtitle)}",
+         f"year: {b.year}",
+-        f"genre: {or_none(b.genre)}",
++        f"genre: {', '.join(b.genres) if b.genres else NONE}",
+         f"copies: {b.copies}",
+         f"loans: {len(loans)}",
+         f"on loan: {len(open_loans)}",
+@@ -34,8 +37,10 @@ def book(b: Book, loans: list[BookLoan]) -> list[str]:
+     ]
+ 
+ 
+-def stats(genres: list[Optional[str]]) -> list[str]:
+-    counts = Counter(genre if genre is not None else NO_GENRE for genre in genres)
++def stats(books_genres: list[tuple[str, ...]]) -> list[str]:
++    counts: Counter[str] = Counter()
++    for genres in books_genres:
++        counts.update(genres if genres else (NO_GENRE,))
+     ordered = sorted(counts.items(), key=lambda kv: (-kv[1], kv[0]))
+     return [f"{genre}: {count}" for genre, count in ordered]
+ 
+diff --git a/app/lending/schema.py b/app/lending/schema.py
+index 746be54..6727e79 100644
+--- a/app/lending/schema.py
++++ b/app/lending/schema.py
+@@ -33,7 +33,7 @@ define
+     owns title,
+     owns subtitle,
+     owns year,
+-    owns genre,
++    owns genre @card(0..),
+     owns copies,
+     plays loan:item;
+ 

@@ -1,0 +1,132 @@
+diff --git a/app/lending/__main__.py b/app/lending/__main__.py
+index 9756b96..4d81c62 100644
+--- a/app/lending/__main__.py
++++ b/app/lending/__main__.py
+@@ -22,6 +22,7 @@ commands:
+   load <dir>               load members.csv, books.csv, loans.csv from <dir>
+   books                    list all books
+   book <isbn>              show a book and who has it on loan
++  borrowers <isbn>         list every member who has borrowed a book, with their loan counts
+   members                  list all members
+   member <member-id>       show a member, their open loans and lost loan count
+   contact <member-id>      show the best way to contact a member
+@@ -102,6 +103,12 @@ def dispatch(db: Db, command: str, args: list[str]) -> None:
+             if b is None:
+                 raise NotFoundError(f"no such book: {isbn}")
+             emit(book_report.book(b, book_repo.book_loans(db, isbn)))
++        case "borrowers":
++            isbn = arg(args, 1, "borrowers <isbn>")
++            borrowings = book_repo.book_borrowings(db, isbn)
++            if borrowings is None:
++                raise NotFoundError(f"no such book: {isbn}")
++            emit(book_report.borrowers(isbn, borrowings))
+         case "stats":
+             emit(book_report.stats(book_repo.book_genres(db)))
+         case "decades":
+diff --git a/app/lending/model.py b/app/lending/model.py
+index 2cff38a..ee0720d 100644
+--- a/app/lending/model.py
++++ b/app/lending/model.py
+@@ -120,6 +120,14 @@ class BookLoan(LoanStatus):
+     lost: Optional[date]
+ 
+ 
++@dataclass(frozen=True)
++class BookBorrowing:
++    """borrowers (one row per loan of the book, naming its borrower)"""
++    loan_id: str
++    member_id: str
++    name: str
++
++
+ @dataclass(frozen=True)
+ class BookAvailability:
+     """available"""
+diff --git a/app/lending/repo/books.py b/app/lending/repo/books.py
+index 375ee18..976635f 100644
+--- a/app/lending/repo/books.py
++++ b/app/lending/repo/books.py
+@@ -1,4 +1,4 @@
+-"""Book-centred queries: books, book, stats, decades, genre, never-borrowed, available, search."""
++"""Book-centred queries: books, book, borrowers, stats, decades, genre, never-borrowed, available, search."""
+ from __future__ import annotations
+ 
+ from datetime import date
+@@ -6,7 +6,7 @@ from typing import Optional
+ 
+ from lending.db import Db, quote
+ from lending.errors import DataError
+-from lending.model import Book, BookAvailability, BookListing, BookLoan
++from lending.model import Book, BookAvailability, BookBorrowing, BookListing, BookLoan
+ 
+ 
+ def list_books(db: Db) -> list[BookListing]:
+@@ -78,6 +78,32 @@ def book_loans(db: Db, isbn: str) -> list[BookLoan]:
+     return loans
+ 
+ 
++def book_borrowings(db: Db, isbn: str) -> Optional[list[BookBorrowing]]:
++    """Every loan of the book (open, returned or lost) with its borrower, or None if there is no such book."""
++    rows = db.read_rows(f"""
++        match
++          $b isa book, has isbn {quote(isbn)};
++          try {{
++            $l isa loan, links (borrower: $m, item: $b), has loan-id $lid;
++            $m has member-id $mid, has name $n;
++          }};
++    """)
++    if not rows:
++        return None
++    borrowings: list[BookBorrowing] = []
++    for row in rows:
++        if row.get("l") is None:
++            continue  # the book exists but has never been borrowed
++        if (concept := row.get("lid")) is None or (loan_id := concept.try_get_string()) is None:
++            raise DataError("$lid: expected a string")
++        if (concept := row.get("mid")) is None or (member_id := concept.try_get_string()) is None:
++            raise DataError("$mid: expected a string")
++        if (concept := row.get("n")) is None or (name := concept.try_get_string()) is None:
++            raise DataError("$n: expected a string")
++        borrowings.append(BookBorrowing(loan_id=loan_id, member_id=member_id, name=name))
++    return borrowings
++
++
+ def book_genres(db: Db) -> list[Optional[str]]:
+     """The genre of every book (None for books without one): one entry per book."""
+     rows = db.read_rows("""
+diff --git a/app/lending/report/books.py b/app/lending/report/books.py
+index c907470..d145b38 100644
+--- a/app/lending/report/books.py
++++ b/app/lending/report/books.py
+@@ -1,10 +1,10 @@
+-"""Output for books, book, stats, decades, genre, never-borrowed, available, search."""
++"""Output for books, book, borrowers, stats, decades, genre, never-borrowed, available, search."""
+ from __future__ import annotations
+ 
+ from collections import Counter
+ from typing import Optional
+ 
+-from lending.model import Book, BookAvailability, BookListing, BookLoan
++from lending.model import Book, BookAvailability, BookBorrowing, BookListing, BookLoan
+ from lending.report import NONE, or_none
+ 
+ NO_GENRE = "(none)"
+@@ -34,6 +34,18 @@ def book(b: Book, loans: list[BookLoan]) -> list[str]:
+     ]
+ 
+ 
++def borrowers(isbn: str, items: list[BookBorrowing]) -> list[str]:
++    loan_ids: dict[str, set[str]] = {}
++    names: dict[str, str] = {}
++    for item in items:
++        loan_ids.setdefault(item.member_id, set()).add(item.loan_id)
++        names[item.member_id] = item.name
++    ranked = sorted(((mid, len(ids)) for mid, ids in loan_ids.items()), key=lambda kv: (-kv[1], kv[0]))
++    lines = [f"borrowers {isbn}: {len(ranked)} members"]
++    lines += [f"  {mid} {names[mid]} ({count} loans)" for mid, count in ranked]
++    return lines
++
++
+ def stats(genres: list[Optional[str]]) -> list[str]:
+     counts = Counter(genre if genre is not None else NO_GENRE for genre in genres)
+     ordered = sorted(counts.items(), key=lambda kv: (-kv[1], kv[0]))

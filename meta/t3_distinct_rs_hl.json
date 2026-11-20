@@ -1,0 +1,14 @@
+{
+ "run": "t3_distinct_rs_hl",
+ "task": "distinct",
+ "suite": "toydb-t3",
+ "tier": "t3",
+ "lang": "rust",
+ "model": "haiku",
+ "effort": "low",
+ "ws": "/home/user/agentbench/runs/t3_distinct_rs_hl",
+ "hint": true,
+ "baseline": "2dd7f26db491773acda273f07e8ca689dd7b0395",
+ "created": 1795025294.7017663,
+ "warm_ok": true
+}

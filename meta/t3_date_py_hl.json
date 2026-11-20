@@ -1,0 +1,14 @@
+{
+ "run": "t3_date_py_hl",
+ "task": "date",
+ "suite": "toydb-t3",
+ "tier": "t3",
+ "lang": "python",
+ "model": "haiku",
+ "effort": "low",
+ "ws": "/home/user/agentbench/runs/t3_date_py_hl",
+ "hint": true,
+ "baseline": "c0d00967b0976f1340fbf0241e0c36c5b516894f",
+ "created": 1795025219.71494,
+ "warm_ok": true
+}

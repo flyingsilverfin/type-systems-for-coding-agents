@@ -1,0 +1,21 @@
+{
+ "run": "x23_between_in_py_hl",
+ "task": "between_in",
+ "suite": "toydb-t2",
+ "tier": "t3",
+ "lang": "python",
+ "model": "haiku",
+ "effort": "low",
+ "ws": "/home/user/agentbench/runs/x23_between_in_py_hl",
+ "baseline": "ff50a20c422849408a8825227b355536fe7af5e7",
+ "created": 1794975958.8645136,
+ "warm_ok": true,
+ "transplant_of": "t2_between_in_py_hl",
+ "apply_ok": false,
+ "merge_conflicts": {
+  "tests/sql/parser/test_lexer.py": 1,
+  "toydb/sql/parser/lexer.py": 1
+ },
+ "files_changed": 3,
+ "files_fast": 0
+}

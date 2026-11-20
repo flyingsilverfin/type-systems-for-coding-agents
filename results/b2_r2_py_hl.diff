@@ -1,0 +1,330 @@
+diff --git a/app/lending/ids.py b/app/lending/ids.py
+new file mode 100644
+index 0000000..379d96f
+--- /dev/null
++++ b/app/lending/ids.py
+@@ -0,0 +1,18 @@
++"""Member ids: stored as integers in the database, shown and accepted as M followed by digits (M001 -> 1)."""
++from __future__ import annotations
++
++import re
++from typing import Optional
++
++_MEMBER_ID = re.compile(r"M([0-9]+)")
++
++
++def member_key(text: str) -> Optional[int]:
++    """The integer stored for a member id such as M001, or None if the text is not M followed by digits."""
++    match = _MEMBER_ID.fullmatch(text)
++    return int(match.group(1)) if match else None
++
++
++def format_member_id(key: int) -> str:
++    """The member id shown to users, e.g. 7 -> M007."""
++    return f"M{key:03d}"
+diff --git a/app/lending/ingest.py b/app/lending/ingest.py
+index 6ab9789..1ae30a7 100644
+--- a/app/lending/ingest.py
++++ b/app/lending/ingest.py
+@@ -9,6 +9,7 @@ from typing import Optional
+ from lending.csvio import Record, read_csv
+ from lending.db import Db, quote
+ from lending.errors import CsvError
++from lending.ids import format_member_id, member_key
+ from lending.model import Book, Loan, Member
+ 
+ 
+@@ -26,6 +27,13 @@ def _field(record: Record, key: str, file: str, line: int) -> str:
+     return value
+ 
+ 
++def _member_key(text: str, file: str, line: int) -> int:
++    key = member_key(text)
++    if key is None:
++        raise CsvError(file, line, f"invalid member id '{text}'")
++    return key
++
++
+ def _optional(record: Record, key: str) -> Optional[str]:
+     value = record.get(key, "")
+     return value if value != "" else None
+@@ -49,7 +57,7 @@ def parse_member(record: Record, line: int) -> Member:
+     """Parse a members.csv record. The `deleted` column is deliberately ignored."""
+     f = "members.csv"
+     return Member(
+-        id=_field(record, "member_id", f, line),
++        id=format_member_id(_member_key(_field(record, "member_id", f, line), f, line)),
+         name=_field(record, "name", f, line),
+         email=_optional(record, "email"),
+         phone=_optional(record, "phone"),
+@@ -76,7 +84,7 @@ def parse_loan(record: Record, line: int) -> Loan:
+     fee_cents = _optional(record, "fee_cents")
+     return Loan(
+         id=_field(record, "loan_id", f, line),
+-        member_id=_field(record, "member_id", f, line),
++        member_id=format_member_id(_member_key(_field(record, "member_id", f, line), f, line)),
+         isbn=_field(record, "isbn", f, line),
+         borrowed=_date(_field(record, "borrowed", f, line), f, line),
+         due=_date(_field(record, "due", f, line), f, line),
+@@ -88,7 +96,7 @@ def parse_loan(record: Record, line: int) -> Loan:
+ 
+ def member_query(member: Member) -> str:
+     attrs = [
+-        f"has member-id {quote(member.id)}",
++        f"has member-id {member_key(member.id)}",
+         f"has name {quote(member.name)}",
+         f"has joined {member.joined.isoformat()}",
+     ]
+@@ -127,7 +135,7 @@ def loan_query(loan: Loan) -> str:
+     if loan.fee_cents is not None:
+         attrs.append(f"has fee-cents {loan.fee_cents}")
+     return (
+-        f"match $m isa member, has member-id {quote(loan.member_id)}; $b isa book, has isbn {quote(loan.isbn)};\n"
++        f"match $m isa member, has member-id {member_key(loan.member_id)}; $b isa book, has isbn {quote(loan.isbn)};\n"
+         "insert $l isa loan, links (borrower: $m, item: $b), " + ", ".join(attrs) + ";"
+     )
+ 
+diff --git a/app/lending/repo/books.py b/app/lending/repo/books.py
+index 375ee18..ea5c9f2 100644
+--- a/app/lending/repo/books.py
++++ b/app/lending/repo/books.py
+@@ -6,6 +6,7 @@ from typing import Optional
+ 
+ from lending.db import Db, quote
+ from lending.errors import DataError
++from lending.ids import format_member_id, member_key
+ from lending.model import Book, BookAvailability, BookListing, BookLoan
+ 
+ 
+@@ -66,8 +67,9 @@ def book_loans(db: Db, isbn: str) -> list[BookLoan]:
+     """)
+     loans: list[BookLoan] = []
+     for row in rows:
+-        if (concept := row.get("mid")) is None or (member_id := concept.try_get_string()) is None:
+-            raise DataError("$mid: expected a string")
++        if (concept := row.get("mid")) is None or (mid := concept.try_get_integer()) is None:
++            raise DataError("$mid: expected an integer")
++        member_id = format_member_id(mid)
+         returned: Optional[date] = None
+         if (concept := row.get("re")) is not None and (returned := concept.try_get_date()) is None:
+             raise DataError("$re: expected a date")
+diff --git a/app/lending/repo/loans.py b/app/lending/repo/loans.py
+index 3bc1745..0f4abf3 100644
+--- a/app/lending/repo/loans.py
++++ b/app/lending/repo/loans.py
+@@ -4,16 +4,20 @@ from __future__ import annotations
+ from datetime import date
+ from typing import Optional
+ 
+-from lending.db import Db, quote
++from lending.db import Db
+ from lending.errors import DataError
++from lending.ids import format_member_id, member_key
+ from lending.model import DueLoan, HistoryLoan, LateReturn, LostLoan
+ 
+ 
+ def member_history(db: Db, member_id: str) -> Optional[list[HistoryLoan]]:
+     """Every loan the member has made, or None if there is no such member."""
++    key = member_key(member_id)
++    if key is None:
++        return None
+     rows = db.read_rows(f"""
+         match
+-          $m isa member, has member-id {quote(member_id)};
++          $m isa member, has member-id {key};
+           try {{
+             $l isa loan, links (borrower: $m, item: $b), has loan-id $lid, has borrowed $bo, has due $du;
+             $b has isbn $isbn;
+@@ -62,8 +66,9 @@ def overdue_loans(db: Db, as_of: date) -> list[DueLoan]:
+     for row in rows:
+         if (concept := row.get("lid")) is None or (loan_id := concept.try_get_string()) is None:
+             raise DataError("$lid: expected a string")
+-        if (concept := row.get("mid")) is None or (member_id := concept.try_get_string()) is None:
+-            raise DataError("$mid: expected a string")
++        if (concept := row.get("mid")) is None or (mid := concept.try_get_integer()) is None:
++            raise DataError("$mid: expected an integer")
++        member_id = format_member_id(mid)
+         if (concept := row.get("isbn")) is None or (isbn := concept.try_get_string()) is None:
+             raise DataError("$isbn: expected a string")
+         if (concept := row.get("du")) is None or (due := concept.try_get_date()) is None:
+@@ -88,8 +93,9 @@ def loans_due_between(db: Db, start: date, end: date) -> list[DueLoan]:
+     for row in rows:
+         if (concept := row.get("lid")) is None or (loan_id := concept.try_get_string()) is None:
+             raise DataError("$lid: expected a string")
+-        if (concept := row.get("mid")) is None or (member_id := concept.try_get_string()) is None:
+-            raise DataError("$mid: expected a string")
++        if (concept := row.get("mid")) is None or (mid := concept.try_get_integer()) is None:
++            raise DataError("$mid: expected an integer")
++        member_id = format_member_id(mid)
+         if (concept := row.get("isbn")) is None or (isbn := concept.try_get_string()) is None:
+             raise DataError("$isbn: expected a string")
+         if (concept := row.get("du")) is None or (due := concept.try_get_date()) is None:
+@@ -111,8 +117,9 @@ def late_returns(db: Db) -> list[LateReturn]:
+     for row in rows:
+         if (concept := row.get("lid")) is None or (loan_id := concept.try_get_string()) is None:
+             raise DataError("$lid: expected a string")
+-        if (concept := row.get("mid")) is None or (member_id := concept.try_get_string()) is None:
+-            raise DataError("$mid: expected a string")
++        if (concept := row.get("mid")) is None or (mid := concept.try_get_integer()) is None:
++            raise DataError("$mid: expected an integer")
++        member_id = format_member_id(mid)
+         if (concept := row.get("du")) is None or (due := concept.try_get_date()) is None:
+             raise DataError("$du: expected a date")
+         if (concept := row.get("re")) is None or (returned := concept.try_get_date()) is None:
+@@ -132,8 +139,9 @@ def lost_loans(db: Db) -> list[LostLoan]:
+     for row in rows:
+         if (concept := row.get("lid")) is None or (loan_id := concept.try_get_string()) is None:
+             raise DataError("$lid: expected a string")
+-        if (concept := row.get("mid")) is None or (member_id := concept.try_get_string()) is None:
+-            raise DataError("$mid: expected a string")
++        if (concept := row.get("mid")) is None or (mid := concept.try_get_integer()) is None:
++            raise DataError("$mid: expected an integer")
++        member_id = format_member_id(mid)
+         if (concept := row.get("isbn")) is None or (isbn := concept.try_get_string()) is None:
+             raise DataError("$isbn: expected a string")
+         if (concept := row.get("lo")) is None or (lost := concept.try_get_date()) is None:
+diff --git a/app/lending/repo/members.py b/app/lending/repo/members.py
+index 6b68702..ed2085a 100644
+--- a/app/lending/repo/members.py
++++ b/app/lending/repo/members.py
+@@ -4,8 +4,9 @@ from __future__ import annotations
+ from datetime import date
+ from typing import Optional
+ 
+-from lending.db import Db, quote
++from lending.db import Db
+ from lending.errors import DataError
++from lending.ids import format_member_id, member_key
+ from lending.model import LoanFee, Member, MemberContact, MemberFee, MemberLoan, MemberName
+ 
+ 
+@@ -18,8 +19,9 @@ def list_members(db: Db) -> list[MemberContact]:
+     """)
+     members: list[MemberContact] = []
+     for row in rows:
+-        if (concept := row.get("mid")) is None or (member_id := concept.try_get_string()) is None:
+-            raise DataError("$mid: expected a string")
++        if (concept := row.get("mid")) is None or (mid := concept.try_get_integer()) is None:
++            raise DataError("$mid: expected an integer")
++        member_id = format_member_id(mid)
+         if (concept := row.get("n")) is None or (name := concept.try_get_string()) is None:
+             raise DataError("$n: expected a string")
+         email: Optional[str] = None
+@@ -33,9 +35,12 @@ def list_members(db: Db) -> list[MemberContact]:
+ 
+ 
+ def find_member(db: Db, member_id: str) -> Optional[Member]:
++    key = member_key(member_id)
++    if key is None:
++        return None
+     rows = db.read_rows(f"""
+         match
+-          $m isa member, has member-id {quote(member_id)}, has name $n, has joined $j;
++          $m isa member, has member-id {key}, has name $n, has joined $j;
+           try {{ $m has email $e; }};
+           try {{ $m has phone $p; }};
+     """)
+@@ -52,13 +57,16 @@ def find_member(db: Db, member_id: str) -> Optional[Member]:
+     phone: Optional[str] = None
+     if (concept := row.get("p")) is not None and (phone := concept.try_get_string()) is None:
+         raise DataError("$p: expected a string")
+-    return Member(id=member_id, name=name, email=email, phone=phone, joined=joined)
++    return Member(id=format_member_id(key), name=name, email=email, phone=phone, joined=joined)
+ 
+ 
+ def member_loans(db: Db, member_id: str) -> list[MemberLoan]:
++    key = member_key(member_id)
++    if key is None:
++        return []
+     rows = db.read_rows(f"""
+         match
+-          $m isa member, has member-id {quote(member_id)};
++          $m isa member, has member-id {key};
+           $l isa loan, links (borrower: $m, item: $b), has loan-id $lid, has due $du;
+           $b has isbn $isbn;
+           try {{ $l has returned $re; }};
+@@ -83,9 +91,12 @@ def member_loans(db: Db, member_id: str) -> list[MemberLoan]:
+ 
+ 
+ def find_contact(db: Db, member_id: str) -> Optional[MemberContact]:
++    key = member_key(member_id)
++    if key is None:
++        return None
+     rows = db.read_rows(f"""
+         match
+-          $m isa member, has member-id {quote(member_id)}, has name $n;
++          $m isa member, has member-id {key}, has name $n;
+           try {{ $m has email $e; }};
+           try {{ $m has phone $p; }};
+     """)
+@@ -100,7 +111,7 @@ def find_contact(db: Db, member_id: str) -> Optional[MemberContact]:
+     phone: Optional[str] = None
+     if (concept := row.get("p")) is not None and (phone := concept.try_get_string()) is None:
+         raise DataError("$p: expected a string")
+-    return MemberContact(id=member_id, name=name, email=email, phone=phone)
++    return MemberContact(id=format_member_id(key), name=name, email=email, phone=phone)
+ 
+ 
+ def inactive_members(db: Db, since: date) -> list[MemberName]:
+@@ -115,8 +126,9 @@ def inactive_members(db: Db, since: date) -> list[MemberName]:
+     """)
+     members: list[MemberName] = []
+     for row in rows:
+-        if (concept := row.get("mid")) is None or (member_id := concept.try_get_string()) is None:
+-            raise DataError("$mid: expected a string")
++        if (concept := row.get("mid")) is None or (mid := concept.try_get_integer()) is None:
++            raise DataError("$mid: expected an integer")
++        member_id = format_member_id(mid)
+         if (concept := row.get("n")) is None or (name := concept.try_get_string()) is None:
+             raise DataError("$n: expected a string")
+         members.append(MemberName(id=member_id, name=name))
+@@ -132,8 +144,9 @@ def loan_borrowers(db: Db) -> list[MemberName]:
+     """)
+     borrowers: list[MemberName] = []
+     for row in rows:
+-        if (concept := row.get("mid")) is None or (member_id := concept.try_get_string()) is None:
+-            raise DataError("$mid: expected a string")
++        if (concept := row.get("mid")) is None or (mid := concept.try_get_integer()) is None:
++            raise DataError("$mid: expected an integer")
++        member_id = format_member_id(mid)
+         if (concept := row.get("n")) is None or (name := concept.try_get_string()) is None:
+             raise DataError("$n: expected a string")
+         borrowers.append(MemberName(id=member_id, name=name))
+@@ -149,8 +162,9 @@ def loan_fees(db: Db) -> list[MemberFee]:
+     """)
+     fees: list[MemberFee] = []
+     for row in rows:
+-        if (concept := row.get("mid")) is None or (member_id := concept.try_get_string()) is None:
+-            raise DataError("$mid: expected a string")
++        if (concept := row.get("mid")) is None or (mid := concept.try_get_integer()) is None:
++            raise DataError("$mid: expected an integer")
++        member_id = format_member_id(mid)
+         if (concept := row.get("n")) is None or (name := concept.try_get_string()) is None:
+             raise DataError("$n: expected a string")
+         if (concept := row.get("f")) is None or (fee_cents := concept.try_get_integer()) is None:
+@@ -161,9 +175,12 @@ def loan_fees(db: Db) -> list[MemberFee]:
+ 
+ def member_fees(db: Db, member_id: str) -> Optional[list[LoanFee]]:
+     """The member's loans that carry a fee, or None if there is no such member."""
++    key = member_key(member_id)
++    if key is None:
++        return None
+     rows = db.read_rows(f"""
+         match
+-          $m isa member, has member-id {quote(member_id)};
++          $m isa member, has member-id {key};
+           try {{ $l isa loan, links (borrower: $m), has loan-id $lid, has fee-cents $f; }};
+     """)
+     if not rows:
+diff --git a/app/lending/schema.py b/app/lending/schema.py
+index 746be54..38d13f9 100644
+--- a/app/lending/schema.py
++++ b/app/lending/schema.py
+@@ -1,6 +1,6 @@
+ SCHEMA = """
+ define
+-  attribute member-id, value string;
++  attribute member-id, value integer;
+   attribute name, value string;
+   attribute email, value string;
+   attribute phone, value string;

@@ -1,0 +1,21 @@
+{
+ "run": "x23_distinct_rs_oh",
+ "task": "distinct",
+ "suite": "toydb-t2",
+ "tier": "t3",
+ "lang": "rust",
+ "model": "opus",
+ "effort": "high",
+ "ws": "/home/user/agentbench/runs/x23_distinct_rs_oh",
+ "baseline": "26e0ae468a8f5e2a477df61666092b51eb014f6a",
+ "created": 1794976285.4101489,
+ "warm_ok": true,
+ "transplant_of": "t2_distinct_rs_oh",
+ "apply_ok": false,
+ "merge_conflicts": {
+  "src/sql/execution/executor.rs": 1,
+  "src/sql/parser/parser.rs": 1
+ },
+ "files_changed": 9,
+ "files_fast": 4
+}

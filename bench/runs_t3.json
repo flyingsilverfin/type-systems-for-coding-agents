@@ -1,0 +1,198 @@
+[
+{
+"run": "t3_between_in_rs_hl",
+"model": "haiku",
+"effort": "low",
+"task": "between_in",
+"lang": "rust"
+},
+{
+"run": "t3_between_in_rs_oh",
+"model": "opus",
+"effort": "high",
+"task": "between_in",
+"lang": "rust"
+},
+{
+"run": "t3_between_in_py_hl",
+"model": "haiku",
+"effort": "low",
+"task": "between_in",
+"lang": "python"
+},
+{
+"run": "t3_between_in_py_oh",
+"model": "opus",
+"effort": "high",
+"task": "between_in",
+"lang": "python"
+},
+{
+"run": "t3_case_rs_hl",
+"model": "haiku",
+"effort": "low",
+"task": "case",
+"lang": "rust"
+},
+{
+"run": "t3_case_rs_oh",
+"model": "opus",
+"effort": "high",
+"task": "case",
+"lang": "rust"
+},
+{
+"run": "t3_case_py_hl",
+"model": "haiku",
+"effort": "low",
+"task": "case",
+"lang": "python"
+},
+{
+"run": "t3_case_py_oh",
+"model": "opus",
+"effort": "high",
+"task": "case",
+"lang": "python"
+},
+{
+"run": "t3_date_rs_hl",
+"model": "haiku",
+"effort": "low",
+"task": "date",
+"lang": "rust"
+},
+{
+"run": "t3_date_rs_oh",
+"model": "opus",
+"effort": "high",
+"task": "date",
+"lang": "rust"
+},
+{
+"run": "t3_date_py_hl",
+"model": "haiku",
+"effort": "low",
+"task": "date",
+"lang": "python"
+},
+{
+"run": "t3_date_py_oh",
+"model": "opus",
+"effort": "high",
+"task": "date",
+"lang": "python"
+},
+{
+"run": "t3_distinct_rs_hl",
+"model": "haiku",
+"effort": "low",
+"task": "distinct",
+"lang": "rust"
+},
+{
+"run": "t3_distinct_rs_oh",
+"model": "opus",
+"effort": "high",
+"task": "distinct",
+"lang": "rust"
+},
+{
+"run": "t3_distinct_py_hl",
+"model": "haiku",
+"effort": "low",
+"task": "distinct",
+"lang": "python"
+},
+{
+"run": "t3_distinct_py_oh",
+"model": "opus",
+"effort": "high",
+"task": "distinct",
+"lang": "python"
+},
+{
+"run": "t3_alter_rs_hl",
+"model": "haiku",
+"effort": "low",
+"task": "alter",
+"lang": "rust"
+},
+{
+"run": "t3_alter_rs_oh",
+"model": "opus",
+"effort": "high",
+"task": "alter",
+"lang": "rust"
+},
+{
+"run": "t3_alter_py_hl",
+"model": "haiku",
+"effort": "low",
+"task": "alter",
+"lang": "python"
+},
+{
+"run": "t3_alter_py_oh",
+"model": "opus",
+"effort": "high",
+"task": "alter",
+"lang": "python"
+},
+{
+"run": "t3_release_rs_hl",
+"model": "haiku",
+"effort": "low",
+"task": "release",
+"lang": "rust"
+},
+{
+"run": "t3_release_rs_oh",
+"model": "opus",
+"effort": "high",
+"task": "release",
+"lang": "rust"
+},
+{
+"run": "t3_release_py_hl",
+"model": "haiku",
+"effort": "low",
+"task": "release",
+"lang": "python"
+},
+{
+"run": "t3_release_py_oh",
+"model": "opus",
+"effort": "high",
+"task": "release",
+"lang": "python"
+},
+{
+"run": "t3_bugfix_rs_hl",
+"model": "haiku",
+"effort": "low",
+"task": "bugfix",
+"lang": "rust"
+},
+{
+"run": "t3_bugfix_rs_oh",
+"model": "opus",
+"effort": "high",
+"task": "bugfix",
+"lang": "rust"
+},
+{
+"run": "t3_bugfix_py_hl",
+"model": "haiku",
+"effort": "low",
+"task": "bugfix",
+"lang": "python"
+},
+{
+"run": "t3_bugfix_py_oh",
+"model": "opus",
+"effort": "high",
+"task": "bugfix",
+"lang": "python"
+}
+]

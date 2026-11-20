@@ -1,0 +1,13 @@
+{
+ "run": "t1_bugfix_rs_oh",
+ "task": "bugfix",
+ "suite": "toydb-t1",
+ "tier": "t1",
+ "lang": "rust",
+ "model": "opus",
+ "effort": "high",
+ "ws": "/home/user/agentbench/runs/t1_bugfix_rs_oh",
+ "baseline": "6f6bda38472911bc71a3db5a2a2909761c28735d",
+ "created": 1794950696.0127506,
+ "warm_ok": true
+}

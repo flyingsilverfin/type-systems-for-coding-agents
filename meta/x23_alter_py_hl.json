@@ -1,0 +1,27 @@
+{
+ "run": "x23_alter_py_hl",
+ "task": "alter",
+ "suite": "toydb-t2",
+ "tier": "t3",
+ "lang": "python",
+ "model": "haiku",
+ "effort": "low",
+ "ws": "/home/user/agentbench/runs/x23_alter_py_hl",
+ "baseline": "ccc3b12863254dabb1003ef0b95ba3bdbe559085",
+ "created": 1794976358.475572,
+ "warm_ok": true,
+ "transplant_of": "t2_alter_py_hl",
+ "apply_ok": false,
+ "merge_conflicts": {
+  "tests/sql/parser/test_lexer.py": 1,
+  "toydb/encoding/format.py": 2,
+  "toydb/sql/engine/engine.py": 2,
+  "toydb/sql/engine/local.py": 1,
+  "toydb/sql/engine/raft.py": 7,
+  "toydb/sql/execution/session.py": 1,
+  "toydb/sql/parser/lexer.py": 1,
+  "toydb/sql/types/schema.py": 1
+ },
+ "files_changed": 15,
+ "files_fast": 2
+}

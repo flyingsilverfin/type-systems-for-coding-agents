@@ -1,0 +1,76 @@
+# Statement digests: the canonical form of SELECT statements (clauses, joins,
+# aliases, functions, identifier quoting).
+
+> CREATE TABLE t (id INT PRIMARY KEY, v STRING, n INT)
+> INSERT INTO t VALUES (1, 'a', 10), (2, 'b', 20), (3, NULL, 30)
+> CREATE TABLE u (id INT PRIMARY KEY, t_id INT REFERENCES t, w FLOAT)
+> INSERT INTO u VALUES (1, 1, 0.5), (2, 1, 2.5), (3, 3, 4.0)
+> CREATE TABLE "select" ("from" INT PRIMARY KEY, "a b" STRING)
+> INSERT INTO "select" VALUES (1, 'x')
+---
+ok
+
+# All clauses. ASC is left out, DESC kept; <> is !=; IS NOT NULL stays as
+# written; an alias that needs quotes is quoted.
+> select ID, v as "the name" from T x where x.id >= 2 and not (v <> 'a' or v is not null) order by 1 asc, v desc limit 5 offset 1
+---
+ok
+
+# Joins: INNER and OUTER are left out, aliases always get AS.
+> SELECT t.v, u.w FROM t INNER JOIN u ON u.t_id = t.id LEFT OUTER JOIN t t2 ON t2.id = u.id WHERE u.w > 1.0
+> SELECT COUNT(*) FROM t CROSS JOIN u, t AS z
+> SELECT * FROM u RIGHT OUTER JOIN t ON u.t_id = t.id
+---
+'a', 2.5
+NULL, 4.0
+27
+1, 1, 0.5, 1, 'a', 10
+2, 1, 2.5, 1, 'a', 10
+NULL, NULL, NULL, 2, 'b', 20
+3, 3, 4.0, 3, NULL, 30
+
+# Aggregates and functions are written in lower case; GROUP BY and HAVING.
+> SELECT n % 2, COUNT(*), Sum(n) FROM t GROUP BY n % 2 HAVING count(*) > 1
+> SELECT SQRT(n), - n, +n, NOT TRUE FROM t WHERE id = 1
+---
+0, 3, 60
+3.1622776601683795, -10, 10, FALSE
+
+# SELECT without FROM, column aliases without AS, and quoted names.
+> SELECT 1 + 2 * 3 AS x
+> SELECT n m FROM t tt WHERE tt.id < 3
+> SELECT "from", "a b" AS "c-d" FROM "select" WHERE "select"."from" = 1
+---
+7
+10
+20
+1, 'x'
+
+[json]> SHOW STATEMENTS
+---
+{"result":"select","columns":["digest","calls","errors","rows"],"rows":[["CREATE TABLE t (id INTEGER PRIMARY KEY, v STRING, n INTEGER)",1,0,0],["INSERT INTO t VALUES (?, ?, ?), (?, ?, ?), (?, ?, ?)",1,0,3],["CREATE TABLE u (id INTEGER PRIMARY KEY, t_id INTEGER REFERENCES t, w FLOAT)",1,0,0],["INSERT INTO u VALUES (?, ?, ?), (?, ?, ?), (?, ?, ?)",1,0,3],["CREATE TABLE \"select\" (\"from\" INTEGER PRIMARY KEY, \"a b\" STRING)",1,0,0],["INSERT INTO \"select\" VALUES (?, ?)",1,0,1],["SELECT id, v AS \"the name\" FROM t AS x WHERE x.id >= ? AND NOT (v != ? OR v IS NOT NULL) ORDER BY ?, v DESC LIMIT ? OFFSET ?",1,0,0],["SELECT t.v, u.w FROM t JOIN u ON u.t_id = t.id LEFT JOIN t AS t2 ON t2.id = u.id WHERE u.w > ?",1,0,2],["SELECT count(*) FROM t CROSS JOIN u, t AS z",1,0,1],["SELECT * FROM u RIGHT JOIN t ON u.t_id = t.id",1,0,4],["SELECT n % ?, count(*), sum(n) FROM t GROUP BY n % ? HAVING count(*) > ?",1,0,1],["SELECT sqrt(n), -n, +n, NOT ? FROM t WHERE id = ?",1,0,1],["SELECT ? + ? * ? AS x",1,0,1],["SELECT n AS m FROM t AS tt WHERE tt.id < ?",1,0,2],["SELECT \"from\", \"a b\" AS \"c-d\" FROM \"select\" WHERE \"select\".\"from\" = ?",1,0,1]]}
+
+# The same statements written differently have the same digests.
+> SELECT id, v "the name" FROM t AS x WHERE (x.id >= 0) AND (NOT ((v != 'q') OR (v IS NOT NULL))) ORDER BY 2, v DESC LIMIT 1 OFFSET 0
+> select n AS m from T as TT where TT.ID < 1
+> SELECT 4 + (5 * 6) x
+---
+34
+
+> SHOW STATEMENTS
+---
+'CREATE TABLE t (id INTEGER PRIMARY KEY, v STRING, n INTEGER)', 1, 0, 0
+'INSERT INTO t VALUES (?, ?, ?), (?, ?, ?), (?, ?, ?)', 1, 0, 3
+'CREATE TABLE u (id INTEGER PRIMARY KEY, t_id INTEGER REFERENCES t, w FLOAT)', 1, 0, 0
+'INSERT INTO u VALUES (?, ?, ?), (?, ?, ?), (?, ?, ?)', 1, 0, 3
+'CREATE TABLE \"select\" (\"from\" INTEGER PRIMARY KEY, \"a b\" STRING)', 1, 0, 0
+'INSERT INTO \"select\" VALUES (?, ?)', 1, 0, 1
+'SELECT id, v AS \"the name\" FROM t AS x WHERE x.id >= ? AND NOT (v != ? OR v IS NOT NULL) ORDER BY ?, v DESC LIMIT ? OFFSET ?', 2, 0, 0
+'SELECT t.v, u.w FROM t JOIN u ON u.t_id = t.id LEFT JOIN t AS t2 ON t2.id = u.id WHERE u.w > ?', 1, 0, 2
+'SELECT count(*) FROM t CROSS JOIN u, t AS z', 1, 0, 1
+'SELECT * FROM u RIGHT JOIN t ON u.t_id = t.id', 1, 0, 4
+'SELECT n % ?, count(*), sum(n) FROM t GROUP BY n % ? HAVING count(*) > ?', 1, 0, 1
+'SELECT sqrt(n), -n, +n, NOT ? FROM t WHERE id = ?', 1, 0, 1
+'SELECT ? + ? * ? AS x', 2, 0, 2
+'SELECT n AS m FROM t AS tt WHERE tt.id < ?', 2, 0, 2
+'SELECT \"from\", \"a b\" AS \"c-d\" FROM \"select\" WHERE \"select\".\"from\" = ?', 1, 0, 1

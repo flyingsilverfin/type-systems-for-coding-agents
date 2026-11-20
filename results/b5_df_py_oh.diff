@@ -1,0 +1,276 @@
+diff --git a/app/lending/__main__.py b/app/lending/__main__.py
+index 9756b96..d029252 100644
+--- a/app/lending/__main__.py
++++ b/app/lending/__main__.py
+@@ -27,7 +27,7 @@ commands:
+   contact <member-id>      show the best way to contact a member
+   history <member-id>      list every loan a member has made
+   overdue <date>           list open loans due before <date> (YYYY-MM-DD)
+-  due-soon <date> <days>   list open loans due within <days> days from <date>
++  due-soon <date> [<days>] list open loans due within <days> days (default 7) from <date>
+   returned-late            list loans returned after their due date, latest first
+   lost                     list lost loans
+   fees                     total fees per member, highest first
+@@ -161,8 +161,8 @@ def dispatch(db: Db, command: str, args: list[str]) -> None:
+             as_of = parse_date(arg(args, 1, "overdue <date>"))
+             emit(loan_report.overdue(loan_repo.overdue_loans(db, as_of), as_of))
+         case "due-soon":
+-            start = parse_date(arg(args, 1, "due-soon <date> <days>"))
+-            days = parse_count(arg(args, 2, "due-soon <date> <days>"))
++            start = parse_date(arg(args, 1, "due-soon <date> [<days>]"))
++            days = parse_count(args[2]) if len(args) > 2 else 7
+             end = start + timedelta(days=days)
+             emit(loan_report.due_soon(loan_repo.loans_due_between(db, start, end)))
+         case "returned-late":
+diff --git a/app/lending/ingest.py b/app/lending/ingest.py
+index 6ab9789..d88762f 100644
+--- a/app/lending/ingest.py
++++ b/app/lending/ingest.py
+@@ -45,13 +45,18 @@ def _int(text: str, file: str, line: int) -> int:
+         raise CsvError(file, line, f"invalid integer '{text}'") from None
+ 
+ 
++def parse_emails(text: str) -> tuple[str, ...]:
++    """The `;`-separated addresses of an email field: sorted, without duplicates or empty entries."""
++    return tuple(sorted({part.strip() for part in text.split(";") if part.strip() != ""}))
++
++
+ def parse_member(record: Record, line: int) -> Member:
+     """Parse a members.csv record. The `deleted` column is deliberately ignored."""
+     f = "members.csv"
+     return Member(
+         id=_field(record, "member_id", f, line),
+         name=_field(record, "name", f, line),
+-        email=_optional(record, "email"),
++        emails=parse_emails(record.get("email", "")),
+         phone=_optional(record, "phone"),
+         joined=_date(_field(record, "joined", f, line), f, line),
+     )
+@@ -92,8 +97,8 @@ def member_query(member: Member) -> str:
+         f"has name {quote(member.name)}",
+         f"has joined {member.joined.isoformat()}",
+     ]
+-    if member.email is not None:
+-        attrs.append(f"has email {quote(member.email)}")
++    for email in member.emails:
++        attrs.append(f"has email {quote(email)}")
+     if member.phone is not None:
+         attrs.append(f"has phone {quote(member.phone)}")
+     return "insert $m isa member, " + ", ".join(attrs) + ";"
+diff --git a/app/lending/model.py b/app/lending/model.py
+index 2cff38a..c1df72c 100644
+--- a/app/lending/model.py
++++ b/app/lending/model.py
+@@ -33,7 +33,7 @@ class LoanStatus:
+ class Member:
+     id: str
+     name: str
+-    email: Optional[str]
++    emails: tuple[str, ...]  # sorted, without duplicates
+     phone: Optional[str]
+     joined: date
+ 
+@@ -67,7 +67,7 @@ class MemberContact:
+     """members, contact"""
+     id: str
+     name: str
+-    email: Optional[str]
++    emails: tuple[str, ...]  # sorted, without duplicates
+     phone: Optional[str]
+ 
+ 
+diff --git a/app/lending/repo/books.py b/app/lending/repo/books.py
+index 375ee18..c4d2267 100644
+--- a/app/lending/repo/books.py
++++ b/app/lending/repo/books.py
+@@ -179,7 +179,7 @@ def book_availability(db: Db, isbn: str) -> Optional[BookAvailability]:
+ 
+ 
+ def search_books(db: Db, text: str) -> list[BookListing]:
+-    """Books whose title or subtitle contains `text`, ignoring case."""
++    """Books whose title or subtitle contains `text`, ignoring case, or whose ISBN is exactly `text`."""
+     rows = db.read_rows("""
+         match
+           $b isa book, has isbn $isbn, has title $t, has year $y;
+@@ -201,6 +201,10 @@ def search_books(db: Db, text: str) -> list[BookListing]:
+         genre: Optional[str] = None
+         if (concept := row.get("g")) is not None and (genre := concept.try_get_string()) is None:
+             raise DataError("$g: expected a string")
+-        if needle in title.lower() or (subtitle is not None and needle in subtitle.lower()):
++        if (
++            isbn == text
++            or needle in title.lower()
++            or (subtitle is not None and needle in subtitle.lower())
++        ):
+             books.append(BookListing(isbn=isbn, title=title, year=year, genre=genre))
+     return books
+diff --git a/app/lending/repo/members.py b/app/lending/repo/members.py
+index 6b68702..c6a0b87 100644
+--- a/app/lending/repo/members.py
++++ b/app/lending/repo/members.py
+@@ -16,7 +16,10 @@ def list_members(db: Db) -> list[MemberContact]:
+           try { $m has email $e; };
+           try { $m has phone $p; };
+     """)
+-    members: list[MemberContact] = []
++    # A member with several emails comes back as one row per email: merge them into one entry per member.
++    names: dict[str, str] = {}
++    phones: dict[str, Optional[str]] = {}
++    emails: dict[str, set[str]] = {}
+     for row in rows:
+         if (concept := row.get("mid")) is None or (member_id := concept.try_get_string()) is None:
+             raise DataError("$mid: expected a string")
+@@ -28,8 +31,27 @@ def list_members(db: Db) -> list[MemberContact]:
+         phone: Optional[str] = None
+         if (concept := row.get("p")) is not None and (phone := concept.try_get_string()) is None:
+             raise DataError("$p: expected a string")
+-        members.append(MemberContact(id=member_id, name=name, email=email, phone=phone))
+-    return members
++        names[member_id] = name
++        phones[member_id] = phone
++        member_emails = emails.setdefault(member_id, set())
++        if email is not None:
++            member_emails.add(email)
++    return [
++        MemberContact(id=mid, name=names[mid], emails=tuple(sorted(emails[mid])), phone=phones[mid])
++        for mid in names
++    ]
++
++
++def _emails(rows: list) -> tuple[str, ...]:
++    """The distinct `$e` values over all rows, sorted."""
++    found: set[str] = set()
++    for row in rows:
++        email: Optional[str] = None
++        if (concept := row.get("e")) is not None and (email := concept.try_get_string()) is None:
++            raise DataError("$e: expected a string")
++        if email is not None:
++            found.add(email)
++    return tuple(sorted(found))
+ 
+ 
+ def find_member(db: Db, member_id: str) -> Optional[Member]:
+@@ -46,13 +68,10 @@ def find_member(db: Db, member_id: str) -> Optional[Member]:
+         raise DataError("$n: expected a string")
+     if (concept := row.get("j")) is None or (joined := concept.try_get_date()) is None:
+         raise DataError("$j: expected a date")
+-    email: Optional[str] = None
+-    if (concept := row.get("e")) is not None and (email := concept.try_get_string()) is None:
+-        raise DataError("$e: expected a string")
+     phone: Optional[str] = None
+     if (concept := row.get("p")) is not None and (phone := concept.try_get_string()) is None:
+         raise DataError("$p: expected a string")
+-    return Member(id=member_id, name=name, email=email, phone=phone, joined=joined)
++    return Member(id=member_id, name=name, emails=_emails(rows), phone=phone, joined=joined)
+ 
+ 
+ def member_loans(db: Db, member_id: str) -> list[MemberLoan]:
+@@ -94,20 +113,18 @@ def find_contact(db: Db, member_id: str) -> Optional[MemberContact]:
+     row = rows[0]
+     if (concept := row.get("n")) is None or (name := concept.try_get_string()) is None:
+         raise DataError("$n: expected a string")
+-    email: Optional[str] = None
+-    if (concept := row.get("e")) is not None and (email := concept.try_get_string()) is None:
+-        raise DataError("$e: expected a string")
+     phone: Optional[str] = None
+     if (concept := row.get("p")) is not None and (phone := concept.try_get_string()) is None:
+         raise DataError("$p: expected a string")
+-    return MemberContact(id=member_id, name=name, email=email, phone=phone)
++    return MemberContact(id=member_id, name=name, emails=_emails(rows), phone=phone)
+ 
+ 
+ def inactive_members(db: Db, since: date) -> list[MemberName]:
+-    """Members with no loan borrowed on or after `since`."""
++    """Members who joined on or before `since` and have no loan borrowed on or after `since`."""
+     rows = db.read_rows(f"""
+         match
+-          $m isa member, has member-id $mid, has name $n;
++          $m isa member, has member-id $mid, has name $n, has joined $j;
++          $j <= {since.isoformat()};
+           not {{
+             $l isa loan, links (borrower: $m), has borrowed $bo;
+             $bo >= {since.isoformat()};
+diff --git a/app/lending/report/loans.py b/app/lending/report/loans.py
+index 19a2594..58f32dd 100644
+--- a/app/lending/report/loans.py
++++ b/app/lending/report/loans.py
+@@ -21,7 +21,8 @@ def _status(loan: HistoryLoan) -> str:
+ 
+ def history(member_id: str, loans: list[HistoryLoan]) -> list[str]:
+     ordered = sorted(loans, key=lambda loan: (loan.borrowed, loan.id))
+-    lines = [f"history {member_id}: {len(ordered)} loans"]
++    open_count = sum(1 for loan in ordered if loan.lost is None and loan.returned is None)
++    lines = [f"history {member_id}: {len(ordered)} loans ({open_count} open)"]
+     lines += [
+         f"  {loan.id} {loan.isbn} borrowed {loan.borrowed.isoformat()} due {loan.due.isoformat()} {_status(loan)}"
+         for loan in ordered
+diff --git a/app/lending/report/members.py b/app/lending/report/members.py
+index fa92ffa..3e36475 100644
+--- a/app/lending/report/members.py
++++ b/app/lending/report/members.py
+@@ -4,7 +4,7 @@ from __future__ import annotations
+ from collections import Counter
+ 
+ from lending.model import LoanFee, Member, MemberContact, MemberFee, MemberLoan, MemberName
+-from lending.report import or_none
++from lending.report import NONE, or_none
+ 
+ 
+ def money(cents: int) -> str:
+@@ -13,14 +13,14 @@ def money(cents: int) -> str:
+ 
+ def members(items: list[MemberContact]) -> list[str]:
+     ordered = sorted(items, key=lambda m: m.id)
+-    return [f"{m.id} {m.name} {or_none(m.email)} {or_none(m.phone)}" for m in ordered]
++    return [f"{m.id} {m.name} {','.join(m.emails) if m.emails else NONE} {or_none(m.phone)}" for m in ordered]
+ 
+ 
+ def member(m: Member, loans: list[MemberLoan]) -> list[str]:
+     open_loans = sorted((loan for loan in loans if loan.is_open()), key=lambda loan: (loan.due, loan.id))
+     lines = [
+         f"member {m.id}: {m.name}",
+-        f"email: {or_none(m.email)}",
++        f"email: {', '.join(m.emails) if m.emails else NONE}",
+         f"phone: {or_none(m.phone)}",
+         f"joined: {m.joined.isoformat()}",
+         f"open loans: {len(open_loans)}",
+@@ -31,7 +31,7 @@ def member(m: Member, loans: list[MemberLoan]) -> list[str]:
+ 
+ 
+ def contact(m: MemberContact) -> list[str]:
+-    via = m.email or m.phone or "(no contact)"
++    via = (m.emails[0] if m.emails else None) or m.phone or "(no contact)"
+     return [f"{m.name} {via}"]
+ 
+ 
+@@ -42,7 +42,7 @@ def inactive(items: list[MemberName]) -> list[str]:
+ def top(borrowers: list[MemberName], limit: int) -> list[str]:
+     counts = Counter(b.id for b in borrowers)
+     names = {b.id: b.name for b in borrowers}
+-    ranked = sorted(counts.items(), key=lambda kv: (-kv[1], kv[0]))[:limit]
++    ranked = sorted(counts.items(), key=lambda kv: (-kv[1], names[kv[0]], kv[0]))[:limit]
+     return [f"{rank}. {mid} {names[mid]} ({count} loans)" for rank, (mid, count) in enumerate(ranked, start=1)]
+ 
+ 
+@@ -52,7 +52,7 @@ def fees(items: list[MemberFee]) -> list[str]:
+     for item in items:
+         totals[item.member_id] += item.fee_cents
+         names[item.member_id] = item.name
+-    ranked = sorted(((mid, total) for mid, total in totals.items() if total > 0), key=lambda kv: (-kv[1], kv[0]))
++    ranked = sorted(((mid, total) for mid, total in totals.items() if total >= 100), key=lambda kv: (-kv[1], kv[0]))
+     return [f"{mid} {names[mid]} {money(total)}" for mid, total in ranked]
+ 
+ 
+diff --git a/app/lending/schema.py b/app/lending/schema.py
+index 746be54..eb1f9a3 100644
+--- a/app/lending/schema.py
++++ b/app/lending/schema.py
+@@ -23,7 +23,7 @@ define
+   entity member,
+     owns member-id @key,
+     owns name,
+-    owns email,
++    owns email @card(0..),
+     owns phone,
+     owns joined,
+     plays loan:borrower;

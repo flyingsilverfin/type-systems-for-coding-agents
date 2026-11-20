@@ -1,0 +1,336 @@
+diff --git a/app/src/ingest.rs b/app/src/ingest.rs
+index d9efd50..12b92b4 100644
+--- a/app/src/ingest.rs
++++ b/app/src/ingest.rs
+@@ -98,6 +98,9 @@ pub fn loan_query(record: &Record, line: usize) -> Result<String> {
+     if let Some(lost) = optional(record, "lost") {
+         attrs.push(format!("has lost {}", parse_date(lost, f, line)?.format("%Y-%m-%d")));
+     }
++    if let Some(renewed) = optional(record, "renewed") {
++        attrs.push(format!("has renewed {}", parse_date(renewed, f, line)?.format("%Y-%m-%d")));
++    }
+     Ok(format!(
+         "match $m isa member, has member-id {}; $b isa book, has isbn {};\ninsert $l isa loan, links (borrower: $m, item: $b), {};",
+         quote(member_id),
+diff --git a/app/src/model.rs b/app/src/model.rs
+index 1d534d2..dd460f0 100644
+--- a/app/src/model.rs
++++ b/app/src/model.rs
+@@ -29,9 +29,16 @@ pub struct Loan {
+     pub returned: Option<NaiveDate>,
+     pub lost: Option<NaiveDate>,
+     pub fee_cents: Option<i64>,
++    /// The new due date after a renewal, if the loan was renewed.
++    pub renewed: Option<NaiveDate>,
+ }
+ 
+ impl Loan {
++    /// The renewal date if the loan was renewed, otherwise the original due date.
++    pub fn effective_due(&self) -> NaiveDate {
++        self.renewed.unwrap_or(self.due)
++    }
++
+     /// A lost loan counts as lost even if it also carries a return date.
+     pub fn is_lost(&self) -> bool {
+         self.lost.is_some()
+diff --git a/app/src/repo/books.rs b/app/src/repo/books.rs
+index 984154c..4e5be3e 100644
+--- a/app/src/repo/books.rs
++++ b/app/src/repo/books.rs
+@@ -100,6 +100,7 @@ pub fn book(db: &Db, isbn: &str) -> Result<Option<(Book, Vec<Loan>)>> {
+           try {{ $l has returned $returned; }};
+           try {{ $l has lost $lost; }};
+           try {{ $l has fee-cents $fee; }};
++          try {{ $l has renewed $renewed; }};
+         ",
+         quote(isbn)
+     ))?;
+@@ -129,6 +130,9 @@ pub fn book(db: &Db, isbn: &str) -> Result<Option<(Book, Vec<Loan>)>> {
+                 fee_cents: row.get("fee")?
+                     .map(|concept| concept.try_get_integer().ok_or_else(|| AppError::column("fee", "integer")))
+                     .transpose()?,
++                renewed: row.get("renewed")?
++                    .map(|concept| concept.try_get_date().ok_or_else(|| AppError::column("renewed", "date")))
++                    .transpose()?,
+             })
+         })
+         .collect::<Result<Vec<_>>>()?;
+@@ -253,6 +257,7 @@ pub fn available(db: &Db, isbn: &str) -> Result<Option<Availability>> {
+             try {{ $l has returned $returned; }};
+             try {{ $l has lost $lost; }};
+             try {{ $l has fee-cents $fee; }};
++            try {{ $l has renewed $renewed; }};
+           }};
+         ",
+         quote(isbn)
+@@ -289,6 +294,9 @@ pub fn available(db: &Db, isbn: &str) -> Result<Option<Availability>> {
+             fee_cents: row.get("fee")?
+                 .map(|concept| concept.try_get_integer().ok_or_else(|| AppError::column("fee", "integer")))
+                 .transpose()?,
++            renewed: row.get("renewed")?
++                .map(|concept| concept.try_get_date().ok_or_else(|| AppError::column("renewed", "date")))
++                .transpose()?,
+         });
+     }
+     Ok(Some(Availability { isbn: isbn.to_owned(), title, copies, loans }))
+diff --git a/app/src/repo/loans.rs b/app/src/repo/loans.rs
+index dc51801..45ffed6 100644
+--- a/app/src/repo/loans.rs
++++ b/app/src/repo/loans.rs
+@@ -20,6 +20,7 @@ pub fn history(db: &Db, member_id: &str) -> Result<Option<Vec<Loan>>> {
+             try {{ $l has returned $returned; }};
+             try {{ $l has lost $lost; }};
+             try {{ $l has fee-cents $fee; }};
++            try {{ $l has renewed $renewed; }};
+           }};
+         ",
+         quote(member_id)
+@@ -51,23 +52,26 @@ pub fn history(db: &Db, member_id: &str) -> Result<Option<Vec<Loan>>> {
+             fee_cents: row.get("fee")?
+                 .map(|concept| concept.try_get_integer().ok_or_else(|| AppError::column("fee", "integer")))
+                 .transpose()?,
++            renewed: row.get("renewed")?
++                .map(|concept| concept.try_get_date().ok_or_else(|| AppError::column("renewed", "date")))
++                .transpose()?,
+         });
+     }
+     Ok(Some(loans))
+ }
+ 
+-/// Loans (of any status) that were due before `as_of`.
++/// Loans (of any status) whose effective due date is before `as_of`.
+ pub fn overdue(db: &Db, as_of: NaiveDate) -> Result<Vec<Loan>> {
+     let rows = db.read_rows(&format!(
+         "
+         match
+           $l isa loan, links (borrower: $m, item: $b), has loan-id $loan_id, has borrowed $borrowed, has due $due;
+-          $due < {as_of};
+           $m has member-id $member_id;
+           $b has isbn $isbn;
+           try {{ $l has returned $returned; }};
+           try {{ $l has lost $lost; }};
+           try {{ $l has fee-cents $fee; }};
++          try {{ $l has renewed $renewed; }};
+         "
+     ))?;
+     rows.iter()
+@@ -98,24 +102,27 @@ pub fn overdue(db: &Db, as_of: NaiveDate) -> Result<Vec<Loan>> {
+                 fee_cents: row.get("fee")?
+                     .map(|concept| concept.try_get_integer().ok_or_else(|| AppError::column("fee", "integer")))
+                     .transpose()?,
++                renewed: row.get("renewed")?
++                    .map(|concept| concept.try_get_date().ok_or_else(|| AppError::column("renewed", "date")))
++                    .transpose()?,
+             })
+         })
++        .filter(|loan| !matches!(loan, Ok(loan) if loan.effective_due() >= as_of))
+         .collect()
+ }
+ 
+-/// Loans (of any status) due between `start` and `end`, both inclusive.
++/// Loans (of any status) whose effective due date is between `start` and `end`, both inclusive.
+ pub fn due_soon(db: &Db, start: NaiveDate, end: NaiveDate) -> Result<Vec<Loan>> {
+     let rows = db.read_rows(&format!(
+         "
+         match
+           $l isa loan, links (borrower: $m, item: $b), has loan-id $loan_id, has borrowed $borrowed, has due $due;
+-          $due >= {start};
+-          $due <= {end};
+           $m has member-id $member_id;
+           $b has isbn $isbn;
+           try {{ $l has returned $returned; }};
+           try {{ $l has lost $lost; }};
+           try {{ $l has fee-cents $fee; }};
++          try {{ $l has renewed $renewed; }};
+         "
+     ))?;
+     rows.iter()
+@@ -146,8 +153,12 @@ pub fn due_soon(db: &Db, start: NaiveDate, end: NaiveDate) -> Result<Vec<Loan>>
+                 fee_cents: row.get("fee")?
+                     .map(|concept| concept.try_get_integer().ok_or_else(|| AppError::column("fee", "integer")))
+                     .transpose()?,
++                renewed: row.get("renewed")?
++                    .map(|concept| concept.try_get_date().ok_or_else(|| AppError::column("renewed", "date")))
++                    .transpose()?,
+             })
+         })
++        .filter(|loan| !matches!(loan, Ok(loan) if loan.effective_due() < start || loan.effective_due() > end))
+         .collect()
+ }
+ 
+@@ -162,6 +173,7 @@ pub fn returned_late(db: &Db) -> Result<Vec<Loan>> {
+           $b has isbn $isbn;
+           try { $l has lost $lost; };
+           try { $l has fee-cents $fee; };
++          try { $l has renewed $renewed; };
+         ",
+     )?;
+     rows.iter()
+@@ -194,6 +206,9 @@ pub fn returned_late(db: &Db) -> Result<Vec<Loan>> {
+                 fee_cents: row.get("fee")?
+                     .map(|concept| concept.try_get_integer().ok_or_else(|| AppError::column("fee", "integer")))
+                     .transpose()?,
++                renewed: row.get("renewed")?
++                    .map(|concept| concept.try_get_date().ok_or_else(|| AppError::column("renewed", "date")))
++                    .transpose()?,
+             })
+         })
+         .collect()
+@@ -210,6 +225,7 @@ pub fn lost(db: &Db) -> Result<Vec<Loan>> {
+           $b has isbn $isbn;
+           try { $l has returned $returned; };
+           try { $l has fee-cents $fee; };
++          try { $l has renewed $renewed; };
+         ",
+     )?;
+     rows.iter()
+@@ -240,6 +256,9 @@ pub fn lost(db: &Db) -> Result<Vec<Loan>> {
+                 fee_cents: row.get("fee")?
+                     .map(|concept| concept.try_get_integer().ok_or_else(|| AppError::column("fee", "integer")))
+                     .transpose()?,
++                renewed: row.get("renewed")?
++                    .map(|concept| concept.try_get_date().ok_or_else(|| AppError::column("renewed", "date")))
++                    .transpose()?,
+             })
+         })
+         .collect()
+diff --git a/app/src/repo/members.rs b/app/src/repo/members.rs
+index a7011c6..0901b47 100644
+--- a/app/src/repo/members.rs
++++ b/app/src/repo/members.rs
+@@ -107,6 +107,7 @@ pub fn member(db: &Db, member_id: &str) -> Result<Option<(Member, Vec<Loan>)>> {
+           try {{ $l has returned $returned; }};
+           try {{ $l has lost $lost; }};
+           try {{ $l has fee-cents $fee; }};
++          try {{ $l has renewed $renewed; }};
+         ",
+         quote(member_id)
+     ))?;
+@@ -136,6 +137,9 @@ pub fn member(db: &Db, member_id: &str) -> Result<Option<(Member, Vec<Loan>)>> {
+                 fee_cents: row.get("fee")?
+                     .map(|concept| concept.try_get_integer().ok_or_else(|| AppError::column("fee", "integer")))
+                     .transpose()?,
++                renewed: row.get("renewed")?
++                    .map(|concept| concept.try_get_date().ok_or_else(|| AppError::column("renewed", "date")))
++                    .transpose()?,
+             })
+         })
+         .collect::<Result<Vec<_>>>()?;
+@@ -263,6 +267,7 @@ pub fn member_fees(db: &Db, member_id: &str) -> Result<Option<Vec<Loan>>> {
+             try {{ $l has returned $returned; }};
+             try {{ $l has lost $lost; }};
+             try {{ $l has fee-cents $fee; }};
++            try {{ $l has renewed $renewed; }};
+           }};
+         ",
+         quote(member_id)
+@@ -294,6 +299,9 @@ pub fn member_fees(db: &Db, member_id: &str) -> Result<Option<Vec<Loan>>> {
+             fee_cents: row.get("fee")?
+                 .map(|concept| concept.try_get_integer().ok_or_else(|| AppError::column("fee", "integer")))
+                 .transpose()?,
++            renewed: row.get("renewed")?
++                .map(|concept| concept.try_get_date().ok_or_else(|| AppError::column("renewed", "date")))
++                .transpose()?,
+         });
+     }
+     Ok(Some(loans))
+diff --git a/app/src/report/loans.rs b/app/src/report/loans.rs
+index 47a622b..d4b3b20 100644
+--- a/app/src/report/loans.rs
++++ b/app/src/report/loans.rs
+@@ -17,18 +17,19 @@ pub fn history(member_id: &str, loans: &[Loan]) -> Vec<String> {
+             (None, Some(returned)) => format!("returned {returned}"),
+             (None, None) => "open".to_owned(),
+         };
+-        format!("  {} {} borrowed {} due {} {status}", loan.id, loan.isbn, loan.borrowed, loan.due)
++        let renewed = loan.renewed.map(|renewed| format!(" renewed {renewed}")).unwrap_or_default();
++        format!("  {} {} borrowed {} due {}{renewed} {status}", loan.id, loan.isbn, loan.borrowed, loan.due)
+     }));
+     lines
+ }
+ 
+ /// Open loans that were due before `as_of`, with how many days they are overdue.
+ pub fn overdue(loans: &[Loan], as_of: NaiveDate) -> Vec<String> {
+-    by_due(loans.iter().filter(|loan| loan.is_open() && loan.due < as_of).collect())
++    by_due(loans.iter().filter(|loan| loan.is_open() && loan.effective_due() < as_of).collect())
+         .iter()
+         .map(|loan| {
+-            let days = (as_of - loan.due).num_days();
+-            format!("{} {} {} due {} ({days} days)", loan.id, loan.member_id, loan.isbn, loan.due)
++            let days = (as_of - loan.effective_due()).num_days();
++            format!("{} {} {} due {} ({days} days)", loan.id, loan.member_id, loan.isbn, loan.effective_due())
+         })
+         .collect()
+ }
+@@ -37,16 +38,16 @@ pub fn overdue(loans: &[Loan], as_of: NaiveDate) -> Vec<String> {
+ pub fn due_soon(loans: &[Loan]) -> Vec<String> {
+     by_due(loans.iter().filter(|loan| loan.is_open()).collect())
+         .iter()
+-        .map(|loan| format!("{} {} {} due {}", loan.id, loan.member_id, loan.isbn, loan.due))
++        .map(|loan| format!("{} {} {} due {}", loan.id, loan.member_id, loan.isbn, loan.effective_due()))
+         .collect()
+ }
+ 
+-/// Returned loans that came back after their due date, latest first.
++/// Returned loans that came back after their effective due date, latest first.
+ pub fn returned_late(loans: &[Loan]) -> Vec<String> {
+     let mut late: Vec<(&Loan, NaiveDate, i64)> = loans
+         .iter()
+         .filter(|loan| loan.is_returned())
+-        .filter_map(|loan| loan.returned.map(|returned| (loan, returned, (returned - loan.due).num_days())))
++        .filter_map(|loan| loan.returned.map(|returned| (loan, returned, (returned - loan.effective_due()).num_days())))
+         .filter(|(_, _, days)| *days > 0)
+         .collect();
+     late.sort_by(|a, b| b.2.cmp(&a.2).then(a.0.id.cmp(&b.0.id)));
+diff --git a/app/src/report/members.rs b/app/src/report/members.rs
+index c8d6f51..521df7e 100644
+--- a/app/src/report/members.rs
++++ b/app/src/report/members.rs
+@@ -34,7 +34,10 @@ pub fn member(member: &Member, loans: &[Loan]) -> Vec<String> {
+         format!("joined: {}", member.joined),
+         format!("open loans: {}", open.len()),
+     ];
+-    lines.extend(open.iter().map(|loan| format!("  {} {} due {}", loan.id, loan.isbn, loan.due)));
++    lines.extend(open.iter().map(|loan| {
++        let renewed = if loan.renewed.is_some() { " (renewed)" } else { "" };
++        format!("  {} {} due {}{renewed}", loan.id, loan.isbn, loan.effective_due())
++    }));
+     lines.push(format!("lost loans: {}", loans.iter().filter(|loan| loan.is_lost()).count()));
+     lines
+ }
+diff --git a/app/src/report/mod.rs b/app/src/report/mod.rs
+index 63f1559..1bd3317 100644
+--- a/app/src/report/mod.rs
++++ b/app/src/report/mod.rs
+@@ -20,9 +20,9 @@ fn book_lines<'a>(books: impl IntoIterator<Item = &'a BookSummary>) -> Vec<Strin
+         .collect()
+ }
+ 
+-/// Order loans by due date, then loan id.
++/// Order loans by effective due date, then loan id.
+ fn by_due(mut loans: Vec<&Loan>) -> Vec<&Loan> {
+-    loans.sort_by(|a, b| (a.due, &a.id).cmp(&(b.due, &b.id)));
++    loans.sort_by(|a, b| (a.effective_due(), &a.id).cmp(&(b.effective_due(), &b.id)));
+     loans
+ }
+ 
+diff --git a/app/src/schema.rs b/app/src/schema.rs
+index 2063bf1..64c47c1 100644
+--- a/app/src/schema.rs
++++ b/app/src/schema.rs
+@@ -19,6 +19,7 @@ define
+   attribute returned, value date;
+   attribute fee-cents, value integer;
+   attribute lost, value date;
++  attribute renewed, value date;
+ 
+   entity member,
+     owns member-id @key,
+@@ -45,5 +46,6 @@ define
+     owns due,
+     owns returned,
+     owns fee-cents,
+-    owns lost;
++    owns lost,
++    owns renewed;
+ "#;

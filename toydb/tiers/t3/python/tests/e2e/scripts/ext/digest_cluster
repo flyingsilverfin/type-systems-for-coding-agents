@@ -1,0 +1,55 @@
+# Statement digests in a cluster: every client connection is a session with
+# its own statement statistics, wherever its statements are executed.
+
+cluster nodes=3
+---
+ok
+
+c1:> CREATE TABLE t (id INT PRIMARY KEY, v STRING INDEX)
+c1:> INSERT INTO t VALUES (1, 'a'), (2, 'b'), (3, 'a')
+c2:> SELECT * FROM t WHERE v = 'a'
+c2:> select * from t where V = 'b'
+c3:> SELECT id FROM t WHERE id >= 2
+---
+c2: 1, 'a'
+c2: 3, 'a'
+c2: 2, 'b'
+c3: 2
+c3: 3
+
+c1:> SHOW STATEMENTS
+c2:> SHOW STATEMENTS
+c3:> SHOW STATEMENTS
+---
+c1: 'CREATE TABLE t (id INTEGER PRIMARY KEY, v STRING INDEX)', 1, 0, 0
+c1: 'INSERT INTO t VALUES (?, ?), (?, ?), (?, ?)', 1, 0, 3
+c2: 'SELECT * FROM t WHERE v = ?', 2, 0, 3
+c3: 'SELECT id FROM t WHERE id >= ?', 1, 0, 2
+
+# Transactions, errors and writes on one client don't show up on the others.
+c2:> BEGIN
+c2:> UPDATE t SET v = 'z' WHERE id = 1
+c3:!> UPDATE t SET v = 'y' WHERE id = 1
+c2:> COMMIT
+c3:> UPDATE t SET v = 'y' WHERE id = 1
+c3:!> SELECT nope FROM t
+---
+c3: Error: serialization failure, retry transaction
+c3: Error: invalid input: unknown column nope
+
+c2:[header]> SHOW STATEMENTS
+c3:[json]> SHOW STATEMENTS
+---
+c2: digest, calls, errors, rows
+c2: 'SELECT * FROM t WHERE v = ?', 2, 0, 3
+c2: 'BEGIN', 1, 0, 0
+c2: 'UPDATE t SET v = ? WHERE id = ?', 1, 0, 1
+c2: 'COMMIT', 1, 0, 0
+c3: {"result":"select","columns":["digest","calls","errors","rows"],"rows":[["SELECT id FROM t WHERE id >= ?",1,0,2],["UPDATE t SET v = ? WHERE id = ?",2,1,1],["SELECT nope FROM t",1,1,0]]}
+
+# A new client starts with empty statistics; closing a client discards them.
+c4:> SHOW STATEMENTS
+c1:close
+c1:> SHOW STATEMENTS
+---
+ok

@@ -1,0 +1,15 @@
+{
+ "run": "t3r_release_rs_sma",
+ "task": "release",
+ "suite": "toydb-t3",
+ "tier": "t3",
+ "lang": "rust",
+ "model": "sonnet",
+ "effort": "medium",
+ "ws": "/home/user/agentbench/runs/t3r_release_rs_sma",
+ "hint": true,
+ "readme_from": "t2",
+ "baseline": "e54e0941e7dc83d17b2b958dbd108207c121613a",
+ "created": 1795150661.1349642,
+ "warm_ok": true
+}

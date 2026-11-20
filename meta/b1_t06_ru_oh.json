@@ -1,0 +1,10 @@
+{
+ "run": "b1_t06_ru_oh",
+ "task": "T06",
+ "lang": "rust",
+ "model": "opus",
+ "effort": "high",
+ "ws": "/home/user/agentbench/runs/b1_t06_ru_oh",
+ "baseline": "2db683747c57b7f6509b38a495f85feb62de97a7",
+ "created": 1794853556.9787848
+}

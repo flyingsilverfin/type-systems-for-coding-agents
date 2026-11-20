@@ -1,0 +1,13 @@
+#!/usr/bin/env python3
+"""Runs the toyDB `workload` executable (`toydb.bin.workload`)."""
+
+import sys
+from pathlib import Path
+
+# Make the toydb package importable regardless of the working directory.
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
+from toydb.bin.workload import main  # noqa: E402
+
+if __name__ == "__main__":
+    main()

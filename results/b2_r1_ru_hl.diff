@@ -1,0 +1,339 @@
+diff --git a/app/src/ingest.rs b/app/src/ingest.rs
+index d9efd50..f710a03 100644
+--- a/app/src/ingest.rs
++++ b/app/src/ingest.rs
+@@ -7,6 +7,7 @@ use crate::{
+     csv::{read_csv, Record},
+     db::{quote, Db},
+     error::{AppError, Result},
++    model::LoanStatus,
+ };
+ 
+ #[derive(Debug, Default)]
+@@ -89,15 +90,17 @@ pub fn loan_query(record: &Record, line: usize) -> Result<String> {
+         format!("has borrowed {}", borrowed.format("%Y-%m-%d")),
+         format!("has due {}", due.format("%Y-%m-%d")),
+     ];
+-    if let Some(returned) = optional(record, "returned") {
+-        attrs.push(format!("has returned {}", parse_date(returned, f, line)?.format("%Y-%m-%d")));
++    // Both dates are validated, then reduced to one status (lost wins over returned).
++    let returned = optional(record, "returned").map(|text| parse_date(text, f, line)).transpose()?;
++    let lost = optional(record, "lost").map(|text| parse_date(text, f, line)).transpose()?;
++    match LoanStatus::from_dates(returned, lost) {
++        LoanStatus::Open => {}
++        LoanStatus::Returned(date) => attrs.push(format!("has returned {}", date.format("%Y-%m-%d"))),
++        LoanStatus::Lost(date) => attrs.push(format!("has lost {}", date.format("%Y-%m-%d"))),
+     }
+     if let Some(fee_cents) = optional(record, "fee_cents") {
+         attrs.push(format!("has fee-cents {}", parse_int(fee_cents, f, line)?));
+     }
+-    if let Some(lost) = optional(record, "lost") {
+-        attrs.push(format!("has lost {}", parse_date(lost, f, line)?.format("%Y-%m-%d")));
+-    }
+     Ok(format!(
+         "match $m isa member, has member-id {}; $b isa book, has isbn {};\ninsert $l isa loan, links (borrower: $m, item: $b), {};",
+         quote(member_id),
+diff --git a/app/src/model.rs b/app/src/model.rs
+index 1d534d2..dd0a932 100644
+--- a/app/src/model.rs
++++ b/app/src/model.rs
+@@ -19,6 +19,26 @@ pub struct Book {
+     pub copies: i64,
+ }
+ 
++/// The status of a loan: exactly one of open, returned (on the given date) or lost (on the given date).
++#[derive(Debug, Clone, Copy, PartialEq, Eq)]
++pub enum LoanStatus {
++    Open,
++    Returned(NaiveDate),
++    Lost(NaiveDate),
++}
++
++impl LoanStatus {
++    /// Derive the status from the stored return and lost dates. A lost loan counts as lost even if it also
++    /// carries a return date.
++    pub fn from_dates(returned: Option<NaiveDate>, lost: Option<NaiveDate>) -> Self {
++        match (lost, returned) {
++            (Some(lost), _) => LoanStatus::Lost(lost),
++            (None, Some(returned)) => LoanStatus::Returned(returned),
++            (None, None) => LoanStatus::Open,
++        }
++    }
++}
++
+ #[derive(Debug, Clone, PartialEq)]
+ pub struct Loan {
+     pub id: String,
+@@ -26,22 +46,16 @@ pub struct Loan {
+     pub isbn: String,
+     pub borrowed: NaiveDate,
+     pub due: NaiveDate,
+-    pub returned: Option<NaiveDate>,
+-    pub lost: Option<NaiveDate>,
++    pub status: LoanStatus,
+     pub fee_cents: Option<i64>,
+ }
+ 
+ impl Loan {
+-    /// A lost loan counts as lost even if it also carries a return date.
+     pub fn is_lost(&self) -> bool {
+-        self.lost.is_some()
+-    }
+-
+-    pub fn is_returned(&self) -> bool {
+-        self.returned.is_some() && !self.is_lost()
++        matches!(self.status, LoanStatus::Lost(_))
+     }
+ 
+     pub fn is_open(&self) -> bool {
+-        !self.is_returned() && !self.is_lost()
++        matches!(self.status, LoanStatus::Open)
+     }
+ }
+diff --git a/app/src/repo/books.rs b/app/src/repo/books.rs
+index 984154c..68171fc 100644
+--- a/app/src/repo/books.rs
++++ b/app/src/repo/books.rs
+@@ -5,6 +5,7 @@ use crate::{
+     db::{quote, Db},
+     error::{AppError, Result},
+     model::{Book, Loan},
++    repo::loan_status,
+ };
+ 
+ /// The columns of a book listing line.
+@@ -120,12 +121,7 @@ pub fn book(db: &Db, isbn: &str) -> Result<Option<(Book, Vec<Loan>)>> {
+                     .and_then(Concept::try_get_date)
+                     .ok_or_else(|| AppError::column("borrowed", "date"))?,
+                 due: row.get("due")?.and_then(Concept::try_get_date).ok_or_else(|| AppError::column("due", "date"))?,
+-                returned: row.get("returned")?
+-                    .map(|concept| concept.try_get_date().ok_or_else(|| AppError::column("returned", "date")))
+-                    .transpose()?,
+-                lost: row.get("lost")?
+-                    .map(|concept| concept.try_get_date().ok_or_else(|| AppError::column("lost", "date")))
+-                    .transpose()?,
++                status: loan_status(row)?,
+                 fee_cents: row.get("fee")?
+                     .map(|concept| concept.try_get_integer().ok_or_else(|| AppError::column("fee", "integer")))
+                     .transpose()?,
+@@ -280,12 +276,7 @@ pub fn available(db: &Db, isbn: &str) -> Result<Option<Availability>> {
+                 .and_then(Concept::try_get_date)
+                 .ok_or_else(|| AppError::column("borrowed", "date"))?,
+             due: row.get("due")?.and_then(Concept::try_get_date).ok_or_else(|| AppError::column("due", "date"))?,
+-            returned: row.get("returned")?
+-                .map(|concept| concept.try_get_date().ok_or_else(|| AppError::column("returned", "date")))
+-                .transpose()?,
+-            lost: row.get("lost")?
+-                .map(|concept| concept.try_get_date().ok_or_else(|| AppError::column("lost", "date")))
+-                .transpose()?,
++            status: loan_status(row)?,
+             fee_cents: row.get("fee")?
+                 .map(|concept| concept.try_get_integer().ok_or_else(|| AppError::column("fee", "integer")))
+                 .transpose()?,
+diff --git a/app/src/repo/loans.rs b/app/src/repo/loans.rs
+index dc51801..a615bd6 100644
+--- a/app/src/repo/loans.rs
++++ b/app/src/repo/loans.rs
+@@ -6,6 +6,7 @@ use crate::{
+     db::{quote, Db},
+     error::{AppError, Result},
+     model::Loan,
++    repo::loan_status,
+ };
+ 
+ /// All loans of the given member, or `None` if there is no such member.
+@@ -42,12 +43,7 @@ pub fn history(db: &Db, member_id: &str) -> Result<Option<Vec<Loan>>> {
+                 .and_then(Concept::try_get_date)
+                 .ok_or_else(|| AppError::column("borrowed", "date"))?,
+             due: row.get("due")?.and_then(Concept::try_get_date).ok_or_else(|| AppError::column("due", "date"))?,
+-            returned: row.get("returned")?
+-                .map(|concept| concept.try_get_date().ok_or_else(|| AppError::column("returned", "date")))
+-                .transpose()?,
+-            lost: row.get("lost")?
+-                .map(|concept| concept.try_get_date().ok_or_else(|| AppError::column("lost", "date")))
+-                .transpose()?,
++            status: loan_status(row)?,
+             fee_cents: row.get("fee")?
+                 .map(|concept| concept.try_get_integer().ok_or_else(|| AppError::column("fee", "integer")))
+                 .transpose()?,
+@@ -89,12 +85,7 @@ pub fn overdue(db: &Db, as_of: NaiveDate) -> Result<Vec<Loan>> {
+                     .and_then(Concept::try_get_date)
+                     .ok_or_else(|| AppError::column("borrowed", "date"))?,
+                 due: row.get("due")?.and_then(Concept::try_get_date).ok_or_else(|| AppError::column("due", "date"))?,
+-                returned: row.get("returned")?
+-                    .map(|concept| concept.try_get_date().ok_or_else(|| AppError::column("returned", "date")))
+-                    .transpose()?,
+-                lost: row.get("lost")?
+-                    .map(|concept| concept.try_get_date().ok_or_else(|| AppError::column("lost", "date")))
+-                    .transpose()?,
++                status: loan_status(row)?,
+                 fee_cents: row.get("fee")?
+                     .map(|concept| concept.try_get_integer().ok_or_else(|| AppError::column("fee", "integer")))
+                     .transpose()?,
+@@ -137,12 +128,7 @@ pub fn due_soon(db: &Db, start: NaiveDate, end: NaiveDate) -> Result<Vec<Loan>>
+                     .and_then(Concept::try_get_date)
+                     .ok_or_else(|| AppError::column("borrowed", "date"))?,
+                 due: row.get("due")?.and_then(Concept::try_get_date).ok_or_else(|| AppError::column("due", "date"))?,
+-                returned: row.get("returned")?
+-                    .map(|concept| concept.try_get_date().ok_or_else(|| AppError::column("returned", "date")))
+-                    .transpose()?,
+-                lost: row.get("lost")?
+-                    .map(|concept| concept.try_get_date().ok_or_else(|| AppError::column("lost", "date")))
+-                    .transpose()?,
++                status: loan_status(row)?,
+                 fee_cents: row.get("fee")?
+                     .map(|concept| concept.try_get_integer().ok_or_else(|| AppError::column("fee", "integer")))
+                     .transpose()?,
+@@ -183,14 +169,7 @@ pub fn returned_late(db: &Db) -> Result<Vec<Loan>> {
+                     .and_then(Concept::try_get_date)
+                     .ok_or_else(|| AppError::column("borrowed", "date"))?,
+                 due: row.get("due")?.and_then(Concept::try_get_date).ok_or_else(|| AppError::column("due", "date"))?,
+-                returned: Some(
+-                    row.get("returned")?
+-                        .and_then(Concept::try_get_date)
+-                        .ok_or_else(|| AppError::column("returned", "date"))?,
+-                ),
+-                lost: row.get("lost")?
+-                    .map(|concept| concept.try_get_date().ok_or_else(|| AppError::column("lost", "date")))
+-                    .transpose()?,
++                status: loan_status(row)?,
+                 fee_cents: row.get("fee")?
+                     .map(|concept| concept.try_get_integer().ok_or_else(|| AppError::column("fee", "integer")))
+                     .transpose()?,
+@@ -231,12 +210,7 @@ pub fn lost(db: &Db) -> Result<Vec<Loan>> {
+                     .and_then(Concept::try_get_date)
+                     .ok_or_else(|| AppError::column("borrowed", "date"))?,
+                 due: row.get("due")?.and_then(Concept::try_get_date).ok_or_else(|| AppError::column("due", "date"))?,
+-                returned: row.get("returned")?
+-                    .map(|concept| concept.try_get_date().ok_or_else(|| AppError::column("returned", "date")))
+-                    .transpose()?,
+-                lost: Some(
+-                    row.get("lost")?.and_then(Concept::try_get_date).ok_or_else(|| AppError::column("lost", "date"))?,
+-                ),
++                status: loan_status(row)?,
+                 fee_cents: row.get("fee")?
+                     .map(|concept| concept.try_get_integer().ok_or_else(|| AppError::column("fee", "integer")))
+                     .transpose()?,
+diff --git a/app/src/repo/members.rs b/app/src/repo/members.rs
+index a7011c6..e83a392 100644
+--- a/app/src/repo/members.rs
++++ b/app/src/repo/members.rs
+@@ -6,6 +6,7 @@ use crate::{
+     db::{quote, Db},
+     error::{AppError, Result},
+     model::{Loan, Member},
++    repo::loan_status,
+ };
+ 
+ /// A member's id, name and contact details.
+@@ -127,12 +128,7 @@ pub fn member(db: &Db, member_id: &str) -> Result<Option<(Member, Vec<Loan>)>> {
+                     .and_then(Concept::try_get_date)
+                     .ok_or_else(|| AppError::column("borrowed", "date"))?,
+                 due: row.get("due")?.and_then(Concept::try_get_date).ok_or_else(|| AppError::column("due", "date"))?,
+-                returned: row.get("returned")?
+-                    .map(|concept| concept.try_get_date().ok_or_else(|| AppError::column("returned", "date")))
+-                    .transpose()?,
+-                lost: row.get("lost")?
+-                    .map(|concept| concept.try_get_date().ok_or_else(|| AppError::column("lost", "date")))
+-                    .transpose()?,
++                status: loan_status(row)?,
+                 fee_cents: row.get("fee")?
+                     .map(|concept| concept.try_get_integer().ok_or_else(|| AppError::column("fee", "integer")))
+                     .transpose()?,
+@@ -285,12 +281,7 @@ pub fn member_fees(db: &Db, member_id: &str) -> Result<Option<Vec<Loan>>> {
+                 .and_then(Concept::try_get_date)
+                 .ok_or_else(|| AppError::column("borrowed", "date"))?,
+             due: row.get("due")?.and_then(Concept::try_get_date).ok_or_else(|| AppError::column("due", "date"))?,
+-            returned: row.get("returned")?
+-                .map(|concept| concept.try_get_date().ok_or_else(|| AppError::column("returned", "date")))
+-                .transpose()?,
+-            lost: row.get("lost")?
+-                .map(|concept| concept.try_get_date().ok_or_else(|| AppError::column("lost", "date")))
+-                .transpose()?,
++            status: loan_status(row)?,
+             fee_cents: row.get("fee")?
+                 .map(|concept| concept.try_get_integer().ok_or_else(|| AppError::column("fee", "integer")))
+                 .transpose()?,
+diff --git a/app/src/repo/mod.rs b/app/src/repo/mod.rs
+index 6e6e2b9..71fe3c1 100644
+--- a/app/src/repo/mod.rs
++++ b/app/src/repo/mod.rs
+@@ -3,6 +3,25 @@
+ //! Commands whose output depends on loan status return `model::Loan`, so the status rules live in one
+ //! place; the others return small purpose-built rows holding only the columns the command needs.
+ //! Column values are extracted inline with `ConceptRow::get` and the `Concept::try_get_*` accessors.
++use chrono::NaiveDate;
++use typedb_driver::{answer::ConceptRow, concept::Concept};
++
++use crate::{
++    error::{AppError, Result},
++    model::LoanStatus,
++};
++
+ pub mod books;
+ pub mod loans;
+ pub mod members;
++
++/// Read a loan's status from its optional `returned` and `lost` columns.
++pub fn loan_status(row: &ConceptRow) -> Result<LoanStatus> {
++    Ok(LoanStatus::from_dates(optional_date(row, "returned")?, optional_date(row, "lost")?))
++}
++
++fn optional_date(row: &ConceptRow, column: &str) -> Result<Option<NaiveDate>> {
++    row.get(column)?
++        .map(|concept: &Concept| concept.try_get_date().ok_or_else(|| AppError::column(column, "date")))
++        .transpose()
++}
+diff --git a/app/src/report/loans.rs b/app/src/report/loans.rs
+index 47a622b..852e7b9 100644
+--- a/app/src/report/loans.rs
++++ b/app/src/report/loans.rs
+@@ -4,7 +4,7 @@ use std::collections::BTreeMap;
+ use chrono::NaiveDate;
+ 
+ use super::by_due;
+-use crate::model::Loan;
++use crate::model::{Loan, LoanStatus};
+ 
+ /// All of a member's loans in borrowing order, with their status.
+ pub fn history(member_id: &str, loans: &[Loan]) -> Vec<String> {
+@@ -12,10 +12,10 @@ pub fn history(member_id: &str, loans: &[Loan]) -> Vec<String> {
+     ordered.sort_by(|a, b| (a.borrowed, &a.id).cmp(&(b.borrowed, &b.id)));
+     let mut lines = vec![format!("history {member_id}: {} loans", ordered.len())];
+     lines.extend(ordered.iter().map(|loan| {
+-        let status = match (loan.lost, loan.returned) {
+-            (Some(lost), _) => format!("lost {lost}"),
+-            (None, Some(returned)) => format!("returned {returned}"),
+-            (None, None) => "open".to_owned(),
++        let status = match loan.status {
++            LoanStatus::Lost(lost) => format!("lost {lost}"),
++            LoanStatus::Returned(returned) => format!("returned {returned}"),
++            LoanStatus::Open => "open".to_owned(),
+         };
+         format!("  {} {} borrowed {} due {} {status}", loan.id, loan.isbn, loan.borrowed, loan.due)
+     }));
+@@ -45,8 +45,10 @@ pub fn due_soon(loans: &[Loan]) -> Vec<String> {
+ pub fn returned_late(loans: &[Loan]) -> Vec<String> {
+     let mut late: Vec<(&Loan, NaiveDate, i64)> = loans
+         .iter()
+-        .filter(|loan| loan.is_returned())
+-        .filter_map(|loan| loan.returned.map(|returned| (loan, returned, (returned - loan.due).num_days())))
++        .filter_map(|loan| match loan.status {
++            LoanStatus::Returned(returned) => Some((loan, returned, (returned - loan.due).num_days())),
++            LoanStatus::Open | LoanStatus::Lost(_) => None,
++        })
+         .filter(|(_, _, days)| *days > 0)
+         .collect();
+     late.sort_by(|a, b| b.2.cmp(&a.2).then(a.0.id.cmp(&b.0.id)));
+@@ -58,7 +60,10 @@ pub fn returned_late(loans: &[Loan]) -> Vec<String> {
+ /// Lost loans, ordered by the date they were reported lost.
+ pub fn lost(loans: &[Loan]) -> Vec<String> {
+     let mut lost: Vec<(&Loan, NaiveDate)> =
+-        loans.iter().filter_map(|loan| loan.lost.map(|lost| (loan, lost))).collect();
++        loans.iter().filter_map(|loan| match loan.status {
++            LoanStatus::Lost(lost) => Some((loan, lost)),
++            LoanStatus::Open | LoanStatus::Returned(_) => None,
++        }).collect();
+     lost.sort_by(|a, b| (a.1, &a.0.id).cmp(&(b.1, &b.0.id)));
+     lost.iter().map(|(loan, lost)| format!("{} {} {} lost {lost}", loan.id, loan.member_id, loan.isbn)).collect()
+ }

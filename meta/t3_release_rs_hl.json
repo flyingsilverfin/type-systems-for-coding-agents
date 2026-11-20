@@ -1,0 +1,14 @@
+{
+ "run": "t3_release_rs_hl",
+ "task": "release",
+ "suite": "toydb-t3",
+ "tier": "t3",
+ "lang": "rust",
+ "model": "haiku",
+ "effort": "low",
+ "ws": "/home/user/agentbench/runs/t3_release_rs_hl",
+ "hint": true,
+ "baseline": "55fbdc5624e80c5e4404b110272c5b460e02ecdf",
+ "created": 1795025560.924146,
+ "warm_ok": true
+}

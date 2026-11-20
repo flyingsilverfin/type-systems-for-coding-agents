@@ -1,0 +1,226 @@
+diff --git a/app/src/db.rs b/app/src/db.rs
+index ad3d18d..3827b4c 100644
+--- a/app/src/db.rs
++++ b/app/src/db.rs
+@@ -1,6 +1,8 @@
+ //! Thin wrapper around the TypeDB driver: connections and transactions.
++use chrono::NaiveDate;
+ use typedb_driver::{
+-    answer::ConceptRow, Addresses, Credentials, DriverOptions, DriverTlsConfig, Promise, TransactionType, TypeDBDriver,
++    answer::ConceptRow, concept::Concept, Addresses, Credentials, DriverOptions, DriverTlsConfig, Promise,
++    TransactionType, TypeDBDriver,
+ };
+ 
+ use crate::{
+@@ -65,3 +67,8 @@ impl Db {
+ pub fn quote(value: &str) -> String {
+     format!("\"{}\"", value.replace('\\', "\\\\").replace('"', "\\\""))
+ }
++
++/// The date value of a concept, as a `chrono` date (the driver's `Date` type has no arithmetic or ordering).
++pub fn naive_date(concept: &Concept) -> Option<NaiveDate> {
++    concept.try_get_date().map(|date| date.to_naive_date())
++}
+diff --git a/app/src/repo/books.rs b/app/src/repo/books.rs
+index 984154c..2e37292 100644
+--- a/app/src/repo/books.rs
++++ b/app/src/repo/books.rs
+@@ -117,14 +117,14 @@ pub fn book(db: &Db, isbn: &str) -> Result<Option<(Book, Vec<Loan>)>> {
+                     .to_owned(),
+                 isbn: isbn.to_owned(),
+                 borrowed: row.get("borrowed")?
+-                    .and_then(Concept::try_get_date)
++                    .and_then(crate::db::naive_date)
+                     .ok_or_else(|| AppError::column("borrowed", "date"))?,
+-                due: row.get("due")?.and_then(Concept::try_get_date).ok_or_else(|| AppError::column("due", "date"))?,
++                due: row.get("due")?.and_then(crate::db::naive_date).ok_or_else(|| AppError::column("due", "date"))?,
+                 returned: row.get("returned")?
+-                    .map(|concept| concept.try_get_date().ok_or_else(|| AppError::column("returned", "date")))
++                    .map(|concept| crate::db::naive_date(concept).ok_or_else(|| AppError::column("returned", "date")))
+                     .transpose()?,
+                 lost: row.get("lost")?
+-                    .map(|concept| concept.try_get_date().ok_or_else(|| AppError::column("lost", "date")))
++                    .map(|concept| crate::db::naive_date(concept).ok_or_else(|| AppError::column("lost", "date")))
+                     .transpose()?,
+                 fee_cents: row.get("fee")?
+                     .map(|concept| concept.try_get_integer().ok_or_else(|| AppError::column("fee", "integer")))
+@@ -277,14 +277,14 @@ pub fn available(db: &Db, isbn: &str) -> Result<Option<Availability>> {
+                 .to_owned(),
+             isbn: isbn.to_owned(),
+             borrowed: row.get("borrowed")?
+-                .and_then(Concept::try_get_date)
++                .and_then(crate::db::naive_date)
+                 .ok_or_else(|| AppError::column("borrowed", "date"))?,
+-            due: row.get("due")?.and_then(Concept::try_get_date).ok_or_else(|| AppError::column("due", "date"))?,
++            due: row.get("due")?.and_then(crate::db::naive_date).ok_or_else(|| AppError::column("due", "date"))?,
+             returned: row.get("returned")?
+-                .map(|concept| concept.try_get_date().ok_or_else(|| AppError::column("returned", "date")))
++                .map(|concept| crate::db::naive_date(concept).ok_or_else(|| AppError::column("returned", "date")))
+                 .transpose()?,
+             lost: row.get("lost")?
+-                .map(|concept| concept.try_get_date().ok_or_else(|| AppError::column("lost", "date")))
++                .map(|concept| crate::db::naive_date(concept).ok_or_else(|| AppError::column("lost", "date")))
+                 .transpose()?,
+             fee_cents: row.get("fee")?
+                 .map(|concept| concept.try_get_integer().ok_or_else(|| AppError::column("fee", "integer")))
+diff --git a/app/src/repo/loans.rs b/app/src/repo/loans.rs
+index dc51801..562c9d6 100644
+--- a/app/src/repo/loans.rs
++++ b/app/src/repo/loans.rs
+@@ -39,14 +39,14 @@ pub fn history(db: &Db, member_id: &str) -> Result<Option<Vec<Loan>>> {
+                 .ok_or_else(|| AppError::column("isbn", "string"))?
+                 .to_owned(),
+             borrowed: row.get("borrowed")?
+-                .and_then(Concept::try_get_date)
++                .and_then(crate::db::naive_date)
+                 .ok_or_else(|| AppError::column("borrowed", "date"))?,
+-            due: row.get("due")?.and_then(Concept::try_get_date).ok_or_else(|| AppError::column("due", "date"))?,
++            due: row.get("due")?.and_then(crate::db::naive_date).ok_or_else(|| AppError::column("due", "date"))?,
+             returned: row.get("returned")?
+-                .map(|concept| concept.try_get_date().ok_or_else(|| AppError::column("returned", "date")))
++                .map(|concept| crate::db::naive_date(concept).ok_or_else(|| AppError::column("returned", "date")))
+                 .transpose()?,
+             lost: row.get("lost")?
+-                .map(|concept| concept.try_get_date().ok_or_else(|| AppError::column("lost", "date")))
++                .map(|concept| crate::db::naive_date(concept).ok_or_else(|| AppError::column("lost", "date")))
+                 .transpose()?,
+             fee_cents: row.get("fee")?
+                 .map(|concept| concept.try_get_integer().ok_or_else(|| AppError::column("fee", "integer")))
+@@ -86,14 +86,14 @@ pub fn overdue(db: &Db, as_of: NaiveDate) -> Result<Vec<Loan>> {
+                     .ok_or_else(|| AppError::column("isbn", "string"))?
+                     .to_owned(),
+                 borrowed: row.get("borrowed")?
+-                    .and_then(Concept::try_get_date)
++                    .and_then(crate::db::naive_date)
+                     .ok_or_else(|| AppError::column("borrowed", "date"))?,
+-                due: row.get("due")?.and_then(Concept::try_get_date).ok_or_else(|| AppError::column("due", "date"))?,
++                due: row.get("due")?.and_then(crate::db::naive_date).ok_or_else(|| AppError::column("due", "date"))?,
+                 returned: row.get("returned")?
+-                    .map(|concept| concept.try_get_date().ok_or_else(|| AppError::column("returned", "date")))
++                    .map(|concept| crate::db::naive_date(concept).ok_or_else(|| AppError::column("returned", "date")))
+                     .transpose()?,
+                 lost: row.get("lost")?
+-                    .map(|concept| concept.try_get_date().ok_or_else(|| AppError::column("lost", "date")))
++                    .map(|concept| crate::db::naive_date(concept).ok_or_else(|| AppError::column("lost", "date")))
+                     .transpose()?,
+                 fee_cents: row.get("fee")?
+                     .map(|concept| concept.try_get_integer().ok_or_else(|| AppError::column("fee", "integer")))
+@@ -134,14 +134,14 @@ pub fn due_soon(db: &Db, start: NaiveDate, end: NaiveDate) -> Result<Vec<Loan>>
+                     .ok_or_else(|| AppError::column("isbn", "string"))?
+                     .to_owned(),
+                 borrowed: row.get("borrowed")?
+-                    .and_then(Concept::try_get_date)
++                    .and_then(crate::db::naive_date)
+                     .ok_or_else(|| AppError::column("borrowed", "date"))?,
+-                due: row.get("due")?.and_then(Concept::try_get_date).ok_or_else(|| AppError::column("due", "date"))?,
++                due: row.get("due")?.and_then(crate::db::naive_date).ok_or_else(|| AppError::column("due", "date"))?,
+                 returned: row.get("returned")?
+-                    .map(|concept| concept.try_get_date().ok_or_else(|| AppError::column("returned", "date")))
++                    .map(|concept| crate::db::naive_date(concept).ok_or_else(|| AppError::column("returned", "date")))
+                     .transpose()?,
+                 lost: row.get("lost")?
+-                    .map(|concept| concept.try_get_date().ok_or_else(|| AppError::column("lost", "date")))
++                    .map(|concept| crate::db::naive_date(concept).ok_or_else(|| AppError::column("lost", "date")))
+                     .transpose()?,
+                 fee_cents: row.get("fee")?
+                     .map(|concept| concept.try_get_integer().ok_or_else(|| AppError::column("fee", "integer")))
+@@ -180,16 +180,16 @@ pub fn returned_late(db: &Db) -> Result<Vec<Loan>> {
+                     .ok_or_else(|| AppError::column("isbn", "string"))?
+                     .to_owned(),
+                 borrowed: row.get("borrowed")?
+-                    .and_then(Concept::try_get_date)
++                    .and_then(crate::db::naive_date)
+                     .ok_or_else(|| AppError::column("borrowed", "date"))?,
+-                due: row.get("due")?.and_then(Concept::try_get_date).ok_or_else(|| AppError::column("due", "date"))?,
++                due: row.get("due")?.and_then(crate::db::naive_date).ok_or_else(|| AppError::column("due", "date"))?,
+                 returned: Some(
+                     row.get("returned")?
+-                        .and_then(Concept::try_get_date)
++                        .and_then(crate::db::naive_date)
+                         .ok_or_else(|| AppError::column("returned", "date"))?,
+                 ),
+                 lost: row.get("lost")?
+-                    .map(|concept| concept.try_get_date().ok_or_else(|| AppError::column("lost", "date")))
++                    .map(|concept| crate::db::naive_date(concept).ok_or_else(|| AppError::column("lost", "date")))
+                     .transpose()?,
+                 fee_cents: row.get("fee")?
+                     .map(|concept| concept.try_get_integer().ok_or_else(|| AppError::column("fee", "integer")))
+@@ -228,14 +228,14 @@ pub fn lost(db: &Db) -> Result<Vec<Loan>> {
+                     .ok_or_else(|| AppError::column("isbn", "string"))?
+                     .to_owned(),
+                 borrowed: row.get("borrowed")?
+-                    .and_then(Concept::try_get_date)
++                    .and_then(crate::db::naive_date)
+                     .ok_or_else(|| AppError::column("borrowed", "date"))?,
+-                due: row.get("due")?.and_then(Concept::try_get_date).ok_or_else(|| AppError::column("due", "date"))?,
++                due: row.get("due")?.and_then(crate::db::naive_date).ok_or_else(|| AppError::column("due", "date"))?,
+                 returned: row.get("returned")?
+-                    .map(|concept| concept.try_get_date().ok_or_else(|| AppError::column("returned", "date")))
++                    .map(|concept| crate::db::naive_date(concept).ok_or_else(|| AppError::column("returned", "date")))
+                     .transpose()?,
+                 lost: Some(
+-                    row.get("lost")?.and_then(Concept::try_get_date).ok_or_else(|| AppError::column("lost", "date"))?,
++                    row.get("lost")?.and_then(crate::db::naive_date).ok_or_else(|| AppError::column("lost", "date"))?,
+                 ),
+                 fee_cents: row.get("fee")?
+                     .map(|concept| concept.try_get_integer().ok_or_else(|| AppError::column("fee", "integer")))
+@@ -255,7 +255,7 @@ pub fn monthly(db: &Db) -> Result<Vec<NaiveDate>> {
+     )?;
+     rows.iter()
+         .map(|row| {
+-            row.get("borrowed")?.and_then(Concept::try_get_date).ok_or_else(|| AppError::column("borrowed", "date"))
++            row.get("borrowed")?.and_then(crate::db::naive_date).ok_or_else(|| AppError::column("borrowed", "date"))
+         })
+         .collect()
+ }
+diff --git a/app/src/repo/members.rs b/app/src/repo/members.rs
+index a7011c6..b8844fd 100644
+--- a/app/src/repo/members.rs
++++ b/app/src/repo/members.rs
+@@ -95,7 +95,7 @@ pub fn member(db: &Db, member_id: &str) -> Result<Option<(Member, Vec<Loan>)>> {
+                 concept.try_get_string().map(str::to_owned).ok_or_else(|| AppError::column("phone", "string"))
+             })
+             .transpose()?,
+-        joined: row.get("joined")?.and_then(Concept::try_get_date).ok_or_else(|| AppError::column("joined", "date"))?,
++        joined: row.get("joined")?.and_then(crate::db::naive_date).ok_or_else(|| AppError::column("joined", "date"))?,
+     };
+ 
+     let loan_rows = db.read_rows(&format!(
+@@ -124,14 +124,14 @@ pub fn member(db: &Db, member_id: &str) -> Result<Option<(Member, Vec<Loan>)>> {
+                     .ok_or_else(|| AppError::column("isbn", "string"))?
+                     .to_owned(),
+                 borrowed: row.get("borrowed")?
+-                    .and_then(Concept::try_get_date)
++                    .and_then(crate::db::naive_date)
+                     .ok_or_else(|| AppError::column("borrowed", "date"))?,
+-                due: row.get("due")?.and_then(Concept::try_get_date).ok_or_else(|| AppError::column("due", "date"))?,
++                due: row.get("due")?.and_then(crate::db::naive_date).ok_or_else(|| AppError::column("due", "date"))?,
+                 returned: row.get("returned")?
+-                    .map(|concept| concept.try_get_date().ok_or_else(|| AppError::column("returned", "date")))
++                    .map(|concept| crate::db::naive_date(concept).ok_or_else(|| AppError::column("returned", "date")))
+                     .transpose()?,
+                 lost: row.get("lost")?
+-                    .map(|concept| concept.try_get_date().ok_or_else(|| AppError::column("lost", "date")))
++                    .map(|concept| crate::db::naive_date(concept).ok_or_else(|| AppError::column("lost", "date")))
+                     .transpose()?,
+                 fee_cents: row.get("fee")?
+                     .map(|concept| concept.try_get_integer().ok_or_else(|| AppError::column("fee", "integer")))
+@@ -282,14 +282,14 @@ pub fn member_fees(db: &Db, member_id: &str) -> Result<Option<Vec<Loan>>> {
+                 .ok_or_else(|| AppError::column("isbn", "string"))?
+                 .to_owned(),
+             borrowed: row.get("borrowed")?
+-                .and_then(Concept::try_get_date)
++                .and_then(crate::db::naive_date)
+                 .ok_or_else(|| AppError::column("borrowed", "date"))?,
+-            due: row.get("due")?.and_then(Concept::try_get_date).ok_or_else(|| AppError::column("due", "date"))?,
++            due: row.get("due")?.and_then(crate::db::naive_date).ok_or_else(|| AppError::column("due", "date"))?,
+             returned: row.get("returned")?
+-                .map(|concept| concept.try_get_date().ok_or_else(|| AppError::column("returned", "date")))
++                .map(|concept| crate::db::naive_date(concept).ok_or_else(|| AppError::column("returned", "date")))
+                 .transpose()?,
+             lost: row.get("lost")?
+-                .map(|concept| concept.try_get_date().ok_or_else(|| AppError::column("lost", "date")))
++                .map(|concept| crate::db::naive_date(concept).ok_or_else(|| AppError::column("lost", "date")))
+                 .transpose()?,
+             fee_cents: row.get("fee")?
+                 .map(|concept| concept.try_get_integer().ok_or_else(|| AppError::column("fee", "integer")))

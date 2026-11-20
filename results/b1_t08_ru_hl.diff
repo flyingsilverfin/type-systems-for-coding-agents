@@ -1,0 +1,142 @@
+diff --git a/app/src/db.rs b/app/src/db.rs
+index 18c1a2c..805fb94 100644
+--- a/app/src/db.rs
++++ b/app/src/db.rs
+@@ -1,7 +1,8 @@
+ //! Thin wrapper around the TypeDB driver: connections, transactions and typed column access.
+ use chrono::NaiveDate;
+ use typedb_driver::{
+-    answer::ConceptRow, Addresses, Credentials, DriverOptions, DriverTlsConfig, Promise, TransactionType, TypeDBDriver,
++    answer::ConceptRow, Addresses, BoxStream, Credentials, DriverOptions, DriverTlsConfig, Promise, Transaction,
++    TransactionType, TypeDBDriver,
+ };
+ 
+ use crate::{
+@@ -58,11 +59,28 @@ impl Db {
+         Ok(())
+     }
+ 
+-    pub fn read_rows(&self, query: &str) -> Result<Vec<ConceptRow>> {
++    /// Run a read query and return its rows as a stream. The read transaction stays open
++    /// while the stream is alive and is closed when the stream is dropped or exhausted.
++    pub fn stream_rows(&self, query: &str) -> Result<RowStream> {
+         let tx = self.driver.transaction(&self.name, TransactionType::Read)?;
+         let answer = tx.query(query).resolve()?;
+-        let rows = answer.into_rows().collect::<std::result::Result<Vec<_>, _>>()?;
+-        Ok(rows)
++        let rows = answer.into_rows();
++        Ok(RowStream { rows, _tx: tx })
++    }
++}
++
++/// Rows of a read query, produced one at a time while the transaction is open.
++pub struct RowStream {
++    // Declared before `_tx` so the row stream is dropped before its transaction.
++    rows: BoxStream<'static, typedb_driver::Result<ConceptRow>>,
++    _tx: Transaction,
++}
++
++impl Iterator for RowStream {
++    type Item = Result<ConceptRow>;
++
++    fn next(&mut self) -> Option<Self::Item> {
++        self.rows.next().map(|row| row.map_err(AppError::from))
+     }
+ }
+ 
+diff --git a/app/src/repo.rs b/app/src/repo.rs
+index 11b829c..9c64e87 100644
+--- a/app/src/repo.rs
++++ b/app/src/repo.rs
+@@ -14,28 +14,29 @@ const LOAN_PATTERN: &str = "
+ ";
+ 
+ pub fn list_books(db: &Db) -> Result<Vec<Book>> {
+-    let rows = db.read_rows(
++    let rows = db.stream_rows(
+         "
+         match
+           $b isa book, has isbn $isbn, has title $t, has year $y, has copies $c;
+           try { $b has genre $g; };
+         ",
+     )?;
+-    rows.iter()
+-        .map(|row| {
+-            Ok(Book {
+-                isbn: req_string(row, "isbn")?,
+-                title: req_string(row, "t")?,
+-                year: req_integer(row, "y")?,
+-                genre: string(row, "g")?,
+-                copies: req_integer(row, "c")?,
+-            })
+-        })
+-        .collect()
++    let mut books = Vec::new();
++    for row in rows {
++        let row = row?;
++        books.push(Book {
++            isbn: req_string(&row, "isbn")?,
++            title: req_string(&row, "t")?,
++            year: req_integer(&row, "y")?,
++            genre: string(&row, "g")?,
++            copies: req_integer(&row, "c")?,
++        });
++    }
++    Ok(books)
+ }
+ 
+ pub fn find_member(db: &Db, member_id: &str) -> Result<Option<Member>> {
+-    let rows = db.read_rows(&format!(
++    let mut rows = db.stream_rows(&format!(
+         "
+         match
+           $m isa member, has member-id {}, has name $n, has joined $j;
+@@ -43,29 +44,31 @@ pub fn find_member(db: &Db, member_id: &str) -> Result<Option<Member>> {
+         ",
+         quote(member_id)
+     ))?;
+-    let Some(row) = rows.first() else { return Ok(None) };
++    let Some(row) = rows.next() else { return Ok(None) };
++    let row = row?;
+     Ok(Some(Member {
+         id: member_id.to_owned(),
+-        name: req_string(row, "n")?,
+-        email: string(row, "e")?,
+-        joined: req_date(row, "j")?,
++        name: req_string(&row, "n")?,
++        email: string(&row, "e")?,
++        joined: req_date(&row, "j")?,
+     }))
+ }
+ 
+ fn loans(db: &Db, extra: &str) -> Result<Vec<Loan>> {
+-    let rows = db.read_rows(&format!("match{LOAN_PATTERN}{extra}"))?;
+-    rows.iter()
+-        .map(|row| {
+-            Ok(Loan {
+-                id: req_string(row, "lid")?,
+-                member_id: req_string(row, "mid")?,
+-                isbn: req_string(row, "isbn")?,
+-                borrowed: req_date(row, "bo")?,
+-                due: req_date(row, "du")?,
+-                returned: date(row, "re")?,
+-            })
+-        })
+-        .collect()
++    let rows = db.stream_rows(&format!("match{LOAN_PATTERN}{extra}"))?;
++    let mut loans = Vec::new();
++    for row in rows {
++        let row = row?;
++        loans.push(Loan {
++            id: req_string(&row, "lid")?,
++            member_id: req_string(&row, "mid")?,
++            isbn: req_string(&row, "isbn")?,
++            borrowed: req_date(&row, "bo")?,
++            due: req_date(&row, "du")?,
++            returned: date(&row, "re")?,
++        });
++    }
++    Ok(loans)
+ }
+ 
+ pub fn loans_for_member(db: &Db, member_id: &str) -> Result<Vec<Loan>> {

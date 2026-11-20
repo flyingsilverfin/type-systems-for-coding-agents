@@ -1,0 +1,15 @@
+{
+ "run": "t3r_alter_rs_ohb",
+ "task": "alter",
+ "suite": "toydb-t3",
+ "tier": "t3",
+ "lang": "rust",
+ "model": "opus",
+ "effort": "high",
+ "ws": "/home/user/agentbench/runs/t3r_alter_rs_ohb",
+ "hint": true,
+ "readme_from": "t2",
+ "baseline": "e73cf5db0bb4790e5e0381916be236e77bf1e929",
+ "created": 1795151847.2016249,
+ "warm_ok": true
+}

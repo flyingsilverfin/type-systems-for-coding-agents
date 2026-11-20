@@ -1,0 +1,41 @@
+{
+ "run": "t1_distinct_rs_oh",
+ "task": "distinct",
+ "tier": "t1",
+ "lang": "rust",
+ "model": "opus",
+ "effort": "high",
+ "build_ok": true,
+ "hidden_passed": 11,
+ "hidden_total": 11,
+ "visible_passed": 1,
+ "visible_total": 1,
+ "regression_passed": 210,
+ "regression_total": 210,
+ "regression_failed": [],
+ "hidden": {
+  "count_distinct": "pass",
+  "distinct_aggregates": "pass",
+  "distinct_aggregates_grouped": "pass",
+  "distinct_group_having": "pass",
+  "distinct_joins": "pass",
+  "distinct_order_errors": "pass",
+  "distinct_order_limit": "pass",
+  "distinct_order_names": "pass",
+  "distinct_syntax": "pass",
+  "distinct_where_writes": "pass",
+  "select_distinct_rows": "pass"
+ },
+ "tests_completed": true,
+ "grade_times": {
+  "build_s": 4.0,
+  "test_s": 2.7,
+  "total_s": 6.6
+ },
+ "checks": 3,
+ "check_build_s": 10.7,
+ "check_test_s": 4.3,
+ "last_check_ok": true,
+ "pass": true,
+ "escaped": false
+}

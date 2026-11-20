@@ -1,0 +1,12 @@
+{
+ "run": "b3_u3_py_hl",
+ "task": "U3",
+ "suite": "v2",
+ "lang": "python",
+ "model": "haiku",
+ "effort": "low",
+ "novis": true,
+ "ws": "/home/user/agentbench/runs/b3_u3_py_hl",
+ "baseline": "27f3e33192c5eb035318c37f75b051a093594038",
+ "created": 1794857534.1687708
+}

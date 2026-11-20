@@ -1,0 +1,20 @@
+{
+ "run": "x23_distinct_rs_hl",
+ "task": "distinct",
+ "suite": "toydb-t2",
+ "tier": "t3",
+ "lang": "rust",
+ "model": "haiku",
+ "effort": "low",
+ "ws": "/home/user/agentbench/runs/x23_distinct_rs_hl",
+ "baseline": "34e5be4abe3c9e67a7240882c98be730b2b9da49",
+ "created": 1794976237.9309587,
+ "warm_ok": true,
+ "transplant_of": "t2_distinct_rs_hl",
+ "apply_ok": false,
+ "merge_conflicts": {
+  "src/sql/parser/parser.rs": 1
+ },
+ "files_changed": 7,
+ "files_fast": 2
+}

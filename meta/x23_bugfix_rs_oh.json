@@ -1,0 +1,18 @@
+{
+ "run": "x23_bugfix_rs_oh",
+ "task": "bugfix",
+ "suite": "toydb-t2",
+ "tier": "t3",
+ "lang": "rust",
+ "model": "opus",
+ "effort": "high",
+ "ws": "/home/user/agentbench/runs/x23_bugfix_rs_oh",
+ "baseline": "f2b1ad91314db2a19efb26bad5072f084a7a4a23",
+ "created": 1794976577.3286407,
+ "warm_ok": true,
+ "transplant_of": "t2_bugfix_rs_oh",
+ "apply_ok": true,
+ "merge_conflicts": {},
+ "files_changed": 4,
+ "files_fast": 2
+}

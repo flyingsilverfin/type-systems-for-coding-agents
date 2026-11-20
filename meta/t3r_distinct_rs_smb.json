@@ -1,0 +1,15 @@
+{
+ "run": "t3r_distinct_rs_smb",
+ "task": "distinct",
+ "suite": "toydb-t3",
+ "tier": "t3",
+ "lang": "rust",
+ "model": "sonnet",
+ "effort": "medium",
+ "ws": "/home/user/agentbench/runs/t3r_distinct_rs_smb",
+ "hint": true,
+ "readme_from": "t2",
+ "baseline": "c199749c1cb80e82f4891cc390b18f3f28e25c4c",
+ "created": 1795151527.2234464,
+ "warm_ok": true
+}
