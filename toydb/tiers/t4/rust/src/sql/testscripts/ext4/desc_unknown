@@ -1,0 +1,70 @@
+# Unknown types: an expression whose type depends on the values of its
+# operands, or that can't return a non-NULL value. A view column of unknown
+# type may hold values of any type, unlike the NULL constant.
+
+> CREATE TABLE t (id INT PRIMARY KEY, i INT, s STRING)
+> INSERT INTO t VALUES (1, 2, NULL)
+> CREATE VIEW u AS SELECT id, NULL AS x, i ^ 2 AS y, s + 1 AS z FROM t
+[header]> DESCRIBE u
+---
+column, type, nullable
+'id', 'INTEGER', FALSE
+'x', NULL, TRUE
+'y', NULL, TRUE
+'z', NULL, TRUE
+
+# A column of unknown type may be of any type: operators that return one type
+# for every operand type that works have that type.
+> DESCRIBE SELECT x = 1, x LIKE 'a', NOT x, x AND TRUE, x IS NAN, x!, sqrt(x), x IS NULL FROM u
+---
+NULL, 'BOOLEAN', TRUE
+NULL, 'BOOLEAN', TRUE
+NULL, 'BOOLEAN', TRUE
+NULL, 'BOOLEAN', TRUE
+NULL, 'BOOLEAN', TRUE
+NULL, 'INTEGER', TRUE
+NULL, 'FLOAT', TRUE
+NULL, 'BOOLEAN', FALSE
+
+# Operators whose result type follows their operand types stay unknown.
+> DESCRIBE SELECT x + 1, -x, y * 2.0 FROM u
+> DESCRIBE SELECT MIN(x), SUM(y), COUNT(z) FROM u
+---
+NULL, NULL, TRUE
+NULL, NULL, TRUE
+NULL, 'FLOAT', TRUE
+NULL, NULL, TRUE
+NULL, NULL, TRUE
+NULL, 'INTEGER', FALSE
+
+# The NULL constant, by contrast, only returns NULL.
+> DESCRIBE SELECT NULL = 1, NULL LIKE 'a', NOT NULL, NULL!, sqrt(NULL), NULL IS NULL
+---
+NULL, NULL, TRUE
+NULL, NULL, TRUE
+NULL, NULL, TRUE
+NULL, NULL, TRUE
+NULL, NULL, TRUE
+NULL, 'BOOLEAN', FALSE
+
+# Only the NULL constant itself is the NULL constant. Other operands of unknown
+# type may return values of any type, also where they can only return NULL or
+# fail: NULL + 1, -NULL, s + 1, MIN(NULL), SUM(s), or NULL in GROUP BY NULL.
+> DESCRIBE SELECT (NULL + 1) = 1, NOT -NULL, (s + 1) * 2.0, s + 1 > 0 FROM t
+> DESCRIBE SELECT MIN(NULL) = 1, SUM(s) * 2.0 FROM t
+> DESCRIBE SELECT NULL = 1 FROM t GROUP BY NULL
+---
+NULL, 'BOOLEAN', TRUE
+NULL, 'BOOLEAN', TRUE
+NULL, 'FLOAT', TRUE
+NULL, 'BOOLEAN', TRUE
+NULL, 'BOOLEAN', TRUE
+NULL, 'FLOAT', TRUE
+NULL, 'BOOLEAN', TRUE
+
+# The values the view returns.
+> SELECT * FROM u
+> SELECT x = 1, x IS NULL, y * 2.0 FROM u
+---
+1, NULL, 4, NULL
+NULL, TRUE, 8.0

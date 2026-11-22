@@ -1,0 +1,84 @@
+# Values in the change log, IMPORT and prepared statements, SINCE, parse
+# errors, keywords, digests and the JSON form.
+
+> CREATE TABLE v (id INT PRIMARY KEY, b BOOLEAN, i INT, f FLOAT, s STRING)
+> INSERT INTO v VALUES (1, TRUE, -7, 1.5, 'a"b'), (2, FALSE, 0, NAN, 'é\x'), (3, NULL, 9223372036854775807, -INFINITY, '')
+> SHOW CHANGES SINCE 1
+---
+2, 'v', 'insert', 1, '{\"id\":1,\"b\":true,\"i\":-7,\"f\":1.5,\"s\":\"a\\\"b\"}'
+2, 'v', 'insert', 2, '{\"id\":2,\"b\":false,\"i\":0,\"f\":{\"type\":\"FLOAT\",\"value\":\"NaN\"},\"s\":\"é\\\\x\"}'
+2, 'v', 'insert', 3, '{\"id\":3,\"b\":null,\"i\":9223372036854775807,\"f\":{\"type\":\"FLOAT\",\"value\":\"-inf\"},\"s\":\"\"}'
+
+# The JSON form shows the data as a plain string.
+[json]> SHOW CHANGES SINCE 1
+---
+{"result":"select","columns":["version","table","op","key","data"],"rows":[[2,"v","insert",1,"{\"id\":1,\"b\":true,\"i\":-7,\"f\":1.5,\"s\":\"a\\\"b\"}"],[2,"v","insert",2,"{\"id\":2,\"b\":false,\"i\":0,\"f\":{\"type\":\"FLOAT\",\"value\":\"NaN\"},\"s\":\"é\\\\x\"}"],[2,"v","insert",3,"{\"id\":3,\"b\":null,\"i\":9223372036854775807,\"f\":{\"type\":\"FLOAT\",\"value\":\"-inf\"},\"s\":\"\"}"]]}
+
+# IMPORT inserts rows like INSERT; so does a prepared INSERT.
+> IMPORT INTO v FROM CSV 'id,s', '4,x', '5,'
+> PREPARE ins (INT) AS INSERT INTO v (id, i) VALUES ($1, $1 * 2)
+> EXECUTE ins (6)
+> SHOW CHANGES SINCE 2
+---
+3, 'v', 'insert', 4, '{\"id\":4,\"b\":null,\"i\":null,\"f\":null,\"s\":\"x\"}'
+3, 'v', 'insert', 5, '{\"id\":5,\"b\":null,\"i\":null,\"f\":null,\"s\":null}'
+4, 'v', 'insert', 6, '{\"id\":6,\"b\":null,\"i\":12,\"f\":null,\"s\":null}'
+
+# SINCE takes any non-negative version; FORMAT, DESCRIBE, ESTIMATE and LINT
+# change nothing.
+> FORMAT DELETE FROM v
+> DESCRIBE DELETE FROM v
+> ESTIMATE DELETE FROM v
+> LINT DELETE FROM v
+> SHOW CHANGES SINCE 4
+> SHOW CHANGES SINCE 100
+> SHOW CHANGES SINCE 0
+---
+DELETE FROM v
+'Delete: v', 1000
+'└─ Scan: v', 1000
+'unfiltered_write', 'DELETE without WHERE deletes every row of v'
+1, 'v', 'create_table', NULL, 'CREATE TABLE v (id INTEGER PRIMARY KEY, b BOOLEAN DEFAULT NULL, i INTEGER DEFAULT NULL, f FLOAT DEFAULT NULL, s STRING DEFAULT NULL)'
+2, 'v', 'insert', 1, '{\"id\":1,\"b\":true,\"i\":-7,\"f\":1.5,\"s\":\"a\\\"b\"}'
+2, 'v', 'insert', 2, '{\"id\":2,\"b\":false,\"i\":0,\"f\":{\"type\":\"FLOAT\",\"value\":\"NaN\"},\"s\":\"é\\\\x\"}'
+2, 'v', 'insert', 3, '{\"id\":3,\"b\":null,\"i\":9223372036854775807,\"f\":{\"type\":\"FLOAT\",\"value\":\"-inf\"},\"s\":\"\"}'
+3, 'v', 'insert', 4, '{\"id\":4,\"b\":null,\"i\":null,\"f\":null,\"s\":\"x\"}'
+3, 'v', 'insert', 5, '{\"id\":5,\"b\":null,\"i\":null,\"f\":null,\"s\":null}'
+4, 'v', 'insert', 6, '{\"id\":6,\"b\":null,\"i\":12,\"f\":null,\"s\":null}'
+
+# Parse errors.
+!> SHOW CHANGES SINCE
+!> SHOW CHANGES SINCE x
+!> SHOW CHANGES 3
+!> SHOW CHANGE
+!> SHOW CHANGES SINCE 1 2
+---
+Error: invalid input: unexpected end of input
+Error: invalid input: unexpected token x, wanted number
+Error: invalid input: unexpected token 3
+Error: invalid input: unexpected token change
+Error: invalid input: unexpected token 2
+
+# CHANGES and SINCE are reserved keywords; SHOW CHANGES can't be explained.
+!> CREATE TABLE changes (id INT PRIMARY KEY)
+!> SELECT 1 AS since
+!> EXPLAIN SHOW CHANGES
+---
+Error: invalid input: expected identifier, got CHANGES
+Error: invalid input: expected identifier, got SINCE
+Error: invalid input: EXPLAIN is not supported for SHOW
+
+# Digests count the rows returned.
+> SHOW STATEMENTS
+---
+'CREATE TABLE v (id INTEGER PRIMARY KEY, b BOOLEAN, i INTEGER, f FLOAT, s STRING)', 1, 0, 0
+'INSERT INTO v VALUES (?, ?, -?, ?, ?), (?, ?, ?, ?, ?), (?, ?, ?, -?, ?)', 1, 0, 3
+'SHOW CHANGES SINCE ?', 6, 0, 16
+'IMPORT INTO v FROM CSV ?, ?, ?', 1, 0, 2
+'PREPARE ins (INTEGER) AS INSERT INTO v (id, i) VALUES ($1, $1 * ?)', 1, 0, 0
+'EXECUTE ins (?)', 1, 0, 1
+'FORMAT DELETE FROM v', 1, 0, 0
+'DESCRIBE DELETE FROM v', 1, 0, 0
+'ESTIMATE DELETE FROM v', 1, 0, 2
+'LINT DELETE FROM v', 1, 0, 1
+'EXPLAIN SHOW CHANGES', 1, 1, 0

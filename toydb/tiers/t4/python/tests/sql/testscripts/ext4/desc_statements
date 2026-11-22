@@ -1,0 +1,157 @@
+# DESCRIBE plans a statement as EXPLAIN does, but neither optimizes nor
+# executes it. Statements that return no rows have no result columns.
+
+> CREATE TABLE t (id INT PRIMARY KEY, v STRING)
+> INSERT INTO t VALUES (1, 'a')
+---
+ok
+
+# Writes and schema changes are described without effect.
+> DESCRIBE INSERT INTO t VALUES (2, 'b')
+> DESCRIBE UPDATE t SET v = 'x'
+> DESCRIBE DELETE FROM t
+> DESCRIBE CREATE TABLE u (id INT PRIMARY KEY)
+> DESCRIBE DROP TABLE t
+> DESCRIBE DROP TABLE nosuch
+> SELECT * FROM t
+schema
+---
+1, 'a'
+CREATE TABLE t (
+  id INTEGER PRIMARY KEY,
+  v STRING DEFAULT NULL
+)
+
+# Planning errors are reported, as by EXPLAIN.
+!> DESCRIBE SELECT * FROM nosuch
+!> DESCRIBE SELECT nosuch FROM t
+!> DESCRIBE INSERT INTO nosuch VALUES (1)
+!> DESCRIBE UPDATE t SET nosuch = 1
+!> DESCRIBE CREATE TABLE u (id INT)
+!> DESCRIBE SELECT v, COUNT(*) FROM t
+---
+Error: invalid input: table nosuch does not exist
+Error: invalid input: unknown column nosuch
+Error: invalid input: table nosuch does not exist
+Error: invalid input: unknown column nosuch
+Error: invalid input: no primary key for table u
+Error: invalid input: column v must be used in an aggregate or GROUP BY expression
+
+# Expressions are not evaluated, except where planning evaluates them (LIMIT,
+# OFFSET, DEFAULT).
+> DESCRIBE SELECT 1 / 0
+> DESCRIBE SELECT id FROM t WHERE 1 / 0 = 1
+!> DESCRIBE SELECT * FROM t LIMIT 1 / 0
+!> DESCRIBE SELECT * FROM t OFFSET -1
+!> DESCRIBE CREATE TABLE u (id INT PRIMARY KEY, n INT DEFAULT 1 / 0)
+!> EXPLAIN SELECT 1 / 0
+---
+NULL, 'INTEGER', FALSE
+'t.id', 'INTEGER', FALSE
+Error: invalid input: can't divide by zero
+Error: invalid input: invalid offset -1
+Error: invalid input: can't divide by zero
+Error: invalid input: can't divide by zero
+
+# Only planned statements can be described.
+!> DESCRIBE BEGIN
+!> DESCRIBE COMMIT
+!> DESCRIBE EXPLAIN SELECT 1
+!> DESCRIBE SHOW STATEMENTS
+!> DESCRIBE SHOW VIEWS
+!> DESCRIBE ANALYZE t
+!> DESCRIBE EXPORT t AS CSV
+!> DESCRIBE IMPORT INTO t FROM CSV 'id'
+!> DESCRIBE FORMAT SELECT 1
+!> DESCRIBE CREATE VIEW w AS SELECT 1 AS a
+!> DESCRIBE DROP VIEW w
+!> DESCRIBE DESCRIBE t
+!> DESCRIBE DESCRIBE SELECT 1
+!> DESCRIBE ESTIMATE SELECT 1
+!> DESCRIBE LINT SELECT 1
+!> DESCRIBE PREPARE p AS SELECT 1
+!> DESCRIBE DEALLOCATE p
+!> DESCRIBE SHOW CHANGES
+---
+Error: invalid input: DESCRIBE is not supported for BEGIN
+Error: invalid input: DESCRIBE is not supported for COMMIT
+Error: invalid input: DESCRIBE is not supported for EXPLAIN
+Error: invalid input: DESCRIBE is not supported for SHOW
+Error: invalid input: DESCRIBE is not supported for SHOW
+Error: invalid input: DESCRIBE is not supported for ANALYZE
+Error: invalid input: DESCRIBE is not supported for EXPORT
+Error: invalid input: DESCRIBE is not supported for IMPORT
+Error: invalid input: DESCRIBE is not supported for FORMAT
+Error: invalid input: DESCRIBE is not supported for CREATE VIEW
+Error: invalid input: DESCRIBE is not supported for DROP VIEW
+Error: invalid input: DESCRIBE is not supported for DESCRIBE
+Error: invalid input: DESCRIBE is not supported for DESCRIBE
+Error: invalid input: DESCRIBE is not supported for ESTIMATE
+Error: invalid input: DESCRIBE is not supported for LINT
+Error: invalid input: DESCRIBE is not supported for PREPARE
+Error: invalid input: DESCRIBE is not supported for DEALLOCATE
+Error: invalid input: DESCRIBE is not supported for SHOW
+
+# DESCRIBE can't be explained, and inside a transaction sees what the
+# transaction sees.
+!> EXPLAIN DESCRIBE SELECT 1
+a:> BEGIN
+a:> CREATE TABLE u (id INT PRIMARY KEY, n FLOAT NOT NULL)
+a:> DESCRIBE SELECT n * 2, id FROM u
+b:!> DESCRIBE SELECT * FROM u
+a:> COMMIT
+b:> DESCRIBE SELECT * FROM u
+---
+Error: invalid input: EXPLAIN is not supported for DESCRIBE
+a: NULL, 'FLOAT', FALSE
+a: 'u.id', 'INTEGER', FALSE
+b: Error: invalid input: table u does not exist
+b: 'u.id', 'INTEGER', FALSE
+b: 'u.n', 'FLOAT', FALSE
+
+# Statement digests and the JSON form.
+[json]> DESCRIBE SELECT v AS label FROM t
+> SHOW STATEMENTS
+---
+{"result":"select","columns":["column","type","nullable"],"rows":[["label","STRING",true]]}
+'CREATE TABLE t (id INTEGER PRIMARY KEY, v STRING)', 1, 0, 0
+'INSERT INTO t VALUES (?, ?)', 1, 0, 1
+'DESCRIBE INSERT INTO t VALUES (?, ?)', 1, 0, 0
+'DESCRIBE UPDATE t SET v = ?', 1, 0, 0
+'DESCRIBE DELETE FROM t', 1, 0, 0
+'DESCRIBE CREATE TABLE u (id INTEGER PRIMARY KEY)', 1, 0, 0
+'DESCRIBE DROP TABLE t', 1, 0, 0
+'DESCRIBE DROP TABLE nosuch', 1, 0, 0
+'SELECT * FROM t', 1, 0, 1
+'DESCRIBE SELECT * FROM nosuch', 1, 1, 0
+'DESCRIBE SELECT nosuch FROM t', 1, 1, 0
+'DESCRIBE INSERT INTO nosuch VALUES (?)', 1, 1, 0
+'DESCRIBE UPDATE t SET nosuch = ?', 1, 1, 0
+'DESCRIBE CREATE TABLE u (id INTEGER)', 1, 1, 0
+'DESCRIBE SELECT v, count(*) FROM t', 1, 1, 0
+'DESCRIBE SELECT ? / ?', 1, 0, 1
+'DESCRIBE SELECT id FROM t WHERE ? / ? = ?', 1, 0, 1
+'DESCRIBE SELECT * FROM t LIMIT ? / ?', 1, 1, 0
+'DESCRIBE SELECT * FROM t OFFSET -?', 1, 1, 0
+'DESCRIBE CREATE TABLE u (id INTEGER PRIMARY KEY, n INTEGER DEFAULT ? / ?)', 1, 1, 0
+'EXPLAIN SELECT ? / ?', 1, 1, 0
+'DESCRIBE BEGIN', 1, 1, 0
+'DESCRIBE COMMIT', 1, 1, 0
+'DESCRIBE EXPLAIN SELECT ?', 1, 1, 0
+'DESCRIBE SHOW STATEMENTS', 1, 1, 0
+'DESCRIBE SHOW VIEWS', 1, 1, 0
+'DESCRIBE ANALYZE t', 1, 1, 0
+'DESCRIBE EXPORT t AS CSV', 1, 1, 0
+'DESCRIBE IMPORT INTO t FROM CSV ?', 1, 1, 0
+'DESCRIBE FORMAT SELECT ?', 1, 1, 0
+'DESCRIBE CREATE VIEW w AS SELECT ? AS a', 1, 1, 0
+'DESCRIBE DROP VIEW w', 1, 1, 0
+'DESCRIBE DESCRIBE t', 1, 1, 0
+'DESCRIBE DESCRIBE SELECT ?', 1, 1, 0
+'DESCRIBE ESTIMATE SELECT ?', 1, 1, 0
+'DESCRIBE LINT SELECT ?', 1, 1, 0
+'DESCRIBE PREPARE p AS SELECT ?', 1, 1, 0
+'DESCRIBE DEALLOCATE p', 1, 1, 0
+'DESCRIBE SHOW CHANGES', 1, 1, 0
+'EXPLAIN DESCRIBE SELECT ?', 1, 1, 0
+'DESCRIBE SELECT v AS label FROM t', 1, 0, 1

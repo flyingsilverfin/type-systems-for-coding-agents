@@ -1,0 +1,15 @@
+{
+ "run": "t4r_alter_py_hlb",
+ "task": "alter",
+ "suite": "toydb-t4",
+ "tier": "t4",
+ "lang": "python",
+ "model": "haiku",
+ "effort": "low",
+ "ws": "/home/user/agentbench/runs/t4r_alter_py_hlb",
+ "hint": true,
+ "readme_from": "t2",
+ "baseline": "a690ea3af421f837e38bad548c6b84804dbdf58e",
+ "created": 1795250529.3273246,
+ "warm_ok": true
+}

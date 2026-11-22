@@ -1,0 +1,15 @@
+{
+ "run": "t4r_release_py_hla",
+ "task": "release",
+ "suite": "toydb-t4",
+ "tier": "t4",
+ "lang": "python",
+ "model": "haiku",
+ "effort": "low",
+ "ws": "/home/user/agentbench/runs/t4r_release_py_hla",
+ "hint": true,
+ "readme_from": "t2",
+ "baseline": "6f41a6da1cb969ec8307998dd8204bbf6f853e66",
+ "created": 1795249351.3191035,
+ "warm_ok": true
+}

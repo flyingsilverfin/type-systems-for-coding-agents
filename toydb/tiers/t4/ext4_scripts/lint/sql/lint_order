@@ -1,0 +1,60 @@
+# Warnings are listed in the order in which the parts they concern begin in
+# the statement's canonical text; a part before the parts it contains, and
+# warnings about the same part in the order of the rules.
+
+> CREATE TABLE t (id INT PRIMARY KEY, s STRING, n INT)
+---
+ok
+
+# Left to right through the clauses.
+> LINT SELECT n / 0 FROM t WHERE s = NULL AND n = 'x' ORDER BY 1
+---
+'division_by_zero', 'division by zero: n / 0'
+'null_comparison', 'comparison with NULL is never true: s = NULL'
+'type_mismatch', 'INTEGER column n compared with STRING value \'x\''
+'order_by_constant', 'ORDER BY a constant has no effect: 1'
+
+# The same part: rules in table order. A containing part first.
+> LINT SELECT * FROM t WHERE NULL = 1
+> LINT SELECT * FROM t WHERE 1 / 0 = 1
+> LINT SELECT * FROM t ORDER BY 'a' LIKE 'b'
+---
+'null_comparison', 'comparison with NULL is never true: NULL = 1'
+'constant_condition', 'condition is constant: NULL = 1'
+'constant_condition', 'condition is constant: 1 / 0 = 1'
+'division_by_zero', 'division by zero: 1 / 0'
+'like_without_wildcard', 'LIKE without wildcards matches like =: \'a\' LIKE \'b\''
+'order_by_constant', 'ORDER BY a constant has no effect: \'a\' LIKE \'b\''
+
+# Statement warnings come before the warnings about its expressions.
+> LINT UPDATE t SET n = n / 0
+> LINT INSERT INTO t VALUES (1, 's' LIKE 'x', 2 / 0)
+---
+'unfiltered_write', 'UPDATE without WHERE changes every row of t'
+'division_by_zero', 'division by zero: n / 0'
+'implicit_columns', 'INSERT without a column list depends on the column order of t'
+'like_without_wildcard', 'LIKE without wildcards matches like =: \'s\' LIKE \'x\''
+'division_by_zero', 'division by zero: 2 / 0'
+
+# The canonical text writes the assignments of UPDATE in order of column name.
+> LINT UPDATE t SET s = 'a' LIKE 'b', n = 1 / 0 WHERE id = NULL
+---
+'division_by_zero', 'division by zero: 1 / 0'
+'like_without_wildcard', 'LIKE without wildcards matches like =: \'a\' LIKE \'b\''
+'null_comparison', 'comparison with NULL is never true: id = NULL'
+
+# Joins, left to right.
+> LINT SELECT * FROM t a JOIN t b ON a.id = NULL JOIN t c ON TRUE WHERE a.s LIKE 'z' AND c.n = 'q'
+---
+'null_comparison', 'comparison with NULL is never true: a.id = NULL'
+'constant_condition', 'condition is constant: TRUE'
+'like_without_wildcard', 'LIKE without wildcards matches like =: a.s LIKE \'z\''
+'type_mismatch', 'INTEGER column c.n compared with STRING value \'q\''
+
+# GROUP BY, HAVING, LIMIT and OFFSET are checked too.
+> LINT SELECT n, COUNT(*) FROM t GROUP BY n / 0 HAVING n = NULL LIMIT 1 % 0 OFFSET 2 / 0
+---
+'division_by_zero', 'division by zero: n / 0'
+'null_comparison', 'comparison with NULL is never true: n = NULL'
+'division_by_zero', 'division by zero: 1 % 0'
+'division_by_zero', 'division by zero: 2 / 0'

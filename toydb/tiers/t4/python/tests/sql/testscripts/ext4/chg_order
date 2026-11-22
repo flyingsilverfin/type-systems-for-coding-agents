@@ -1,0 +1,49 @@
+# The order of the changes within a statement and a transaction.
+
+> CREATE TABLE t (id INT PRIMARY KEY, g STRING INDEX, n INT)
+> INSERT INTO t VALUES (5, 'a', 1), (3, 'b', 2), (4, 'a', 3), (1, 'a', 4)
+> SHOW CHANGES SINCE 1
+---
+2, 't', 'insert', 5, '{\"id\":5,\"g\":\"a\",\"n\":1}'
+2, 't', 'insert', 3, '{\"id\":3,\"g\":\"b\",\"n\":2}'
+2, 't', 'insert', 4, '{\"id\":4,\"g\":\"a\",\"n\":3}'
+2, 't', 'insert', 1, '{\"id\":1,\"g\":\"a\",\"n\":4}'
+
+# INSERT in the order of its rows, UPDATE in primary key order, DELETE through
+# an index lookup in primary key order, through a key lookup in key order.
+> UPDATE t SET n = n * 10 WHERE g = 'a'
+> DELETE FROM t WHERE g = 'a' AND n > 15
+> DELETE FROM t WHERE id = 5 OR id = 3
+> SHOW CHANGES SINCE 2
+---
+3, 't', 'update', 1, '{\"id\":1,\"g\":\"a\",\"n\":40}'
+3, 't', 'update', 4, '{\"id\":4,\"g\":\"a\",\"n\":30}'
+3, 't', 'update', 5, '{\"id\":5,\"g\":\"a\",\"n\":10}'
+4, 't', 'delete', 1, NULL
+4, 't', 'delete', 4, NULL
+5, 't', 'delete', 5, NULL
+5, 't', 'delete', 3, NULL
+
+# Several tables in one transaction, statement by statement.
+> CREATE TABLE u (id INT PRIMARY KEY, t_id INT REFERENCES t)
+> BEGIN
+> INSERT INTO t VALUES (7, 'c', 0)
+> INSERT INTO u VALUES (1, 7), (2, NULL)
+> UPDATE t SET n = 1 WHERE id = 7
+> DELETE FROM u WHERE t_id IS NULL
+> COMMIT
+> SHOW CHANGES SINCE 5
+---
+6, 'u', 'create_table', NULL, 'CREATE TABLE u (id INTEGER PRIMARY KEY, t_id INTEGER DEFAULT NULL INDEX REFERENCES t)'
+7, 't', 'insert', 7, '{\"id\":7,\"g\":\"c\",\"n\":0}'
+7, 'u', 'insert', 1, '{\"id\":1,\"t_id\":7}'
+7, 'u', 'insert', 2, '{\"id\":2,\"t_id\":null}'
+7, 't', 'update', 7, '{\"id\":7,\"g\":\"c\",\"n\":1}'
+7, 'u', 'delete', 2, NULL
+
+# IMPORT of JSON lines, in line order.
+> IMPORT INTO t FROM JSON '{"id":9,"g":"z"}', '{"id":8,"n":-1}'
+> SHOW CHANGES SINCE 7
+---
+8, 't', 'insert', 9, '{\"id\":9,\"g\":\"z\",\"n\":null}'
+8, 't', 'insert', 8, '{\"id\":8,\"g\":null,\"n\":-1}'

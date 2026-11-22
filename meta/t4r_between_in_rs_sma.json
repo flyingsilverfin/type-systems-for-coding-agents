@@ -1,0 +1,15 @@
+{
+ "run": "t4r_between_in_rs_sma",
+ "task": "between_in",
+ "suite": "toydb-t4",
+ "tier": "t4",
+ "lang": "rust",
+ "model": "sonnet",
+ "effort": "medium",
+ "ws": "/home/user/agentbench/runs/t4r_between_in_rs_sma",
+ "hint": true,
+ "readme_from": "t2",
+ "baseline": "11b685b77c58c9f8df6769ea534fc01d1b6fbeb3",
+ "created": 1795249860.0684571,
+ "warm_ok": true
+}

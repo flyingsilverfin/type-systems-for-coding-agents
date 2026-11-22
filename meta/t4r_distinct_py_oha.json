@@ -1,0 +1,15 @@
+{
+ "run": "t4r_distinct_py_oha",
+ "task": "distinct",
+ "suite": "toydb-t4",
+ "tier": "t4",
+ "lang": "python",
+ "model": "opus",
+ "effort": "high",
+ "ws": "/home/user/agentbench/runs/t4r_distinct_py_oha",
+ "hint": true,
+ "readme_from": "t2",
+ "baseline": "e221f3fb9cc40df23e2f24caf46a443b4ff67124",
+ "created": 1795249574.377138,
+ "warm_ok": true
+}

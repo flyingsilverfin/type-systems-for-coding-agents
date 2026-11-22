@@ -1,0 +1,126 @@
+# Views are part of the catalog and transactional like table definitions.
+
+> CREATE TABLE t (id INT PRIMARY KEY, v STRING)
+> INSERT INTO t VALUES (1, 'a'), (2, 'b')
+---
+ok
+
+# An uncommitted view is seen only by its own transaction.
+a:> BEGIN
+a:> CREATE VIEW v AS SELECT v FROM t WHERE id = 1
+a:> SELECT * FROM v
+b:!> SELECT * FROM v
+b:> SHOW VIEWS
+a:> COMMIT
+b:> SELECT * FROM v
+---
+a: 'a'
+b: Error: invalid input: table v does not exist
+b: 'a'
+
+# ROLLBACK undoes CREATE VIEW and DROP VIEW.
+a:> BEGIN
+a:> DROP VIEW v
+a:> CREATE VIEW tmp AS SELECT id FROM t
+a:!> SELECT * FROM v
+b:> SELECT * FROM v
+a:> ROLLBACK
+a:> SELECT * FROM v
+a:!> SELECT * FROM tmp
+---
+a: Error: invalid input: table v does not exist
+b: 'a'
+a: 'a'
+a: Error: invalid input: table tmp does not exist
+
+# A view is planned against what the transaction sees: its own uncommitted rows
+# and table changes, a snapshot of the others.
+a:> BEGIN
+a:> INSERT INTO t VALUES (3, 'c')
+a:> CREATE VIEW ids AS SELECT id FROM t
+a:> SELECT * FROM ids
+a:> COMMIT
+b:> BEGIN
+a:> INSERT INTO t VALUES (4, 'd')
+b:> SELECT * FROM ids
+b:> COMMIT
+b:> SELECT * FROM ids
+---
+a: 1
+a: 2
+a: 3
+b: 1
+b: 2
+b: 3
+b: 1
+b: 2
+b: 3
+b: 4
+
+# A transaction that began before a view was committed doesn't see it.
+b:> BEGIN
+a:> CREATE VIEW late AS SELECT 1 AS n
+b:!> SELECT * FROM late
+b:> COMMIT
+b:> SELECT * FROM late
+---
+b: Error: invalid input: table late does not exist
+b: 1
+
+# Two transactions creating the same view conflict, as do a drop and a create
+# of it.
+a:> BEGIN
+b:> BEGIN
+a:> CREATE VIEW x AS SELECT 1 AS one
+b:!> CREATE VIEW x AS SELECT 2 AS two
+a:> COMMIT
+b:> ROLLBACK
+a:> BEGIN
+b:> BEGIN
+a:> DROP VIEW x
+b:!> DROP VIEW x
+a:> ROLLBACK
+b:> ROLLBACK
+> SELECT * FROM x
+---
+b: Error: serialization failure, retry transaction
+b: Error: serialization failure, retry transaction
+1
+
+# A DROP TABLE that a view in the same transaction depends on fails, and so
+# does a DROP VIEW of a view another uncommitted view uses. The transaction
+# stays usable.
+a:> BEGIN
+a:> CREATE TABLE u (id INT PRIMARY KEY)
+a:> CREATE VIEW vu AS SELECT id FROM u
+a:> CREATE VIEW vvu AS SELECT * FROM vu
+a:!> DROP TABLE u
+a:!> DROP VIEW vu
+a:> DROP VIEW vvu
+a:> DROP VIEW vu
+a:> DROP TABLE u
+a:> COMMIT
+---
+a: Error: invalid input: table u is used by view vu
+a: Error: invalid input: view vu is used by view vvu
+
+# Read-only transactions can use views but not create or drop them; the checks
+# of CREATE VIEW come first.
+> BEGIN READ ONLY
+> SELECT * FROM v
+!> CREATE VIEW y AS SELECT 1 AS one
+!> CREATE VIEW v AS SELECT 1 AS one
+!> DROP VIEW v
+!> DROP VIEW nosuch
+> SHOW VIEWS
+> COMMIT
+---
+'a'
+Error: read-only transaction
+Error: invalid input: view v already exists
+Error: read-only transaction
+Error: invalid input: view nosuch does not exist
+'ids', 'id', 'SELECT id FROM t'
+'late', 'n', 'SELECT 1 AS n'
+'v', 'v', 'SELECT v FROM t WHERE id = 1'
+'x', 'one', 'SELECT 1 AS one'

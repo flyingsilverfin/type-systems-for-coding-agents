@@ -1,0 +1,77 @@
+# IMPORT ... FROM CSV: each string literal is one line; the first is the
+# header, naming the columns that the following lines give values for. The
+# lines are inserted like the rows of one INSERT with the header as its column
+# list.
+
+> CREATE TABLE t (id INT PRIMARY KEY, name STRING NOT NULL, score FLOAT, ok BOOLEAN DEFAULT TRUE, note STRING DEFAULT 'none')
+---
+ok
+
+# Quoted fields may contain commas and doubled quotes. An empty unquoted field
+# is NULL (also where the column has another default); "" is the empty string.
+[json]> IMPORT INTO t FROM CSV 'id,name,score,ok,note', '1,ann,1.5,true,x', '2,"b, c",-0.5,FALSE,""', '3,"say ""hi""",,,'
+---
+{"result":"insert","count":3}
+
+# The header can name any of the columns, in any order; the others get their
+# defaults.
+> IMPORT INTO t FROM CSV 'name,id', 'dan,4', 'eve,5'
+---
+ok
+
+# Number formats: leading zeros, exponents, -0, NaN and infinities; a quoted
+# field is read like an unquoted one (but is never NULL).
+[json]> IMPORT INTO t FROM CSV 'id,score,name', '007,2.5e-3,a', '-0,1E10,b', '8,-0,c', '9,NaN,d', '10,inf,e', '11,-inf,f', '"12","12.5",g'
+---
+{"result":"insert","count":7}
+
+# Booleans in any letter case.
+> IMPORT INTO t FROM CSV 'id,name,ok', '13,h,True', '14,i,fAlSe'
+---
+ok
+
+# A header without data lines imports nothing.
+[json]> IMPORT INTO t FROM CSV 'id,name'
+---
+{"result":"insert","count":0}
+
+> SELECT * FROM t
+---
+0, 'b', 10000000000.0, TRUE, 'none'
+1, 'ann', 1.5, TRUE, 'x'
+2, 'b, c', -0.5, FALSE, ''
+3, 'say \"hi\"', NULL, NULL, NULL
+4, 'dan', NULL, TRUE, 'none'
+5, 'eve', NULL, TRUE, 'none'
+7, 'a', 0.0025, TRUE, 'none'
+8, 'c', 0.0, TRUE, 'none'
+9, 'd', NaN, TRUE, 'none'
+10, 'e', inf, TRUE, 'none'
+11, 'f', -inf, TRUE, 'none'
+12, 'g', 12.5, TRUE, 'none'
+13, 'h', NULL, TRUE, 'none'
+14, 'i', NULL, FALSE, 'none'
+
+# Imported rows are ordinary rows: indexes, constraints and references apply.
+> CREATE TABLE r (id INT PRIMARY KEY, t_id INT REFERENCES t, tag STRING UNIQUE)
+> IMPORT INTO r FROM CSV 'id,t_id,tag', '1,1,a', '2,1,b', '3,,c'
+> SELECT * FROM r WHERE tag = 'b'
+> SELECT r.id, t.name FROM r JOIN t ON r.t_id = t.id
+---
+2, 1, 'b'
+1, 'ann'
+2, 'ann'
+
+!> DELETE FROM t WHERE id = 1
+---
+Error: invalid input: row referenced by r.id=1
+
+# Inside a transaction the import is undone by ROLLBACK.
+> BEGIN
+> IMPORT INTO r FROM CSV 'tag,id', 'd,4'
+> SELECT COUNT(*) FROM r
+> ROLLBACK
+> SELECT COUNT(*) FROM r
+---
+4
+3

@@ -1,0 +1,15 @@
+{
+ "run": "t4r_between_in_py_oha",
+ "task": "between_in",
+ "suite": "toydb-t4",
+ "tier": "t4",
+ "lang": "python",
+ "model": "opus",
+ "effort": "high",
+ "ws": "/home/user/agentbench/runs/t4r_between_in_py_oha",
+ "hint": true,
+ "readme_from": "t2",
+ "baseline": "25d620af0b2d448f0a48de59cde708df3195a875",
+ "created": 1795249963.3306172,
+ "warm_ok": true
+}

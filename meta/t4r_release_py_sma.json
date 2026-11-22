@@ -1,0 +1,15 @@
+{
+ "run": "t4r_release_py_sma",
+ "task": "release",
+ "suite": "toydb-t4",
+ "tier": "t4",
+ "lang": "python",
+ "model": "sonnet",
+ "effort": "medium",
+ "ws": "/home/user/agentbench/runs/t4r_release_py_sma",
+ "hint": true,
+ "readme_from": "t2",
+ "baseline": "dac1237a3e4320b22fee335543f7425965b36e57",
+ "created": 1795249399.4907892,
+ "warm_ok": true
+}

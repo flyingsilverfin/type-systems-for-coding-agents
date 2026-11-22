@@ -1,0 +1,80 @@
+# ESTIMATE shows the plan of a statement, one row per line, with the estimated
+# number of rows of each line. Without statistics a table is assumed to have
+# 1000 rows and fixed selectivities are used.
+
+> CREATE TABLE item (id INT PRIMARY KEY, name STRING INDEX, price FLOAT, qty INT, cat STRING)
+> INSERT INTO item VALUES (1, 'a', 1.0, 10, 'x'), (2, 'b', 2.0, 20, 'x'), (3, 'c', 3.0, NULL, 'y'), (4, 'd', 4.0, 20, 'y'), (5, 'e', 5.0, 30, 'y'), (6, 'f', 6.0, 40, 'z'), (7, 'g', 7.0, NULL, NULL), (8, 'h', 8.0, 10, 'z'), (9, 'i', 9.0, 20, 'x'), (10, 'j', 10.0, 50, NULL)
+---
+ok
+
+[header]> ESTIMATE SELECT * FROM item
+> ESTIMATE SELECT * FROM item WHERE qty = 20
+> ESTIMATE SELECT * FROM item WHERE qty > 25
+> ESTIMATE SELECT * FROM item WHERE qty IS NULL
+> ESTIMATE SELECT * FROM item WHERE cat LIKE 'x%'
+---
+node, rows
+'Scan: item', 1000
+'Scan: item (item.qty = 20)', 100
+'Scan: item (item.qty > 25)', 333
+'Scan: item (item.qty IS NULL)', 100
+'Scan: item (item.cat LIKE \'x%\')', 250
+
+# After ANALYZE, the statistics are used: the row count, the NULL count and the
+# number of distinct values for equality, interpolation between the minimum and
+# maximum for ranges of numbers.
+> ANALYZE item
+> ESTIMATE SELECT * FROM item
+> ESTIMATE SELECT * FROM item WHERE qty = 20
+> ESTIMATE SELECT * FROM item WHERE qty > 25
+> ESTIMATE SELECT * FROM item WHERE qty IS NULL
+> ESTIMATE SELECT * FROM item WHERE price < 3.5
+> ESTIMATE SELECT * FROM item WHERE cat = 'x'
+---
+'Scan: item', 10
+'Scan: item (item.qty = 20)', 2
+'Scan: item (item.qty > 25)', 5
+'Scan: item (item.qty IS NULL)', 2
+'Scan: item (item.price < 3.5)', 3
+'Scan: item (item.cat = \'x\')', 3
+
+# Conditions without a statistics-based estimate use fixed selectivities:
+# LIKE and other conditions 0.25 (2.5 rows, rounded up to 3), a range of a
+# column that isn't a number 1/3.
+> ESTIMATE SELECT * FROM item WHERE cat LIKE 'x%'
+> ESTIMATE SELECT * FROM item WHERE cat < 'y'
+---
+'Scan: item (item.cat LIKE \'x%\')', 3
+'Scan: item (item.cat < \'y\')', 3
+
+# Estimates describe the table as of its last ANALYZE: later writes don't
+# change them, a new ANALYZE does.
+> DELETE FROM item WHERE id > 5
+> ESTIMATE SELECT * FROM item
+> ANALYZE item
+> ESTIMATE SELECT * FROM item
+> ESTIMATE SELECT * FROM item WHERE qty = 20
+---
+'Scan: item', 10
+'Scan: item', 5
+'Scan: item (item.qty = 20)', 1
+
+# A dropped table loses its statistics.
+> DROP TABLE item
+> CREATE TABLE item (id INT PRIMARY KEY)
+> ESTIMATE SELECT * FROM item
+---
+'Scan: item', 1000
+
+# An empty analyzed table has no rows.
+> ANALYZE item
+> ESTIMATE SELECT * FROM item WHERE id = 1 OR id = 2
+> ESTIMATE SELECT * FROM item WHERE id > 1
+---
+'KeyLookup: item (1, 2)', 0
+'Scan: item (item.id > 1)', 0
+
+# The JSON form is a select result.
+[json]> ESTIMATE SELECT id + 1 FROM item
+---
+{"result":"select","columns":["node","rows"],"rows":[["Projection: item.id + 1",0],["└─ Scan: item",0]]}

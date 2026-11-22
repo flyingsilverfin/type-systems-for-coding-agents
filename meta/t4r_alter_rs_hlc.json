@@ -1,0 +1,15 @@
+{
+ "run": "t4r_alter_rs_hlc",
+ "task": "alter",
+ "suite": "toydb-t4",
+ "tier": "t4",
+ "lang": "rust",
+ "model": "haiku",
+ "effort": "low",
+ "ws": "/home/user/agentbench/runs/t4r_alter_rs_hlc",
+ "hint": true,
+ "readme_from": "t2",
+ "baseline": "a78ba0ff37a1e32ba3403851dabc7aafbb95af86",
+ "created": 1795251262.2780943,
+ "warm_ok": true
+}

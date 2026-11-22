@@ -1,0 +1,15 @@
+{
+ "run": "t4r_case_py_smb",
+ "task": "case",
+ "suite": "toydb-t4",
+ "tier": "t4",
+ "lang": "python",
+ "model": "sonnet",
+ "effort": "medium",
+ "ws": "/home/user/agentbench/runs/t4r_case_py_smb",
+ "hint": true,
+ "readme_from": "t2",
+ "baseline": "eb951e1074dfff2714720263a4f37758751d1164",
+ "created": 1795250443.091116,
+ "warm_ok": true
+}

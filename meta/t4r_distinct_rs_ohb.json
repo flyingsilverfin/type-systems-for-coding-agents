@@ -1,0 +1,15 @@
+{
+ "run": "t4r_distinct_rs_ohb",
+ "task": "distinct",
+ "suite": "toydb-t4",
+ "tier": "t4",
+ "lang": "rust",
+ "model": "opus",
+ "effort": "high",
+ "ws": "/home/user/agentbench/runs/t4r_distinct_rs_ohb",
+ "hint": true,
+ "readme_from": "t2",
+ "baseline": "46fb03cbae07c7964586a5748c105ce02bc8404a",
+ "created": 1795250290.8451834,
+ "warm_ok": true
+}

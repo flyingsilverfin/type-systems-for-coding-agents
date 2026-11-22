@@ -1,0 +1,15 @@
+{
+ "run": "t4r_alter_py_smb",
+ "task": "alter",
+ "suite": "toydb-t4",
+ "tier": "t4",
+ "lang": "python",
+ "model": "sonnet",
+ "effort": "medium",
+ "ws": "/home/user/agentbench/runs/t4r_alter_py_smb",
+ "hint": true,
+ "readme_from": "t2",
+ "baseline": "7154d6ff5732f47d4b10b54c5689a0f1252a0443",
+ "created": 1795250575.5454223,
+ "warm_ok": true
+}

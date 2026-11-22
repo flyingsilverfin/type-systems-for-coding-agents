@@ -1,0 +1,104 @@
+# Comment at start.
+#
+# Comments can contain arbitrary characters, like 👋 and	(tab).
+
+# Comment before command.
+command id=1
+---
+Command {
+    name: "command",
+    args: [
+        KeyValue(
+            "id",
+            "1",
+        ),
+    ],
+    context: Context {
+        prefix: None,
+        tags: {},
+        silent: false,
+        fail: false,
+        line_number: 6,
+    },
+}
+
+command id=2 # Comment beside command.
+---
+Command {
+    name: "command",
+    args: [
+        KeyValue(
+            "id",
+            "2",
+        ),
+    ],
+    context: Context {
+        prefix: None,
+        tags: {},
+        silent: false,
+        fail: false,
+        line_number: 25,
+    },
+}
+
+command id=3
+# Comment after command.
+---
+Command {
+    name: "command",
+    args: [
+        KeyValue(
+            "id",
+            "3",
+        ),
+    ],
+    context: Context {
+        prefix: None,
+        tags: {},
+        silent: false,
+        fail: false,
+        line_number: 44,
+    },
+}
+
+# Comment between blocks.
+
+command id=4
+---
+Command {
+    name: "command",
+    args: [
+        KeyValue(
+            "id",
+            "4",
+        ),
+    ],
+    context: Context {
+        prefix: None,
+        tags: {},
+        silent: false,
+        fail: false,
+        line_number: 66,
+    },
+}
+
+command id=5 // Comment using //.
+---
+Command {
+    name: "command",
+    args: [
+        KeyValue(
+            "id",
+            "5",
+        ),
+    ],
+    context: Context {
+        prefix: None,
+        tags: {},
+        silent: false,
+        fail: false,
+        line_number: 85,
+    },
+}
+
+# Comment at end.

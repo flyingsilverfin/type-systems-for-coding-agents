@@ -1,0 +1,38 @@
+# JSON output: values of every type in SELECT results, with column labels.
+
+> CREATE TABLE v (id INT PRIMARY KEY, b BOOLEAN, i INT, f FLOAT, s STRING)
+> INSERT INTO v VALUES (1, TRUE, -7, 1.0, 'plain'), (2, FALSE, 0, -0.0, 'a"b\c'), (3, NULL, NULL, NULL, NULL), (4, TRUE, 9223372036854775807, NAN, ''), (5, FALSE, -9223372036854775807 - 1, INFINITY, 'é ☃ 👋'), (6, NULL, 42, -INFINITY, 'it''s')
+---
+ok
+
+# Every row and column; NaN and infinities use the typed form; -0.0 read from a
+# table is 0.0; strings escape only " and \.
+[json]> SELECT * FROM v
+---
+{"result":"select","columns":["v.id","v.b","v.i","v.f","v.s"],"rows":[[1,true,-7,1.0,"plain"],[2,false,0,0.0,"a\"b\\c"],[3,null,null,null,null],[4,true,9223372036854775807,{"type":"FLOAT","value":"NaN"},""],[5,false,-9223372036854775808,{"type":"FLOAT","value":"inf"},"é ☃ 👋"],[6,null,42,{"type":"FLOAT","value":"-inf"},"it's"]]}
+
+# Labels: qualified column names, aliases, and null for computed columns.
+[json]> SELECT id, f * 2, s AS txt, f FROM v WHERE id > 4
+---
+{"result":"select","columns":["v.id",null,"txt","v.f"],"rows":[[5,{"type":"FLOAT","value":"inf"},"é ☃ 👋",{"type":"FLOAT","value":"inf"}],[6,{"type":"FLOAT","value":"-inf"},"it's",{"type":"FLOAT","value":"-inf"}]]}
+
+# Constants without FROM: finite floats are written as displayed, including
+# exponent forms and a computed -0.0.
+[json]> SELECT NULL, TRUE, -7, -0.0, 1e100, 1.5e-7, 0.1 + 0.2, 123456789.125, 1e16, 0.0001
+---
+{"result":"select","columns":[null,null,null,null,null,null,null,null,null,null],"rows":[[null,true,-7,-0.0,1e100,1.5e-7,0.30000000000000004,123456789.125,1e16,0.0001]]}
+
+# An empty result still has its columns.
+[json]> SELECT * FROM v WHERE FALSE
+---
+{"result":"select","columns":["v.id","v.b","v.i","v.f","v.s"],"rows":[]}
+
+# The normal output is unchanged without the tag.
+> SELECT s FROM v WHERE id = 2
+---
+'a\"b\\c'
+
+# Errors are reported as usual.
+[json]!> SELECT * FROM nosuch
+---
+Error: invalid input: table nosuch does not exist

@@ -1,0 +1,15 @@
+{
+ "run": "t4r_release_py_smc",
+ "task": "release",
+ "suite": "toydb-t4",
+ "tier": "t4",
+ "lang": "python",
+ "model": "sonnet",
+ "effort": "medium",
+ "ws": "/home/user/agentbench/runs/t4r_release_py_smc",
+ "hint": true,
+ "readme_from": "t2",
+ "baseline": "f7c4193ee89a5f958e20149ab74aa3a7cc7cc789",
+ "created": 1795250978.6717238,
+ "warm_ok": true
+}

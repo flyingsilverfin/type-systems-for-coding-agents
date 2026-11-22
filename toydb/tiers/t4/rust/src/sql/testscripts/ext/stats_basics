@@ -1,0 +1,60 @@
+# Column statistics: ANALYZE computes per-column statistics, SHOW STATISTICS
+# shows them. They describe the table as it was when it was analyzed.
+
+> CREATE TABLE item (id INT PRIMARY KEY, name STRING INDEX, price FLOAT, qty INT, ok BOOLEAN)
+> INSERT INTO item VALUES (1, 'apple', 1.5, 10, TRUE), (2, 'pear', 2.25, 0, FALSE), (3, 'fig', NULL, 7, TRUE), (4, 'apple', 0.5, 10, NULL), (5, 'kiwi', 2.25, NULL, TRUE)
+---
+ok
+
+# Before ANALYZE, every column has no statistics.
+[header]> SHOW STATISTICS item
+---
+column, rows, nulls, distinct, min, max, top, top_count, avg_length
+'id', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL
+'name', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL
+'price', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL
+'qty', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL
+'ok', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL
+
+# ANALYZE prints nothing; its JSON result names the analyzed tables.
+> ANALYZE item
+[json]> ANALYZE item
+---
+{"result":"analyze","tables":["item"]}
+
+# One row per column in table order. top is the most common value (ties go to
+# the smallest), avg_length the average number of characters of a STRING column.
+[header]> SHOW STATISTICS item
+---
+column, rows, nulls, distinct, min, max, top, top_count, avg_length
+'id', 5, 0, 5, 1, 5, 1, 1, NULL
+'name', 5, 0, 4, 'apple', 'pear', 'apple', 2, 4.2
+'price', 5, 1, 3, 0.5, 2.25, 2.25, 2, NULL
+'qty', 5, 1, 3, 0, 10, 10, 2, NULL
+'ok', 5, 1, 2, FALSE, TRUE, TRUE, 3, NULL
+
+# Writes don't change the statistics until the next ANALYZE.
+> INSERT INTO item VALUES (6, 'fig', 9.0, 1, FALSE), (7, 'fig', NULL, NULL, FALSE)
+> DELETE FROM item WHERE id = 2
+> SHOW STATISTICS item
+---
+'id', 5, 0, 5, 1, 5, 1, 1, NULL
+'name', 5, 0, 4, 'apple', 'pear', 'apple', 2, 4.2
+'price', 5, 1, 3, 0.5, 2.25, 2.25, 2, NULL
+'qty', 5, 1, 3, 0, 10, 10, 2, NULL
+'ok', 5, 1, 2, FALSE, TRUE, TRUE, 3, NULL
+
+# A new ANALYZE replaces them. Rows are now 1, 3, 4, 5, 6, 7.
+> ANALYZE item
+> SHOW STATISTICS item
+---
+'id', 6, 0, 6, 1, 7, 1, 1, NULL
+'name', 6, 0, 3, 'apple', 'kiwi', 'fig', 3, 3.8333333333333335
+'price', 6, 2, 4, 0.5, 9.0, 0.5, 1, NULL
+'qty', 6, 2, 3, 1, 10, 10, 2, NULL
+'ok', 6, 1, 2, FALSE, TRUE, TRUE, 3, NULL
+
+# SHOW STATISTICS returns ordinary rows, also as JSON.
+[json]> SHOW STATISTICS item
+---
+{"result":"select","columns":["column","rows","nulls","distinct","min","max","top","top_count","avg_length"],"rows":[["id",6,0,6,1,7,1,1,null],["name",6,0,3,"apple","kiwi","fig",3,3.8333333333333335],["price",6,2,4,0.5,9.0,0.5,1,null],["qty",6,2,3,1,10,10,2,null],["ok",6,1,2,false,true,true,3,null]]}

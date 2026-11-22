@@ -1,0 +1,79 @@
+# type_mismatch resolves column references against the tables and views the
+# statement reads; references that don't resolve are not checked.
+
+> CREATE TABLE emp (id INT PRIMARY KEY, name STRING, dept_id INT, salary FLOAT)
+> CREATE TABLE dept (id INT PRIMARY KEY, name STRING, open BOOLEAN)
+---
+ok
+
+# Qualified references resolve by table name or alias; unqualified ones only
+# if exactly one table has the column (name is in both tables).
+> LINT SELECT * FROM emp e JOIN dept d ON e.dept_id = d.id WHERE e.name = 1 AND d.id = 'x' AND name = 2 AND salary = 'high' AND dept_id > TRUE AND open = 1 AND emp.id = 'z'
+---
+'type_mismatch', 'STRING column e.name compared with INTEGER value 1'
+'type_mismatch', 'INTEGER column d.id compared with STRING value \'x\''
+'type_mismatch', 'FLOAT column salary compared with STRING value \'high\''
+'type_mismatch', 'INTEGER column dept_id compared with BOOLEAN value TRUE'
+'type_mismatch', 'BOOLEAN column open compared with INTEGER value 1'
+
+# Comparisons of two columns, of two literals, and with NULL are not checked by
+# this rule; select-list aliases are not considered.
+> LINT SELECT name AS n FROM emp WHERE n = 1 AND name = dept_id AND 1 = 'a'
+> LINT SELECT * FROM emp WHERE salary = NULL
+---
+'null_comparison', 'comparison with NULL is never true: salary = NULL'
+
+# The table of UPDATE and DELETE; assignments are not comparisons.
+> LINT UPDATE emp SET name = 1 WHERE salary = 'a'
+> LINT DELETE FROM emp WHERE id = 'a' OR name > 3
+> LINT INSERT INTO emp (id, name) VALUES (1, 2 = 'b')
+---
+'type_mismatch', 'FLOAT column salary compared with STRING value \'a\''
+'type_mismatch', 'INTEGER column id compared with STRING value \'a\''
+'type_mismatch', 'STRING column name compared with INTEGER value 3'
+
+# Unknown tables and columns are not an error.
+> LINT SELECT * FROM nosuch WHERE x = 1
+> LINT SELECT * FROM emp WHERE nosuch = 1 AND x.name = 1
+> LINT UPDATE nosuch SET a = 1
+---
+'unfiltered_write', 'UPDATE without WHERE changes every row of nosuch'
+
+# Only the tables and views that resolve are considered, and a qualifier must
+# name exactly one of them (the planner would reject both x's).
+> LINT SELECT * FROM emp x, dept x WHERE x.salary = 'a' AND x.open = 1 AND x.id = 'a'
+> LINT SELECT * FROM nosuch x, emp x WHERE x.salary = 'a'
+> LINT SELECT * FROM nosuch, emp WHERE salary = 'a'
+---
+'type_mismatch', 'FLOAT column x.salary compared with STRING value \'a\''
+'type_mismatch', 'FLOAT column salary compared with STRING value \'a\''
+
+# View columns have the types DESCRIBE gives them; unknown types are not
+# checked.
+> CREATE VIEW ev AS SELECT id, name AS ename, salary * 2 AS pay, NULL AS x FROM emp
+> LINT SELECT * FROM ev WHERE ename = 1 AND pay = 'a' AND x = 1 AND id = 1.5
+> LINT SELECT * FROM ev v JOIN dept ON v.id = dept.id WHERE v.ename = TRUE
+---
+'type_mismatch', 'STRING column ename compared with INTEGER value 1'
+'type_mismatch', 'FLOAT column pay compared with STRING value \'a\''
+'type_mismatch', 'STRING column v.ename compared with BOOLEAN value TRUE'
+
+# Parameters have the type of their PREPARE; outside a PREPARE they are not
+# checked.
+> LINT PREPARE p (STRING, INT) AS SELECT * FROM emp WHERE id = $1 AND name = $2 AND salary > $1 AND dept_id = $2
+> LINT SELECT * FROM emp WHERE id = $1
+---
+'type_mismatch', 'INTEGER column id compared with STRING parameter $1'
+'type_mismatch', 'STRING column name compared with INTEGER parameter $2'
+'type_mismatch', 'FLOAT column salary compared with STRING parameter $1'
+
+# The definitions are those the transaction sees.
+a:> BEGIN
+a:> CREATE TABLE w (id INT PRIMARY KEY, s STRING)
+a:> LINT SELECT * FROM w WHERE s = 1
+b:> LINT SELECT * FROM w WHERE s = 1
+a:> COMMIT
+b:> LINT SELECT * FROM w WHERE s = 1
+---
+a: 'type_mismatch', 'STRING column s compared with INTEGER value 1'
+b: 'type_mismatch', 'STRING column s compared with INTEGER value 1'

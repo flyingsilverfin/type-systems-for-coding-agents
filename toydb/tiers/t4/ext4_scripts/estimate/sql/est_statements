@@ -1,0 +1,135 @@
+# ESTIMATE of writes and schema statements: the statement line estimates the
+# rows written. Nothing is executed.
+
+> CREATE TABLE item (id INT PRIMARY KEY, qty INT, cat STRING)
+> INSERT INTO item VALUES (1, 10, 'x'), (2, NULL, 'y'), (3, 30, 'y'), (4, 40, 'y')
+> ANALYZE item
+---
+ok
+
+> ESTIMATE INSERT INTO item VALUES (5, 1, 'z'), (6, 2, 'z'), (7, 3, 'z')
+> ESTIMATE UPDATE item SET qty = 0 WHERE cat = 'y'
+> ESTIMATE DELETE FROM item WHERE qty IS NULL
+> ESTIMATE DELETE FROM item WHERE id = 1
+> ESTIMATE CREATE TABLE z (id INT PRIMARY KEY)
+> ESTIMATE DROP TABLE item
+---
+'Insert: item', 3
+'└─ Values: 3 rows', 3
+'Update: item (qty=0)', 2
+'└─ Scan: item (item.cat = \'y\')', 2
+'Delete: item', 1
+'└─ Scan: item (item.qty IS NULL)', 1
+'Delete: item', 1
+'└─ KeyLookup: item (1)', 1
+'CreateTable: z', 0
+'DropTable: item', 0
+
+> SELECT * FROM item
+schema
+---
+1, 10, 'x'
+2, NULL, 'y'
+3, 30, 'y'
+4, 40, 'y'
+CREATE TABLE item (
+  id INTEGER PRIMARY KEY,
+  qty INTEGER DEFAULT NULL,
+  cat STRING DEFAULT NULL
+)
+
+# Errors are those of EXPLAIN, including errors of constant folding.
+!> ESTIMATE SELECT * FROM nosuch
+!> ESTIMATE SELECT nosuch FROM item
+!> ESTIMATE SELECT 1 / 0
+!> ESTIMATE INSERT INTO item VALUES (1 / 0)
+---
+Error: invalid input: table nosuch does not exist
+Error: invalid input: unknown column nosuch
+Error: invalid input: can't divide by zero
+Error: invalid input: can't divide by zero
+
+# Only planned statements can be estimated.
+!> ESTIMATE BEGIN
+!> ESTIMATE EXPLAIN SELECT 1
+!> ESTIMATE ANALYZE item
+!> ESTIMATE SHOW STATISTICS item
+!> ESTIMATE FORMAT SELECT 1
+!> ESTIMATE ESTIMATE SELECT 1
+!> ESTIMATE DESCRIBE item
+!> ESTIMATE CREATE VIEW v AS SELECT 1 AS a
+!> ESTIMATE SHOW PREPARED
+!> EXPLAIN ESTIMATE SELECT 1
+---
+Error: invalid input: ESTIMATE is not supported for BEGIN
+Error: invalid input: ESTIMATE is not supported for EXPLAIN
+Error: invalid input: ESTIMATE is not supported for ANALYZE
+Error: invalid input: ESTIMATE is not supported for SHOW
+Error: invalid input: ESTIMATE is not supported for FORMAT
+Error: invalid input: ESTIMATE is not supported for ESTIMATE
+Error: invalid input: ESTIMATE is not supported for DESCRIBE
+Error: invalid input: ESTIMATE is not supported for CREATE VIEW
+Error: invalid input: ESTIMATE is not supported for SHOW
+Error: invalid input: EXPLAIN is not supported for ESTIMATE
+
+# Parse errors; ESTIMATE is a reserved keyword.
+!> ESTIMATE
+!> ESTIMATE 1
+!> CREATE TABLE estimate (id INT PRIMARY KEY)
+---
+Error: invalid input: unexpected end of input
+Error: invalid input: unexpected token 1
+Error: invalid input: expected identifier, got ESTIMATE
+
+# The statistics are those the transaction sees.
+a:> BEGIN
+a:> INSERT INTO item VALUES (5, 50, 'z'), (6, 60, 'z')
+a:> ANALYZE item
+a:> ESTIMATE SELECT * FROM item
+b:> ESTIMATE SELECT * FROM item
+a:> ROLLBACK
+a:> ESTIMATE SELECT * FROM item
+---
+a: 'Scan: item', 6
+b: 'Scan: item', 4
+a: 'Scan: item', 4
+
+# Views: a View node passes on the estimate of its query.
+> CREATE VIEW ys AS SELECT id, qty FROM item WHERE cat = 'y'
+> ESTIMATE SELECT qty FROM ys WHERE qty > 35
+---
+'Projection: ys.qty', 0
+'└─ Filter: ys.qty > 35', 0
+'   └─ View: ys', 2
+'      └─ Projection: item.id, item.qty', 2
+'         └─ Scan: item (item.cat = \'y\')', 2
+
+# Statement digests count the rows returned.
+> SHOW STATEMENTS
+---
+'CREATE TABLE item (id INTEGER PRIMARY KEY, qty INTEGER, cat STRING)', 1, 0, 0
+'INSERT INTO item VALUES (?, ?, ?), (?, ?, ?), (?, ?, ?), (?, ?, ?)', 1, 0, 4
+'ANALYZE item', 1, 0, 0
+'ESTIMATE INSERT INTO item VALUES (?, ?, ?), (?, ?, ?), (?, ?, ?)', 1, 0, 2
+'ESTIMATE UPDATE item SET qty = ? WHERE cat = ?', 1, 0, 2
+'ESTIMATE DELETE FROM item WHERE qty IS NULL', 1, 0, 2
+'ESTIMATE DELETE FROM item WHERE id = ?', 1, 0, 2
+'ESTIMATE CREATE TABLE z (id INTEGER PRIMARY KEY)', 1, 0, 1
+'ESTIMATE DROP TABLE item', 1, 0, 1
+'SELECT * FROM item', 1, 0, 4
+'ESTIMATE SELECT * FROM nosuch', 1, 1, 0
+'ESTIMATE SELECT nosuch FROM item', 1, 1, 0
+'ESTIMATE SELECT ? / ?', 1, 1, 0
+'ESTIMATE INSERT INTO item VALUES (? / ?)', 1, 1, 0
+'ESTIMATE BEGIN', 1, 1, 0
+'ESTIMATE EXPLAIN SELECT ?', 1, 1, 0
+'ESTIMATE ANALYZE item', 1, 1, 0
+'ESTIMATE SHOW STATISTICS item', 1, 1, 0
+'ESTIMATE FORMAT SELECT ?', 1, 1, 0
+'ESTIMATE ESTIMATE SELECT ?', 1, 1, 0
+'ESTIMATE DESCRIBE item', 1, 1, 0
+'ESTIMATE CREATE VIEW v AS SELECT ? AS a', 1, 1, 0
+'ESTIMATE SHOW PREPARED', 1, 1, 0
+'EXPLAIN ESTIMATE SELECT ?', 1, 1, 0
+'CREATE VIEW ys AS SELECT id, qty FROM item WHERE cat = ?', 1, 0, 0
+'ESTIMATE SELECT qty FROM ys WHERE qty > ?', 1, 0, 5

@@ -1,0 +1,15 @@
+{
+ "run": "t4r_between_in_py_hla",
+ "task": "between_in",
+ "suite": "toydb-t4",
+ "tier": "t4",
+ "lang": "python",
+ "model": "haiku",
+ "effort": "low",
+ "ws": "/home/user/agentbench/runs/t4r_between_in_py_hla",
+ "hint": true,
+ "readme_from": "t2",
+ "baseline": "37781d0948ab072884be086e59dde2b789b2a2ff",
+ "created": 1795249878.5447078,
+ "warm_ok": true
+}

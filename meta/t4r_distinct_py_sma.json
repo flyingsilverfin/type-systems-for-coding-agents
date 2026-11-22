@@ -1,0 +1,15 @@
+{
+ "run": "t4r_distinct_py_sma",
+ "task": "distinct",
+ "suite": "toydb-t4",
+ "tier": "t4",
+ "lang": "python",
+ "model": "sonnet",
+ "effort": "medium",
+ "ws": "/home/user/agentbench/runs/t4r_distinct_py_sma",
+ "hint": true,
+ "readme_from": "t2",
+ "baseline": "4c931430c09938457fed403bf3090c0bfb5ba0c6",
+ "created": 1795249522.9709275,
+ "warm_ok": true
+}

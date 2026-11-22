@@ -1,0 +1,155 @@
+# CREATE VIEW checks, in order; views are read-only; parse errors and keywords.
+
+> CREATE TABLE t (id INT PRIMARY KEY, v STRING)
+> INSERT INTO t VALUES (1, 'a'), (2, 'b')
+> CREATE VIEW w AS SELECT id FROM t
+---
+ok
+
+# The name, then name clashes with tables and views.
+!> CREATE VIEW "" AS SELECT 1 AS a
+!> CREATE VIEW t AS SELECT 1 AS a
+!> CREATE VIEW w AS SELECT 1 AS a
+!> CREATE VIEW w AS SELECT * FROM nosuch
+---
+Error: invalid input: view name can't be empty
+Error: invalid input: table t already exists
+Error: invalid input: view w already exists
+Error: invalid input: view w already exists
+
+# Planning errors of the query.
+!> CREATE VIEW x AS SELECT * FROM nosuch
+!> CREATE VIEW x AS SELECT nosuch FROM t
+!> CREATE VIEW x AS SELECT v, COUNT(*) FROM t
+!> CREATE VIEW x AS SELECT * FROM t LIMIT -1
+!> CREATE VIEW x AS SELECT *
+---
+Error: invalid input: table nosuch does not exist
+Error: invalid input: unknown column nosuch
+Error: invalid input: column v must be used in an aggregate or GROUP BY expression
+Error: invalid input: invalid limit -1
+Error: invalid input: SELECT * requires a FROM clause
+
+# Column names: count, missing, empty and duplicate names.
+!> CREATE VIEW x (a, b) AS SELECT id FROM t
+!> CREATE VIEW x (a) AS SELECT * FROM t
+!> CREATE VIEW x AS SELECT id, id + 1 FROM t
+!> CREATE VIEW x (a, "") AS SELECT id, v FROM t
+!> CREATE VIEW x AS SELECT id AS "" FROM t
+!> CREATE VIEW x AS SELECT id, v AS id FROM t
+!> CREATE VIEW x (a, a) AS SELECT id, v FROM t
+!> CREATE VIEW x AS SELECT t.id, u.id FROM t, t AS u
+---
+Error: invalid input: wrong number of column names for view x: expected 1, found 2
+Error: invalid input: wrong number of column names for view x: expected 2, found 1
+Error: invalid input: column 2 of view x has no name
+Error: invalid input: column name can't be empty
+Error: invalid input: column name can't be empty
+Error: invalid input: duplicate column id in view x
+Error: invalid input: duplicate column a in view x
+Error: invalid input: duplicate column id in view x
+
+# A column list gives names to unnamed columns. Names are compared exactly.
+> CREATE VIEW x (a, b) AS SELECT id, id + 1 FROM t
+> CREATE VIEW y AS SELECT id, id AS "ID" FROM t
+> SELECT * FROM x
+> SELECT y."ID" FROM y
+---
+1, 2
+2, 3
+1
+2
+
+# The query is planned but not optimized: a failing constant expression is an
+# error only when the view is used.
+> CREATE VIEW bad AS SELECT 1 / 0 AS a
+!> SELECT * FROM bad
+---
+Error: invalid input: can't divide by zero
+
+# Views share the namespace of tables, and are read-only: every statement that
+# expects a table fails as for a name that is not a table.
+!> CREATE TABLE w (id INT PRIMARY KEY)
+!> INSERT INTO w VALUES (3)
+!> UPDATE w SET id = 3
+!> DELETE FROM w
+!> DROP TABLE w
+!> ANALYZE w
+!> SHOW STATISTICS w
+!> EXPORT w AS CSV
+!> IMPORT INTO w FROM CSV 'id'
+---
+Error: invalid input: view w already exists
+Error: invalid input: table w does not exist
+Error: invalid input: table w does not exist
+Error: invalid input: table w does not exist
+Error: invalid input: table w does not exist
+Error: invalid input: table w does not exist
+Error: invalid input: table w does not exist
+Error: invalid input: table w does not exist
+Error: invalid input: table w does not exist
+
+!> DROP VIEW t
+!> DROP VIEW nosuch
+> DROP VIEW IF EXISTS nosuch
+!> SELECT * FROM nosuch
+---
+Error: invalid input: view t does not exist
+Error: invalid input: view nosuch does not exist
+Error: invalid input: table nosuch does not exist
+
+# Parse errors.
+!> CREATE VIEW
+!> CREATE VIEW v AS
+!> CREATE VIEW 1 AS SELECT 1
+!> CREATE VIEW v SELECT 1
+!> CREATE VIEW v AS INSERT INTO t VALUES (1)
+!> CREATE VIEW v () AS SELECT 1 AS a
+!> CREATE VIEW v (a,) AS SELECT 1 AS a
+!> CREATE VIEWS v AS SELECT 1
+!> DROP VIEW
+!> DROP VIEW IF v
+!> DROP x
+!> SHOW VIEW
+!> SHOW VIEWS x
+---
+Error: invalid input: unexpected end of input
+Error: invalid input: unexpected end of input
+Error: invalid input: expected identifier, got 1
+Error: invalid input: expected token AS, found SELECT
+Error: invalid input: expected token SELECT, found INSERT
+Error: invalid input: expected identifier, got )
+Error: invalid input: expected identifier, got )
+Error: invalid input: expected token TABLE, found VIEWS
+Error: invalid input: unexpected end of input
+Error: invalid input: expected token EXISTS, found v
+Error: invalid input: expected token TABLE, found x
+Error: invalid input: unexpected token VIEW
+Error: invalid input: unexpected token x
+
+# VIEW and VIEWS are reserved keywords; quoted, they are ordinary names.
+!> CREATE TABLE view (id INT PRIMARY KEY)
+!> SELECT 1 AS views
+---
+Error: invalid input: expected identifier, got VIEW
+Error: invalid input: expected identifier, got VIEWS
+
+> CREATE VIEW "view" AS SELECT id AS "views" FROM t WHERE id = 1
+> SELECT "view"."views" FROM "view"
+> SHOW VIEWS
+---
+1
+'bad', 'a', 'SELECT 1 / 0 AS a'
+'view', '\"views\"', 'SELECT id AS \"views\" FROM t WHERE id = 1'
+'w', 'id', 'SELECT id FROM t'
+'x', 'a, b', 'SELECT id, id + 1 FROM t'
+'y', 'id, \"ID\"', 'SELECT id, id AS \"ID\" FROM t'
+
+# The view statements can't be explained.
+!> EXPLAIN CREATE VIEW z AS SELECT 1 AS a
+!> EXPLAIN DROP VIEW w
+!> EXPLAIN SHOW VIEWS
+---
+Error: invalid input: EXPLAIN is not supported for CREATE VIEW
+Error: invalid input: EXPLAIN is not supported for DROP VIEW
+Error: invalid input: EXPLAIN is not supported for SHOW

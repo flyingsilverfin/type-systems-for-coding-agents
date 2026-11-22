@@ -1,0 +1,26 @@
+# ESTIMATE through the client: the statistics of ANALYZE are replicated, so
+# every client sees the same estimates once they are committed.
+
+cluster nodes=3
+---
+ok
+
+c1:> CREATE TABLE t (id INT PRIMARY KEY, g STRING, n INT)
+c1:> INSERT INTO t VALUES (1, 'a', 1), (2, 'a', 2), (3, 'b', 3), (4, 'b', NULL), (5, 'c', 5)
+c2:[header]> ESTIMATE SELECT g, COUNT(*) FROM t WHERE n > 1 GROUP BY g
+---
+c2: node, rows
+c2: 'Aggregate: t.g, count(TRUE)', 10
+c2: '└─ Scan: t (t.n > 1)', 333
+
+c3:> ANALYZE t
+c1:> ESTIMATE SELECT g, COUNT(*) FROM t WHERE n > 1 GROUP BY g
+c2:[json]> ESTIMATE SELECT * FROM t WHERE id = 2 OR id = 4
+---
+c1: 'Aggregate: t.g, count(TRUE)', 3
+c1: '└─ Scan: t (t.n > 1)', 4
+c2: {"result":"select","columns":["node","rows"],"rows":[["KeyLookup: t (2, 4)",2]]}
+
+c1:!> ESTIMATE SHOW STATISTICS t
+---
+c1: Error: invalid input: ESTIMATE is not supported for SHOW

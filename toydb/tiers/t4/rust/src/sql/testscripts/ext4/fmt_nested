@@ -1,0 +1,111 @@
+# FORMAT writes the statements of the extensions too. A statement contained in
+# another one is written on the following lines, laid out as that statement.
+
+> FORMAT create view V (a, "B") as select id, v from t where id > 1
+---
+CREATE VIEW v (a, "B") AS
+SELECT id, v
+FROM t
+WHERE id > 1
+
+> FORMAT CREATE VIEW v AS SELECT * FROM t
+> FORMAT drop view if exists V
+> FORMAT DROP VIEW v
+> FORMAT show views
+---
+CREATE VIEW v AS
+SELECT *
+FROM t
+DROP VIEW IF EXISTS v
+DROP VIEW v
+SHOW VIEWS
+
+> FORMAT describe T
+> FORMAT describe select 1 + 1
+> FORMAT estimate select * from t where id = 1
+> FORMAT lint delete from t
+---
+DESCRIBE t
+DESCRIBE
+SELECT 1 + 1
+ESTIMATE
+SELECT *
+FROM t
+WHERE id = 1
+LINT
+DELETE FROM t
+
+# Parameters are written as $ and their number. FORMAT accepts them anywhere.
+> FORMAT prepare P (int, text, double, bool) as update t set v = $2 where id = $1 and f < $03
+> FORMAT PREPARE q AS SELECT 1
+> FORMAT execute P (1, -2.5, 'x', NULL, 1 + 1)
+> FORMAT EXECUTE q
+> FORMAT deallocate P
+> FORMAT show prepared
+> FORMAT SELECT $1 + $2 FROM t LIMIT $10
+---
+PREPARE p (INTEGER, STRING, FLOAT, BOOLEAN) AS
+UPDATE t
+SET v = $2
+WHERE id = $1 AND f < $3
+PREPARE q AS
+SELECT 1
+EXECUTE p (1, -2.5, 'x', NULL, 1 + 1)
+EXECUTE q
+DEALLOCATE p
+SHOW PREPARED
+SELECT $1 + $2
+FROM t
+LIMIT $10
+
+> FORMAT show changes
+> FORMAT SHOW CHANGES SINCE 007
+---
+SHOW CHANGES
+SHOW CHANGES SINCE 7
+
+# Nesting to any depth.
+> FORMAT format format select 1
+> FORMAT EXPLAIN EXECUTE p (1)
+> FORMAT LINT PREPARE p (STRING) AS INSERT INTO t (v) VALUES ($1), ('b')
+> FORMAT DESCRIBE EXPLAIN SELECT 1
+---
+FORMAT
+FORMAT
+SELECT 1
+EXPLAIN
+EXECUTE p (1)
+LINT
+PREPARE p (STRING) AS
+INSERT INTO t (v) VALUES
+  ($1),
+  ('b')
+DESCRIBE
+EXPLAIN
+SELECT 1
+
+# FORMAT is recorded in the statement digests, with no rows.
+> SHOW STATEMENTS
+---
+'FORMAT CREATE VIEW v (a, B) AS SELECT id, v FROM t WHERE id > ?', 1, 0, 0
+'FORMAT CREATE VIEW v AS SELECT * FROM t', 1, 0, 0
+'FORMAT DROP VIEW IF EXISTS v', 1, 0, 0
+'FORMAT DROP VIEW v', 1, 0, 0
+'FORMAT SHOW VIEWS', 1, 0, 0
+'FORMAT DESCRIBE t', 1, 0, 0
+'FORMAT DESCRIBE SELECT ? + ?', 1, 0, 0
+'FORMAT ESTIMATE SELECT * FROM t WHERE id = ?', 1, 0, 0
+'FORMAT LINT DELETE FROM t', 1, 0, 0
+'FORMAT PREPARE p (INTEGER, STRING, FLOAT, BOOLEAN) AS UPDATE t SET v = $2 WHERE id = $1 AND f < $3', 1, 0, 0
+'FORMAT PREPARE q AS SELECT ?', 1, 0, 0
+'FORMAT EXECUTE p (?, -?, ?, ?, ? + ?)', 1, 0, 0
+'FORMAT EXECUTE q', 1, 0, 0
+'FORMAT DEALLOCATE p', 1, 0, 0
+'FORMAT SHOW PREPARED', 1, 0, 0
+'FORMAT SELECT $1 + $2 FROM t LIMIT $10', 1, 0, 0
+'FORMAT SHOW CHANGES', 1, 0, 0
+'FORMAT SHOW CHANGES SINCE ?', 1, 0, 0
+'FORMAT FORMAT FORMAT SELECT ?', 1, 0, 0
+'FORMAT EXPLAIN EXECUTE p (?)', 1, 0, 0
+'FORMAT LINT PREPARE p (STRING) AS INSERT INTO t (v) VALUES ($1), (?)', 1, 0, 0
+'FORMAT DESCRIBE EXPLAIN SELECT ?', 1, 0, 0

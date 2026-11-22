@@ -1,0 +1,78 @@
+# LINT reports likely mistakes in a statement without executing it: one row
+# per warning, with a code and a message.
+
+> CREATE TABLE t (id INT PRIMARY KEY, s STRING, n INT, f FLOAT)
+> INSERT INTO t VALUES (1, 'a', 1, 1.0)
+---
+ok
+
+# A statement without warnings returns no rows.
+[header]> LINT SELECT * FROM t WHERE id = 1
+---
+code, message
+
+# UPDATE and DELETE without WHERE.
+[header]> LINT UPDATE t SET n = 1
+> LINT DELETE FROM t
+> LINT DELETE FROM t WHERE id > 0
+---
+code, message
+'unfiltered_write', 'UPDATE without WHERE changes every row of t'
+'unfiltered_write', 'DELETE without WHERE deletes every row of t'
+
+# INSERT without a column list.
+> LINT INSERT INTO t VALUES (2, 'b', 2, 2.0)
+> LINT INSERT INTO t (id, s) VALUES (2, 'b')
+---
+'implicit_columns', 'INSERT without a column list depends on the column order of t'
+
+# Comparisons with the NULL constant, on either side.
+> LINT SELECT * FROM t WHERE s = NULL OR NULL != n OR n > NULL OR f <= NULL
+> LINT SELECT * FROM t WHERE s IS NULL OR n IS NOT NULL
+---
+'null_comparison', 'comparison with NULL is never true: s = NULL'
+'null_comparison', 'comparison with NULL is never true: NULL != n'
+'null_comparison', 'comparison with NULL is never true: n > NULL'
+'null_comparison', 'comparison with NULL is never true: f <= NULL'
+
+# A column compared with a value of a type it can't be compared with.
+> LINT SELECT * FROM t WHERE s = 1 AND n = 'x' AND 'y' < n AND f > 2 AND n < 2.5 AND n >= -1 AND s != -2
+---
+'type_mismatch', 'STRING column s compared with INTEGER value 1'
+'type_mismatch', 'INTEGER column n compared with STRING value \'x\''
+'type_mismatch', 'INTEGER column n compared with STRING value \'y\''
+'type_mismatch', 'STRING column s compared with INTEGER value -2'
+
+# LIKE with a pattern without % or _.
+> LINT SELECT * FROM t WHERE s LIKE 'abc' OR s LIKE 'a%' OR s LIKE 'a_c' OR s LIKE s OR 'abc' LIKE s
+---
+'like_without_wildcard', 'LIKE without wildcards matches like =: s LIKE \'abc\''
+
+# Division and remainder by the integer literal 0.
+> LINT SELECT n / 0, n % 0, f / 0.0, n / (1 - 1), 0 / n FROM t
+---
+'division_by_zero', 'division by zero: n / 0'
+'division_by_zero', 'division by zero: n % 0'
+
+# Constant conditions in WHERE, HAVING and ON.
+> LINT SELECT * FROM t WHERE 1 = 1
+> LINT SELECT * FROM t a JOIN t b ON TRUE
+> LINT SELECT COUNT(*) FROM t HAVING 1 > 0
+> LINT SELECT COUNT(*) FROM t HAVING COUNT(*) > 0
+> LINT SELECT * FROM t WHERE n > 1 + 1
+---
+'constant_condition', 'condition is constant: 1 = 1'
+'constant_condition', 'condition is constant: TRUE'
+'constant_condition', 'condition is constant: 1 > 0'
+
+# ORDER BY a constant (there are no column positions).
+> LINT SELECT * FROM t ORDER BY 1, n, 'x' DESC, -2, n + 1, COUNT(*)
+---
+'order_by_constant', 'ORDER BY a constant has no effect: 1'
+'order_by_constant', 'ORDER BY a constant has no effect: \'x\''
+'order_by_constant', 'ORDER BY a constant has no effect: -2'
+
+# LINT executes nothing: the statements above changed nothing.
+> SELECT * FROM t
+---
+1, 'a', 1, 1.0

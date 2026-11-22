@@ -1,0 +1,15 @@
+{
+ "run": "t4r_release_py_oha",
+ "task": "release",
+ "suite": "toydb-t4",
+ "tier": "t4",
+ "lang": "python",
+ "model": "opus",
+ "effort": "high",
+ "ws": "/home/user/agentbench/runs/t4r_release_py_oha",
+ "hint": true,
+ "readme_from": "t2",
+ "baseline": "f8f5441d5d1e1892c2fb9eb18eddcfbb5902e72c",
+ "created": 1795249436.3208048,
+ "warm_ok": true
+}

@@ -1,0 +1,75 @@
+# Statement digests of the extension statements, and the rows they count:
+# SHOW STATISTICS returns rows, IMPORT counts the inserted rows, EXPORT the
+# exported table rows, ANALYZE none.
+
+> CREATE TABLE t (id INT PRIMARY KEY, v STRING)
+> import into T from csv 'id,v', '1,a', '2,b'
+> IMPORT INTO t FROM CSV 'id,v', '3,c', '4,d'
+> IMPORT INTO t FROM CSV 'id', '5'
+> IMPORT INTO t FROM JSON '{"id":6}'
+> analyze
+> ANALYZE t
+> ANALYZE "t"
+---
+ok
+
+> SHOW STATISTICS t
+> export t as csv
+> EXPORT t AS JSON
+> EXPORT t AS SQL
+> EXPORT AS SQL
+!> EXPORT AS CSV
+!> IMPORT INTO t FROM CSV 'id', 'x'
+---
+'id', 6, 0, 6, 1, 6, 1, 1, NULL
+'v', 6, 2, 4, 'a', 'd', 'a', 1, 1.0
+id,v
+1,a
+2,b
+3,c
+4,d
+5,
+6,
+{"id":1,"v":"a"}
+{"id":2,"v":"b"}
+{"id":3,"v":"c"}
+{"id":4,"v":"d"}
+{"id":5,"v":null}
+{"id":6,"v":null}
+CREATE TABLE t (
+  id INTEGER PRIMARY KEY,
+  v STRING DEFAULT NULL
+);
+INSERT INTO t VALUES (1, 'a');
+INSERT INTO t VALUES (2, 'b');
+INSERT INTO t VALUES (3, 'c');
+INSERT INTO t VALUES (4, 'd');
+INSERT INTO t VALUES (5, NULL);
+INSERT INTO t VALUES (6, NULL);
+CREATE TABLE t (
+  id INTEGER PRIMARY KEY,
+  v STRING DEFAULT NULL
+);
+INSERT INTO t VALUES (1, 'a');
+INSERT INTO t VALUES (2, 'b');
+INSERT INTO t VALUES (3, 'c');
+INSERT INTO t VALUES (4, 'd');
+INSERT INTO t VALUES (5, NULL);
+INSERT INTO t VALUES (6, NULL);
+Error: invalid input: EXPORT without a table requires AS SQL
+Error: invalid input: invalid value for INTEGER column id on line 2
+
+> SHOW STATEMENTS
+---
+'CREATE TABLE t (id INTEGER PRIMARY KEY, v STRING)', 1, 0, 0
+'IMPORT INTO t FROM CSV ?, ?, ?', 2, 0, 4
+'IMPORT INTO t FROM CSV ?, ?', 2, 1, 1
+'IMPORT INTO t FROM JSON ?', 1, 0, 1
+'ANALYZE', 1, 0, 0
+'ANALYZE t', 2, 0, 0
+'SHOW STATISTICS t', 1, 0, 2
+'EXPORT t AS CSV', 1, 0, 6
+'EXPORT t AS JSON', 1, 0, 6
+'EXPORT t AS SQL', 1, 0, 6
+'EXPORT AS SQL', 1, 0, 6
+'EXPORT AS CSV', 1, 1, 0

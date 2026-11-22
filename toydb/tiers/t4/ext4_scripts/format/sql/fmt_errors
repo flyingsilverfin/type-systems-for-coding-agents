@@ -1,0 +1,84 @@
+# FORMAT fails only if its statement doesn't parse, with the usual messages.
+
+!> FORMAT
+!> FORMAT x
+!> FORMAT 1
+!> FORMAT SELECT FROM t
+!> FORMAT SELECT 1;;
+!> FORMAT CREATE TABLE t (id BLOB)
+!> FORMAT INSERT INTO t VALUES
+---
+Error: invalid input: unexpected end of input
+Error: invalid input: unexpected token x
+Error: invalid input: unexpected token 1
+Error: invalid input: expected expression atom, found FROM
+Error: invalid input: unexpected token ;
+Error: invalid input: unexpected token blob
+Error: invalid input: unexpected end of input
+
+# A single trailing ; is allowed, as for every statement.
+> FORMAT SELECT 1;
+---
+SELECT 1
+
+# A statement that doesn't parse is not recorded; FORMAT statements are.
+> SHOW STATEMENTS
+---
+'FORMAT SELECT ?', 1, 0, 0
+
+# FORMAT is a reserved keyword.
+!> CREATE TABLE format (id INT PRIMARY KEY)
+!> SELECT 1 AS Format
+---
+Error: invalid input: expected identifier, got FORMAT
+Error: invalid input: expected identifier, got FORMAT
+
+> CREATE TABLE "format" ("format" INT PRIMARY KEY, formats STRING)
+schema
+---
+CREATE TABLE "format" (
+  "format" INTEGER PRIMARY KEY,
+  formats STRING DEFAULT NULL
+)
+
+# FORMAT can't be explained, and uses no transaction: it works in any
+# transaction, also a read-only one, and changes nothing.
+!> EXPLAIN FORMAT SELECT 1
+---
+Error: invalid input: EXPLAIN is not supported for FORMAT
+
+> BEGIN READ ONLY
+> FORMAT DROP TABLE "format"
+> COMMIT
+> SELECT * FROM "format"
+---
+DROP TABLE "format"
+
+[json]> BEGIN
+[json]> FORMAT SELECT 1
+[json]> COMMIT
+---
+{"result":"begin","version":2,"read_only":false}
+{"result":"format","lines":["SELECT 1"]}
+{"result":"commit","version":2}
+
+# Parameters are $ followed by a number from 1 to 18446744073709551615 (an
+# unsigned 64-bit integer), with any number of leading zeros. FORMAT accepts
+# them anywhere; other statements outside PREPARE reject them after parsing.
+> FORMAT SELECT $01, $0010, $18446744073709551615
+!> FORMAT SELECT $0
+!> FORMAT SELECT $00
+!> FORMAT SELECT $18446744073709551616
+!> FORMAT SELECT $
+!> FORMAT SELECT $a
+!> SELECT $2 + $1
+!> EXPLAIN SELECT * FROM t WHERE id = $3
+---
+SELECT $1, $10, $18446744073709551615
+Error: invalid input: invalid parameter $0
+Error: invalid input: invalid parameter $00
+Error: invalid input: invalid parameter $18446744073709551616
+Error: invalid input: unexpected character $
+Error: invalid input: unexpected character $
+Error: invalid input: parameter $1 can only be used in a prepared statement
+Error: invalid input: parameter $3 can only be used in a prepared statement

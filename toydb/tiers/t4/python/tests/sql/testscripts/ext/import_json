@@ -1,0 +1,70 @@
+# IMPORT ... FROM JSON: each string literal is one JSON object; its members name
+# columns and give their values. Each object is inserted like a row of an
+# INSERT whose column list is the object's member names; the other columns get
+# their defaults.
+
+> CREATE TABLE t (id INT PRIMARY KEY, name STRING NOT NULL, score FLOAT, ok BOOLEAN DEFAULT TRUE, note STRING DEFAULT 'none')
+---
+ok
+
+# Objects may have different members, in any order, and whitespace. A JSON
+# number is a valid FLOAT (integers too); NaN and infinities use the typed
+# form, whose members may come in any order; null is NULL.
+[json]> IMPORT INTO t FROM JSON '{"id":1,"name":"ann","score":1.5,"ok":true,"note":"x"}', '{"id": 2, "name": "b \"c\" \\", "score": -1, "ok": null}', '{"name":"é","id":3,"score":{"type":"FLOAT","value":"NaN"}}', '{"id":4,"name":"d","score":2e2}'
+---
+{"result":"insert","count":4}
+
+> IMPORT INTO t FROM JSON '{"id":5,"name":"big","score":9223372036854775808}', '{"note":null,"name":"inf","id":6,"score":{"value":"inf","type":"FLOAT"}}'
+---
+ok
+
+# A member given twice counts with its last value.
+> IMPORT INTO t FROM JSON '{"id":7,"name":"first","name":"second"}'
+---
+ok
+
+> SELECT * FROM t
+---
+1, 'ann', 1.5, TRUE, 'x'
+2, 'b \"c\" \\', -1.0, NULL, 'none'
+3, 'é', NaN, TRUE, 'none'
+4, 'd', 200.0, TRUE, 'none'
+5, 'big', 9.223372036854776e18, TRUE, 'none'
+6, 'inf', inf, TRUE, NULL
+7, 'second', NULL, TRUE, 'none'
+
+# An object without members is a row of defaults.
+> CREATE TABLE dflt (id INT PRIMARY KEY DEFAULT 0, v STRING DEFAULT 'v', f FLOAT DEFAULT -INFINITY)
+> IMPORT INTO dflt FROM JSON '{}', '{"v":"w","id":1}'
+> SELECT * FROM dflt
+---
+0, 'v', -inf
+1, 'w', -inf
+
+# Exported lines can be imported again.
+> EXPORT dflt AS JSON
+---
+{"id":0,"v":"v","f":{"type":"FLOAT","value":"-inf"}}
+{"id":1,"v":"w","f":{"type":"FLOAT","value":"-inf"}}
+
+> DELETE FROM dflt
+> IMPORT INTO dflt FROM JSON '{"id":0,"v":"v","f":{"type":"FLOAT","value":"-inf"}}', '{"id":1,"v":"w","f":{"type":"FLOAT","value":"-inf"}}'
+> SELECT * FROM dflt
+---
+0, 'v', -inf
+1, 'w', -inf
+
+# A string that is a valid JSON object only after SQL's '' escape.
+> IMPORT INTO t FROM JSON '{"id":8,"name":"it''s"}'
+> SELECT name FROM t WHERE id = 8
+---
+'it\'s'
+
+# A number beyond the range of FLOAT is infinite and one too small for it is 0,
+# as when reading text. Only the last value of a repeated member is read.
+> IMPORT INTO t FROM JSON '{"id":9,"name":"over","score":-1e400}', '{"id":10,"name":"under","score":1e-400}', '{"id":11,"name":5,"name":"last","score":123456789012345678901234567890}'
+> SELECT * FROM t WHERE id > 8
+---
+9, 'over', -inf, TRUE, 'none'
+10, 'under', 0.0, TRUE, 'none'
+11, 'last', 1.2345678901234568e29, TRUE, 'none'

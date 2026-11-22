@@ -1,0 +1,15 @@
+{
+ "run": "t4r_alter_rs_smb",
+ "task": "alter",
+ "suite": "toydb-t4",
+ "tier": "t4",
+ "lang": "rust",
+ "model": "sonnet",
+ "effort": "medium",
+ "ws": "/home/user/agentbench/runs/t4r_alter_rs_smb",
+ "hint": true,
+ "readme_from": "t2",
+ "baseline": "ca78be916292b6e5ad865988ec70c5dfbe81846e",
+ "created": 1795250506.607105,
+ "warm_ok": true
+}

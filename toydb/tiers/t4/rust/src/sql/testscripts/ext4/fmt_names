@@ -1,0 +1,64 @@
+# Names are written so that they read back as the same name: unquoted only if
+# they are a lower-case identifier that isn't a keyword, otherwise quoted. (The
+# schema display and statement digests write mixed-case names unquoted.)
+
+> FORMAT SELECT "Name", "a b", "x""y", "t2", "ab_1", "été", "Été", "_x", "1a", "" FROM "Item" AS "I"
+---
+SELECT "Name", "a b", "x""y", t2, ab_1, été, "Été", "_x", "1a", ""
+FROM "Item" AS "I"
+
+# Keywords are quoted, including those of the extensions.
+> FORMAT SELECT "select", "json", "statistics", "view", "format", "prepare", "since", "lint", "changes" FROM "from"
+---
+SELECT "select", "json", "statistics", "view", "format", "prepare", "since", "lint", "changes"
+FROM "from"
+
+# Unquoted names are lower case, so they are never quoted.
+> FORMAT SELECT Foo.Bar, BAZ(x) AS Qux FROM Foo
+---
+SELECT foo.bar, baz(x) AS qux
+FROM foo
+
+# A quoted function name is written like any other name.
+> FORMAT SELECT "Sqrt"(4), "count"(*)
+---
+SELECT "Sqrt"(4), count(*)
+
+# Names in every position: tables, columns, aliases, references.
+> FORMAT CREATE TABLE "Order" ("Id" INT PRIMARY KEY, "item ref" INT REFERENCES "Item", "index" BOOLEAN INDEX)
+> FORMAT INSERT INTO "Order" ("Id", "item ref") VALUES (1, 2)
+> FORMAT UPDATE "Order" SET "index" = TRUE WHERE "Order"."Id" = 1
+---
+CREATE TABLE "Order" (
+  "Id" INTEGER PRIMARY KEY,
+  "item ref" INTEGER REFERENCES "Item",
+  "index" BOOLEAN INDEX
+)
+INSERT INTO "Order" ("Id", "item ref") VALUES
+  (1, 2)
+UPDATE "Order"
+SET "index" = TRUE
+WHERE "Order"."Id" = 1
+
+# The schema display and the digest keep their own quoting of mixed-case names,
+# so they differ from FORMAT for them.
+> CREATE TABLE "Item" ("Id" INT PRIMARY KEY, "select" STRING)
+> FORMAT SELECT "Id", "select" FROM "Item"
+schema
+> SHOW STATEMENTS
+---
+SELECT "Id", "select"
+FROM "Item"
+CREATE TABLE Item (
+  Id INTEGER PRIMARY KEY,
+  "select" STRING DEFAULT NULL
+)
+'FORMAT SELECT Name, \"a b\", \"x\"\"y\", t2, ab_1, été, Été, \"_x\", \"1a\", \"\" FROM Item AS I', 1, 0, 0
+'FORMAT SELECT \"select\", \"json\", \"statistics\", \"view\", \"format\", \"prepare\", \"since\", \"lint\", \"changes\" FROM \"from\"', 1, 0, 0
+'FORMAT SELECT foo.bar, baz(x) AS qux FROM foo', 1, 0, 0
+'FORMAT SELECT Sqrt(?), count(*)', 1, 0, 0
+'FORMAT CREATE TABLE \"Order\" (Id INTEGER PRIMARY KEY, \"item ref\" INTEGER REFERENCES Item, \"index\" BOOLEAN INDEX)', 1, 0, 0
+'FORMAT INSERT INTO \"Order\" (Id, \"item ref\") VALUES (?, ?)', 1, 0, 0
+'FORMAT UPDATE \"Order\" SET \"index\" = ? WHERE \"Order\".Id = ?', 1, 0, 0
+'CREATE TABLE Item (Id INTEGER PRIMARY KEY, \"select\" STRING)', 1, 0, 0
+'FORMAT SELECT Id, \"select\" FROM Item', 1, 0, 0

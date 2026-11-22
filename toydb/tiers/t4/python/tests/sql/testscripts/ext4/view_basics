@@ -1,0 +1,87 @@
+# A view is a named query. Using it in FROM gives the rows of its query, with
+# the view's columns, qualified by the view's name or alias.
+
+> CREATE TABLE item (id INT PRIMARY KEY, name STRING INDEX, price FLOAT, qty INT, cat STRING)
+> INSERT INTO item VALUES (1, 'apple', 1.5, 10, 'fruit'), (2, 'pear', 2.25, 0, 'fruit'), (3, 'fig', NULL, 7, 'fruit'), (4, 'leek', 0.5, 10, 'veg'), (5, 'kale', 3.0, NULL, 'veg')
+---
+ok
+
+# Without a column list, the columns are named after the query's result
+# columns: t.c is named c, an alias is the name.
+> CREATE VIEW cheap AS SELECT id, name, price FROM item WHERE price < 2
+[header]> SELECT * FROM cheap
+---
+cheap.id, cheap.name, cheap.price
+1, 'apple', 1.5
+4, 'leek', 0.5
+
+> CREATE VIEW names AS SELECT item.name, cat AS kind FROM item
+[header]> SELECT kind, name FROM names WHERE kind = 'veg'
+---
+names.kind, names.name
+'veg', 'leek'
+'veg', 'kale'
+
+# A column list names the columns.
+> CREATE VIEW totals (category, n, total) AS SELECT cat, COUNT(*), SUM(qty) FROM item GROUP BY cat
+[header]> SELECT * FROM totals
+---
+totals.category, totals.n, totals.total
+'fruit', 3, 17
+'veg', 2, 10
+
+# Aliases and unqualified names work as for tables.
+[header]> SELECT c.name, price * 2 AS twice FROM cheap AS c WHERE c.id > 1
+[header]> SELECT * FROM cheap x WHERE x.price > 1
+---
+c.name, twice
+'leek', 1.0
+x.id, x.name, x.price
+1, 'apple', 1.5
+
+# A view is planned again every time it is used, so it shows the current rows.
+> INSERT INTO item VALUES (6, 'plum', 1.0, 3, 'fruit')
+> UPDATE item SET price = 5.0 WHERE id = 1
+> SELECT * FROM cheap
+> SELECT * FROM totals
+---
+4, 'leek', 0.5
+6, 'plum', 1.0
+'fruit', 4, 20
+'veg', 2, 10
+
+# A view without FROM.
+> CREATE VIEW one AS SELECT 1 AS n, 'x' AS s
+> SELECT n + 1, s FROM one
+---
+2, 'x'
+
+# SHOW VIEWS lists the views by name, with their columns and stored query (the
+# canonical one-line text).
+[header]> SHOW VIEWS
+---
+name, columns, query
+'cheap', 'id, name, price', 'SELECT id, name, price FROM item WHERE price < 2'
+'names', 'name, kind', 'SELECT item.name, cat AS kind FROM item'
+'one', 'n, s', 'SELECT 1 AS n, \'x\' AS s'
+'totals', 'category, n, total', 'SELECT cat, count(*), sum(qty) FROM item GROUP BY cat'
+
+# DROP VIEW removes a view; the name can be used again.
+> DROP VIEW one
+> CREATE VIEW one AS SELECT 2 AS two
+> SELECT * FROM one
+---
+2
+
+# The JSON results.
+[json]> CREATE VIEW v2 AS SELECT id FROM item WHERE id = 2
+[json]> SELECT * FROM v2
+[json]> DROP VIEW v2
+[json]> DROP VIEW IF EXISTS v2
+[json]> SHOW VIEWS
+---
+{"result":"create_view","view":"v2"}
+{"result":"select","columns":["v2.id"],"rows":[[2]]}
+{"result":"drop_view","view":"v2","existed":true}
+{"result":"drop_view","view":"v2","existed":false}
+{"result":"select","columns":["name","columns","query"],"rows":[["cheap","id, name, price","SELECT id, name, price FROM item WHERE price < 2"],["names","name, kind","SELECT item.name, cat AS kind FROM item"],["one","two","SELECT 2 AS two"],["totals","category, n, total","SELECT cat, count(*), sum(qty) FROM item GROUP BY cat"]]}

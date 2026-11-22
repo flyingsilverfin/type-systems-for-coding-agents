@@ -1,0 +1,51 @@
+# Views in a cluster: created through one client, replicated through Raft and
+# usable through every client, transactionally.
+
+cluster nodes=3
+---
+ok
+
+c1:> CREATE TABLE item (id INT PRIMARY KEY, name STRING, price FLOAT)
+c1:> INSERT INTO item VALUES (1, 'apple', 1.5), (2, 'pear', 2.25), (3, 'fig', NULL)
+c1:[json]> CREATE VIEW cheap AS SELECT id, name FROM item WHERE price < 2
+c2:[header]> SELECT * FROM cheap
+c3:> SHOW VIEWS
+---
+c1: {"result":"create_view","view":"cheap"}
+c2: cheap.id, cheap.name
+c2: 1, 'apple'
+c3: 'cheap', 'id, name', 'SELECT id, name FROM item WHERE price < 2'
+
+# The cluster runner prints EXPLAIN plans, with the View node.
+c3:> EXPLAIN SELECT name FROM cheap WHERE id = 1
+---
+c3: Projection: cheap.name
+c3: └─ Filter: cheap.id = 1
+c3:    └─ View: cheap
+c3:       └─ Projection: item.id, item.name
+c3:          └─ Scan: item (item.price < 2)
+
+# An uncommitted view is invisible to the other clients.
+c2:> BEGIN
+c2:> CREATE VIEW dear AS SELECT name FROM item WHERE price > 2
+c2:> SELECT * FROM dear
+c1:!> SELECT * FROM dear
+c2:> COMMIT
+c1:> SELECT * FROM dear
+---
+c2: 'pear'
+c1: Error: invalid input: table dear does not exist
+c1: 'pear'
+
+# Dependencies are checked on every node.
+c3:!> DROP TABLE item
+c1:> DROP VIEW cheap
+c2:!> DROP TABLE item
+c3:> DROP VIEW dear
+c1:> DROP TABLE item
+c2:> SHOW VIEWS
+c3:!> SELECT * FROM cheap
+---
+c3: Error: invalid input: table item is used by view cheap
+c2: Error: invalid input: table item is used by view dear
+c3: Error: invalid input: table cheap does not exist

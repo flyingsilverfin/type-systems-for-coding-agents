@@ -1,0 +1,15 @@
+{
+ "run": "t4r_release_rs_smc",
+ "task": "release",
+ "suite": "toydb-t4",
+ "tier": "t4",
+ "lang": "rust",
+ "model": "sonnet",
+ "effort": "medium",
+ "ws": "/home/user/agentbench/runs/t4r_release_rs_smc",
+ "hint": true,
+ "readme_from": "t2",
+ "baseline": "7d11f889193bed097c02e75b58725100098b7311",
+ "created": 1795250912.2431073,
+ "warm_ok": true
+}

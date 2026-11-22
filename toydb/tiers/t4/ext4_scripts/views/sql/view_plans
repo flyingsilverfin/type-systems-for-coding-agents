@@ -1,0 +1,98 @@
+# A view appears in plans as a View node above the plan of its query. Nothing
+# is pushed into or out of a View node, and it is never removed.
+
+> CREATE TABLE item (id INT PRIMARY KEY, name STRING INDEX, price FLOAT, qty INT, cat STRING)
+> INSERT INTO item VALUES (1, 'apple', 1.5, 10, 'fruit'), (2, 'pear', 2.25, 0, 'fruit'), (3, 'fig', NULL, 7, 'fruit'), (4, 'leek', 0.5, 10, 'veg'), (5, 'kale', 3.0, NULL, 'veg')
+> CREATE VIEW cheap AS SELECT id, name, price FROM item WHERE price < 2
+> CREATE VIEW one AS SELECT * FROM item WHERE id = 3
+---
+ok
+
+[plan]> SELECT * FROM cheap
+---
+View: cheap
+└─ Projection: item.id, item.name, item.price
+   └─ Scan: item (item.price < 2)
+1, 'apple', 1.5
+4, 'leek', 0.5
+
+[plan]> SELECT name FROM one
+---
+Projection: one.name
+└─ View: one
+   └─ KeyLookup: item (3)
+'fig'
+
+# A condition on view columns stays above the View node, even where the same
+# condition on the table would use the index.
+[plan]> SELECT id FROM cheap WHERE name = 'leek'
+---
+Projection: cheap.id
+└─ Filter: cheap.name = 'leek'
+   └─ View: cheap
+      └─ Projection: item.id, item.name, item.price
+         └─ Scan: item (item.price < 2)
+4
+
+# Joins: an equijoin with a view becomes a hash join; other conditions on the
+# view's columns stay in the join.
+[plan]> SELECT c.name, i.qty FROM cheap c JOIN item i ON c.id = i.id
+---
+Projection: c.name, i.qty
+└─ HashJoin: inner on c.id = i.id
+   ├─ View: cheap as c
+   │  └─ Projection: item.id, item.name, item.price
+   │     └─ Scan: item (item.price < 2)
+   └─ Scan: item as i
+'apple', 10
+'leek', 10
+
+[plan]> SELECT c.name, i.qty FROM cheap c JOIN item i ON c.id = i.id AND c.price > 1
+---
+Projection: c.name, i.qty
+└─ NestedLoopJoin: inner on c.id = i.id AND c.price > 1
+   ├─ View: cheap as c
+   │  └─ Projection: item.id, item.name, item.price
+   │     └─ Scan: item (item.price < 2)
+   └─ Scan: item as i
+'apple', 10
+
+# A condition that is always false makes the query above the view Nothing; a
+# view whose own query is Nothing keeps its View node.
+> CREATE VIEW none AS SELECT id FROM item WHERE FALSE
+[plan]> SELECT * FROM cheap WHERE FALSE
+[plan]> SELECT * FROM none
+---
+Nothing
+View: none
+└─ Nothing
+
+# Views of views, and aggregates over views.
+> CREATE VIEW cheapest AS SELECT name FROM cheap WHERE price < 1
+[plan]> SELECT * FROM cheapest
+---
+View: cheapest
+└─ Projection: cheap.name
+   └─ Filter: cheap.price < 1
+      └─ View: cheap
+         └─ Projection: item.id, item.name, item.price
+            └─ Scan: item (item.price < 2)
+'leek'
+
+> CREATE VIEW per_cat AS SELECT cat, COUNT(*) AS n FROM item GROUP BY cat
+[plan]> SELECT n FROM per_cat WHERE cat = 'veg'
+---
+Projection: per_cat.n
+└─ Filter: per_cat.cat = 'veg'
+   └─ View: per_cat
+      └─ Projection: item.cat, #1 as n
+         └─ Aggregate: item.cat, count(TRUE)
+            └─ Scan: item
+2
+
+# The JSON form of the View node.
+[json]> EXPLAIN SELECT * FROM one
+[json]> EXPLAIN SELECT o.name FROM one AS o
+---
+{"result":"explain","plan":{"statement":"select","root":{"node":"view","view":"one","alias":null,"source":{"node":"key_lookup","table":"item","alias":null,"keys":[3]}}}}
+{"result":"explain","plan":{"statement":"select","root":{"node":"projection","expressions":[{"expr":{"column":1,"label":"o.name"},"alias":null}],"source":{"node":"view","view":"one","alias":"o","source":{"node":"key_lookup","table":"item","alias":null,"keys":[3]}}}}}

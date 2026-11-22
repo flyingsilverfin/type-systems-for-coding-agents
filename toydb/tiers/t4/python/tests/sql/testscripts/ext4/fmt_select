@@ -1,0 +1,68 @@
+# FORMAT writes a SELECT in canonical form: keywords in upper case, names as
+# they read back, aliases with AS, optional words left out, and one clause per
+# line. The statement is only parsed, never executed.
+
+> FORMAT SELECT * FROM t
+---
+SELECT *
+FROM t
+
+> FORMAT select id, NAME n, t.v as "Label" from T x where x.id > 1 order by n desc, id asc
+---
+SELECT id, name AS n, t.v AS "Label"
+FROM t AS x
+WHERE x.id > 1
+ORDER BY n DESC, id
+
+# Every clause, in clause order, each on its own line.
+> FORMAT SELECT g, COUNT(*), Sum(v) AS total FROM t GROUP BY g HAVING SUM(v) > 10 ORDER BY total DESC LIMIT 5 OFFSET 10
+---
+SELECT g, count(*), sum(v) AS total
+FROM t
+GROUP BY g
+HAVING sum(v) > 10
+ORDER BY total DESC
+LIMIT 5
+OFFSET 10
+
+# Each join starts a new line, indented by two spaces. INNER and OUTER are
+# left out.
+> FORMAT SELECT a.x, b.y FROM a INNER JOIN b ON a.id = b.a_id LEFT OUTER JOIN c ON c.id = b.c_id RIGHT JOIN d ON d.id = c.d_id CROSS JOIN e
+---
+SELECT a.x, b.y
+FROM a
+  JOIN b ON a.id = b.a_id
+  LEFT JOIN c ON c.id = b.c_id
+  RIGHT JOIN d ON d.id = c.d_id
+  CROSS JOIN e
+
+# Comma-separated FROM items continue the current line.
+> FORMAT SELECT * FROM a x, b y JOIN c ON c.id = y.id, d
+---
+SELECT *
+FROM a AS x, b AS y
+  JOIN c ON c.id = y.id, d
+
+# A SELECT without FROM, and a select list with constants and expressions.
+> FORMAT SELECT 1 + 2 AS three, 'x'
+> FORMAT SELECT 1 WHERE TRUE
+---
+SELECT 1 + 2 AS three, 'x'
+SELECT 1
+WHERE TRUE
+
+# Whitespace, letter case and a trailing ; don't matter.
+> FORMAT   sElEcT   ID      FrOm   T   ;
+---
+SELECT id
+FROM t
+
+# The statement isn't checked against the database: the tables don't exist.
+!> SELECT * FROM t
+---
+Error: invalid input: table t does not exist
+
+# The JSON form lists the lines.
+[json]> FORMAT SELECT id FROM t WHERE id = 1
+---
+{"result":"format","lines":["SELECT id","FROM t","WHERE id = 1"]}

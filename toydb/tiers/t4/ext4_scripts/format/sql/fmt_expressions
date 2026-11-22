@@ -1,0 +1,55 @@
+# Expressions are written as in statement digests, except that literals keep
+# their values: each literal is written as SQL text that reads back as the same
+# literal.
+
+> FORMAT SELECT 1, -1, 007, 1.50, 2E3, 1e100, 1.5e-7, 1e16, 0.1, INFINITY, -INFINITY, NAN, TRUE, false, null, 'it''s', ''
+---
+SELECT 1, -1, 7, 1.5, 2000.0, 1e100, 1.5e-7, 1e16, 0.1, INFINITY, -INFINITY, NAN, TRUE, FALSE, NULL, 'it''s', ''
+
+# Strings keep every character; only ' is doubled.
+> FORMAT SELECT 'a"b', 'é ☃', 'x\y'
+---
+SELECT 'a"b', 'é ☃', 'x\y'
+
+# Parentheses are written exactly where the parser needs them.
+> FORMAT SELECT (a + b) * c, a + (b * c), a - (b - c), (a - b) - c, a ^ (b ^ c), (a ^ b) ^ c
+> FORMAT SELECT -(a + 1), (-a) ^ 2, -(a ^ 2), (a!)!, -(a!), - -a, +-a, + a
+> FORMAT SELECT NOT (a = b), (NOT a) = b, ((a)), sqrt((a + b)), f(a, (b)), count(*)
+---
+SELECT (a + b) * c, a + b * c, a - (b - c), a - b - c, a ^ b ^ c, (a ^ b) ^ c
+SELECT -(a + 1), -a ^ 2, -(a ^ 2), a!!, -(a!), --a, +-a, +a
+SELECT NOT a = b, (NOT a) = b, a, sqrt(a + b), f(a, b), count(*)
+
+> FORMAT SELECT (1 = 2) = TRUE, 1 = (2 = 3), (a < b) = c, a < (b = c), a + b > c - d, (a = b) IS NULL, a = (b IS NULL)
+---
+SELECT 1 = 2 = TRUE, 1 = (2 = 3), a < b = c, a < (b = c), a + b > c - d, a = b IS NULL, a = (b IS NULL)
+
+# Logical operators, IS [NOT] NULL/NAN and LIKE; <> is written !=, and IS NOT
+# NULL and >= stay as written.
+> FORMAT SELECT * FROM t WHERE a <> 1 AND b IS NOT NULL OR NOT c IS NULL AND d IS NAN AND e IS NOT NAN AND f >= 2 AND g <= 3 AND h LIKE 'x%' AND (i = 1 OR j = 2)
+---
+SELECT *
+FROM t
+WHERE a != 1 AND b IS NOT NULL OR NOT c IS NULL AND d IS NAN AND e IS NOT NAN AND f >= 2 AND g <= 3 AND h LIKE 'x%' AND (i = 1 OR j = 2)
+
+> FORMAT SELECT NOT (a OR b), NOT (a AND b), (a OR b) AND c, a OR (b AND c), NOT NOT a
+---
+SELECT NOT (a OR b), NOT (a AND b), (a OR b) AND c, a OR b AND c, NOT NOT a
+
+# Qualified names, functions and aggregates; function names are lower case.
+> FORMAT SELECT T.ID, MAX(t.v), SQRT(2), Avg(x + 1), MIN(-x) FROM t
+---
+SELECT t.id, max(t.v), sqrt(2), avg(x + 1), min(-x)
+FROM t
+
+# Expressions appear in their own clauses unchanged.
+> FORMAT SELECT a FROM t WHERE (a) > (1) GROUP BY (a % 2) HAVING (count(*) > 1) ORDER BY (a + 1) DESC LIMIT (2 + 3) OFFSET (1)
+---
+SELECT a
+FROM t
+WHERE a > 1
+GROUP BY a % 2
+HAVING count(*) > 1
+ORDER BY a + 1 DESC
+LIMIT 2 + 3
+OFFSET 1

@@ -289,7 +289,7 @@ code {{ font: 12.5px var(--mono); background: var(--chip); padding: 1px 4px; bor
 <header>
   <div class="eyebrow">Rust meetup talk · experiment log · {e(NOTES['updated'])}</div>
   <h1>Do types make weak agents better?</h1>
-  <p class="lede">The same codebase in Rust and Python: first a small CLI app on TypeDB (tier 0), then toydb, a SQL database, at growing sizes (tiers 1–3). Agents of different strength get identical tasks;
+  <p class="lede">The same codebase in Rust and Python: first a small CLI app on TypeDB (tier 0), then toydb, a SQL database, at growing sizes (tiers 1–4). Agents of different strength get identical tasks;
   a compiler (or not) plus a few visible tests are their only validators; held-back tests decide correctness.</p>
   <div class="status">
     <div class="stat"><b>{total}</b><span>runs graded</span></div>
@@ -382,6 +382,17 @@ code {{ font: 12.5px var(--mono); background: var(--chip); padding: 1px 4px; bor
   <div class="scroll">{simple_table(['Task', 'With README, Haiku (n=1)', 'Haiku (n=3)', 'Sonnet (n=3)', 'Opus (n=3)', 'Failures without README'], NOTES.get('exp1_table', []))}</div>
   <h3>All experiment-1 runs</h3>
   <div class="scroll">{toydb_runs('t3', 't3r_')}</div>
+</section>
+
+<section>
+  <h2>Tier 4 · seven more extension layers, no README extension docs (Haiku, Sonnet, Opus · 3 repeats each)</h2>
+  {bullets(NOTES.get('tier4', []))}
+  <div class="scroll">{simple_table(['Model', 'Rust pass', 'Python pass', 'Python crashed at an unhandled variant', 'Output tok/run (Rust · Python)', 'Turns/run', 'Wall s/run'], NOTES.get('tier4_models', []))}</div>
+  <div class="scroll">{simple_table(['Task', 'Haiku R/P', 'Sonnet R/P', 'Opus R/P', 'Main failures (both languages unless noted)'], NOTES.get('tier4_tasks', []))}</div>
+  <h3>Where the change had to land, and who got there</h3>
+  {bullets(NOTES.get('tier4_sites', []))}
+  <h3>All tier-4 runs (after the post-run test audit)</h3>
+  <div class="scroll">{toydb_runs('t4', 't4r_')}</div>
 </section>
 
 <section>

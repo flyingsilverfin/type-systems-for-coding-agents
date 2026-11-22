@@ -1,0 +1,15 @@
+{
+ "run": "t4r_case_rs_hla",
+ "task": "case",
+ "suite": "toydb-t4",
+ "tier": "t4",
+ "lang": "rust",
+ "model": "haiku",
+ "effort": "low",
+ "ws": "/home/user/agentbench/runs/t4r_case_rs_hla",
+ "hint": true,
+ "readme_from": "t2",
+ "baseline": "98691cbe93624c786275a720a04e08624b1bc8be",
+ "created": 1795249546.5653265,
+ "warm_ok": true
+}

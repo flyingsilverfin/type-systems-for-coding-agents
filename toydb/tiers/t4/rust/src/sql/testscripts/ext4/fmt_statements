@@ -1,0 +1,116 @@
+# FORMAT lays out every kind of statement. Synonyms are written in canonical
+# form, optional words are left out, and only what was written is written.
+
+# CREATE TABLE: one column per line, constraints in a fixed order.
+> FORMAT create table Item (ID int primary key, name text not null unique, price double default 1.0 null, qty integer default -1 index, cat varchar references Cat, ok bool default true)
+---
+CREATE TABLE item (
+  id INTEGER PRIMARY KEY,
+  name STRING NOT NULL UNIQUE,
+  price FLOAT NULL DEFAULT 1.0,
+  qty INTEGER DEFAULT -1 INDEX,
+  cat STRING REFERENCES cat,
+  ok BOOLEAN DEFAULT TRUE
+)
+
+> FORMAT CREATE TABLE t (id INT PRIMARY KEY)
+> FORMAT drop table T
+> FORMAT drop table if exists T
+---
+CREATE TABLE t (
+  id INTEGER PRIMARY KEY
+)
+DROP TABLE t
+DROP TABLE IF EXISTS t
+
+# INSERT: one row per line.
+> FORMAT insert into t values (1, 'a', 1.5), (2, NULL, -0.5), (3, 'c''d', 2e3)
+> FORMAT INSERT INTO t (ID, V) VALUES (1, 'x')
+---
+INSERT INTO t VALUES
+  (1, 'a', 1.5),
+  (2, NULL, -0.5),
+  (3, 'c''d', 2000.0)
+INSERT INTO t (id, v) VALUES
+  (1, 'x')
+
+# UPDATE: the assignments in order of column name.
+> FORMAT update t set z = default, a = a + 1, M = 'x' where id = 1
+> FORMAT UPDATE t SET v = NULL
+---
+UPDATE t
+SET a = a + 1, m = 'x', z = DEFAULT
+WHERE id = 1
+UPDATE t
+SET v = NULL
+
+# DELETE.
+> FORMAT DELETE FROM t WHERE id >= 10
+> FORMAT DELETE FROM t
+---
+DELETE FROM t
+WHERE id >= 10
+DELETE FROM t
+
+# Transaction statements.
+> FORMAT begin
+> FORMAT begin transaction read write
+> FORMAT BEGIN TRANSACTION READ ONLY
+> FORMAT begin read only as of system time 007
+> FORMAT commit
+> FORMAT rollback
+---
+BEGIN
+BEGIN
+BEGIN READ ONLY
+BEGIN READ ONLY AS OF SYSTEM TIME 7
+COMMIT
+ROLLBACK
+
+# EXPLAIN: the keyword on a line of its own, then the explained statement.
+> FORMAT explain select * from t where id = 1
+> FORMAT EXPLAIN INSERT INTO t VALUES (1)
+---
+EXPLAIN
+SELECT *
+FROM t
+WHERE id = 1
+EXPLAIN
+INSERT INTO t VALUES
+  (1)
+
+# The tier-3 statements, one line each.
+> FORMAT show statements
+> FORMAT analyze
+> FORMAT ANALYZE T
+> FORMAT show statistics t
+> FORMAT export t as csv
+> FORMAT EXPORT T AS JSON
+> FORMAT export as sql
+> FORMAT import into t from csv 'id,v', '1,it''s'
+> FORMAT import into t from json '{"id":1}'
+---
+SHOW STATEMENTS
+ANALYZE
+ANALYZE t
+SHOW STATISTICS t
+EXPORT t AS CSV
+EXPORT t AS JSON
+EXPORT AS SQL
+IMPORT INTO t FROM CSV 'id,v', '1,it''s'
+IMPORT INTO t FROM JSON '{"id":1}'
+
+# None of these statements was executed.
+> CREATE TABLE t (id INT PRIMARY KEY, v STRING)
+> FORMAT INSERT INTO t VALUES (1, 'a')
+> FORMAT DROP TABLE t
+> SELECT * FROM t
+schema
+---
+INSERT INTO t VALUES
+  (1, 'a')
+DROP TABLE t
+CREATE TABLE t (
+  id INTEGER PRIMARY KEY,
+  v STRING DEFAULT NULL
+)

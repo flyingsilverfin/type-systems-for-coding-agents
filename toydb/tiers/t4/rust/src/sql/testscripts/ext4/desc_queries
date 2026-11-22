@@ -1,0 +1,98 @@
+# DESCRIBE of a query describes its result columns, named as [header] names
+# them. Columns of the inner side of an outer join can be NULL.
+
+> CREATE TABLE dept (id INT PRIMARY KEY, name STRING NOT NULL)
+> CREATE TABLE emp (id INT PRIMARY KEY, name STRING NOT NULL, dept_id INT REFERENCES dept, salary FLOAT)
+---
+ok
+
+[header]> DESCRIBE SELECT * FROM emp
+---
+column, type, nullable
+'emp.id', 'INTEGER', FALSE
+'emp.name', 'STRING', FALSE
+'emp.dept_id', 'INTEGER', TRUE
+'emp.salary', 'FLOAT', TRUE
+
+> DESCRIBE SELECT * FROM emp e JOIN dept d ON e.dept_id = d.id
+---
+'e.id', 'INTEGER', FALSE
+'e.name', 'STRING', FALSE
+'e.dept_id', 'INTEGER', TRUE
+'e.salary', 'FLOAT', TRUE
+'d.id', 'INTEGER', FALSE
+'d.name', 'STRING', FALSE
+
+# LEFT JOIN: the right side can be missing; RIGHT JOIN: the left side.
+> DESCRIBE SELECT e.name, d.name, d.id FROM emp e LEFT JOIN dept d ON e.dept_id = d.id
+> DESCRIBE SELECT e.name, d.name FROM emp e RIGHT JOIN dept d ON e.dept_id = d.id
+---
+'e.name', 'STRING', FALSE
+'d.name', 'STRING', TRUE
+'d.id', 'INTEGER', TRUE
+'e.name', 'STRING', TRUE
+'d.name', 'STRING', FALSE
+
+# At any level of nesting; inner and cross joins don't change nullability.
+> DESCRIBE SELECT e.name, d.name, m.name FROM emp e LEFT JOIN dept d ON e.dept_id = d.id JOIN emp m ON m.id = e.id
+> DESCRIBE SELECT e.name, d.name, d2.name FROM emp e JOIN dept d ON e.dept_id = d.id RIGHT JOIN dept d2 ON d2.id = d.id
+> DESCRIBE SELECT e.name, d.name FROM emp e CROSS JOIN dept d
+> DESCRIBE SELECT e.name, d.name FROM emp e, dept d WHERE e.dept_id = d.id
+---
+'e.name', 'STRING', FALSE
+'d.name', 'STRING', TRUE
+'m.name', 'STRING', FALSE
+'e.name', 'STRING', TRUE
+'d.name', 'STRING', TRUE
+'d2.name', 'STRING', FALSE
+'e.name', 'STRING', FALSE
+'d.name', 'STRING', FALSE
+'e.name', 'STRING', FALSE
+'d.name', 'STRING', FALSE
+
+# Expressions over outer-join columns.
+> DESCRIBE SELECT d.name = 'x', d.id + 1, d.id IS NULL FROM emp e LEFT JOIN dept d ON e.dept_id = d.id
+> DESCRIBE SELECT COUNT(d.id) FROM emp e LEFT JOIN dept d ON e.dept_id = d.id
+---
+NULL, 'BOOLEAN', TRUE
+NULL, 'INTEGER', TRUE
+NULL, 'BOOLEAN', FALSE
+NULL, 'INTEGER', FALSE
+
+# GROUP BY columns and expressions are described like the expressions.
+> DESCRIBE SELECT dept_id, COUNT(*) AS n, MAX(salary) FROM emp GROUP BY dept_id
+> DESCRIBE SELECT dept_id % 2 AS parity, COUNT(*) FROM emp GROUP BY dept_id % 2 HAVING COUNT(*) > 1
+> DESCRIBE SELECT d.name, AVG(e.salary) FROM emp e JOIN dept d ON e.dept_id = d.id GROUP BY d.name
+---
+'emp.dept_id', 'INTEGER', TRUE
+'n', 'INTEGER', FALSE
+NULL, 'FLOAT', TRUE
+'parity', 'INTEGER', TRUE
+NULL, 'INTEGER', FALSE
+'d.name', 'STRING', FALSE
+NULL, 'FLOAT', TRUE
+
+# Only the result columns are described, not the hidden columns of ORDER BY.
+> DESCRIBE SELECT name FROM emp ORDER BY salary DESC LIMIT 1
+> DESCRIBE SELECT 1 AS a, 'b' AS b
+---
+'emp.name', 'STRING', FALSE
+'a', 'INTEGER', FALSE
+'b', 'STRING', FALSE
+
+# Views: columns are described from the view's query, and the outer-join rule
+# applies to the view's columns too.
+> CREATE VIEW ev AS SELECT e.id, d.name AS dept, e.salary * 2 AS pay FROM emp e LEFT JOIN dept d ON e.dept_id = d.id
+> DESCRIBE ev
+> DESCRIBE SELECT * FROM ev
+> DESCRIBE SELECT x.id, x.dept, d.name FROM dept d LEFT JOIN ev x ON x.id = d.id
+---
+'id', 'INTEGER', FALSE
+'dept', 'STRING', TRUE
+'pay', 'FLOAT', TRUE
+'ev.id', 'INTEGER', FALSE
+'ev.dept', 'STRING', TRUE
+'ev.pay', 'FLOAT', TRUE
+'x.id', 'INTEGER', TRUE
+'x.dept', 'STRING', TRUE
+'d.name', 'STRING', FALSE

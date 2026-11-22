@@ -1,0 +1,55 @@
+# EXPORT ... AS JSON: one JSON object per row in primary key order, with the
+# columns in table order as members, named as stored, and the values written
+# as JSON.
+
+> CREATE TABLE v (id INT PRIMARY KEY, b BOOLEAN, i INT, f FLOAT, s STRING)
+> INSERT INTO v VALUES (5, FALSE, -9223372036854775807 - 1, INFINITY, 'say "hi"'), (1, TRUE, -7, 1.0, 'plain'), (2, FALSE, 0, -0.0, 'a,b'), (3, NULL, NULL, NULL, NULL), (4, TRUE, 9223372036854775807, NAN, ''), (6, NULL, 42, -INFINITY, 'it''s \ é'), (7, TRUE, 1, 1e100, 'x y')
+---
+ok
+
+> EXPORT v AS JSON
+---
+{"id":1,"b":true,"i":-7,"f":1.0,"s":"plain"}
+{"id":2,"b":false,"i":0,"f":0.0,"s":"a,b"}
+{"id":3,"b":null,"i":null,"f":null,"s":null}
+{"id":4,"b":true,"i":9223372036854775807,"f":{"type":"FLOAT","value":"NaN"},"s":""}
+{"id":5,"b":false,"i":-9223372036854775808,"f":{"type":"FLOAT","value":"inf"},"s":"say \"hi\""}
+{"id":6,"b":null,"i":42,"f":{"type":"FLOAT","value":"-inf"},"s":"it's \\ é"}
+{"id":7,"b":true,"i":1,"f":1e100,"s":"x y"}
+
+[json]> EXPORT v AS JSON
+---
+{"result":"export","format":"json","lines":["{\"id\":1,\"b\":true,\"i\":-7,\"f\":1.0,\"s\":\"plain\"}","{\"id\":2,\"b\":false,\"i\":0,\"f\":0.0,\"s\":\"a,b\"}","{\"id\":3,\"b\":null,\"i\":null,\"f\":null,\"s\":null}","{\"id\":4,\"b\":true,\"i\":9223372036854775807,\"f\":{\"type\":\"FLOAT\",\"value\":\"NaN\"},\"s\":\"\"}","{\"id\":5,\"b\":false,\"i\":-9223372036854775808,\"f\":{\"type\":\"FLOAT\",\"value\":\"inf\"},\"s\":\"say \\\"hi\\\"\"}","{\"id\":6,\"b\":null,\"i\":42,\"f\":{\"type\":\"FLOAT\",\"value\":\"-inf\"},\"s\":\"it's \\\\ é\"}","{\"id\":7,\"b\":true,\"i\":1,\"f\":1e100,\"s\":\"x y\"}"]}
+
+# An empty table exports no lines. Member names are the stored names, also for
+# names that SQL would quote.
+> CREATE TABLE "odd table" ("a,b" INT PRIMARY KEY, "x""y" STRING, "select" BOOLEAN)
+> EXPORT "odd table" AS JSON
+---
+ok
+
+[json]> EXPORT "odd table" AS JSON
+---
+{"result":"export","format":"json","lines":[]}
+
+> INSERT INTO "odd table" VALUES (1, 'one', TRUE), (2, NULL, FALSE)
+> EXPORT "odd table" AS JSON
+---
+{"a,b":1,"x\"y":"one","select":true}
+{"a,b":2,"x\"y":null,"select":false}
+
+# Floats that were computed keep their full precision.
+> CREATE TABLE w (id INT PRIMARY KEY, x FLOAT)
+> INSERT INTO w VALUES (1, 0.1 + 0.2), (2, 1.0 / 3), (3, 1e-7), (4, 123456789012345680000.0)
+> EXPORT w AS JSON
+---
+{"id":1,"x":0.30000000000000004}
+{"id":2,"x":0.3333333333333333}
+{"id":3,"x":1e-7}
+{"id":4,"x":1.2345678901234568e20}
+
+!> EXPORT nosuch AS JSON
+!> EXPORT AS JSON
+---
+Error: invalid input: table nosuch does not exist
+Error: invalid input: EXPORT without a table requires AS SQL

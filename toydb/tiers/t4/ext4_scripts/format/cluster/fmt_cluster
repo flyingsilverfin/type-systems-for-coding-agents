@@ -1,0 +1,36 @@
+# FORMAT through the client: the lines are printed as they are, and the JSON
+# form lists them. Statement digests are kept per client.
+
+cluster nodes=3
+---
+ok
+
+c1:> FORMAT select a, b from t join u on t.id = u.t_id where a > 1.50 order by b desc
+---
+c1: SELECT a, b
+c1: FROM t
+c1:   JOIN u ON t.id = u.t_id
+c1: WHERE a > 1.5
+c1: ORDER BY b DESC
+
+c2:[json]> FORMAT INSERT INTO "Item" VALUES (1, 'it''s'), (2, NULL)
+---
+c2: {"result":"format","lines":["INSERT INTO \"Item\" VALUES","  (1, 'it''s'),","  (2, NULL)"]}
+
+c3:> FORMAT CREATE TABLE t (id INT PRIMARY KEY, v STRING NOT NULL DEFAULT 'x')
+c3:!> FORMAT CREATE TABLE
+---
+c3: CREATE TABLE t (
+c3:   id INTEGER PRIMARY KEY,
+c3:   v STRING NOT NULL DEFAULT 'x'
+c3: )
+c3: Error: invalid input: unexpected end of input
+
+# Nothing was created.
+c1:> CREATE TABLE t (id INT PRIMARY KEY)
+c1:> SHOW STATEMENTS
+c2:> SHOW STATEMENTS
+---
+c1: 'FORMAT SELECT a, b FROM t JOIN u ON t.id = u.t_id WHERE a > ? ORDER BY b DESC', 1, 0, 0
+c1: 'CREATE TABLE t (id INTEGER PRIMARY KEY)', 1, 0, 0
+c2: 'FORMAT INSERT INTO Item VALUES (?, ?), (?, ?)', 1, 0, 0

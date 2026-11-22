@@ -1,0 +1,70 @@
+# JSON output: every existing kind of plan expression. The structure is that
+# of the plan's expression tree; "op" is the expression's own plan display with
+# each operand replaced by _ (parentheses around an operand go with it).
+
+> CREATE TABLE e (id INT PRIMARY KEY, a INT, b INT, f FLOAT, s STRING, t BOOLEAN)
+> INSERT INTO e VALUES (1, 2, 3, 4.0, 'xy', TRUE), (2, -1, 0, 0.25, 'ab', FALSE)
+---
+ok
+
+# Arithmetic and grouping. The plan display shows a - (b - 1) and a - b - 1
+# alike, but they are different trees.
+[plan]> SELECT a + b * 2, (a + b) * 2, a - (b - 1), a - b - 1 FROM e
+[json]> EXPLAIN SELECT a + b * 2, (a + b) * 2, a - (b - 1), a - b - 1 FROM e
+---
+Projection: e.a + e.b * 2, (e.a + e.b) * 2, e.a - e.b - 1, e.a - e.b - 1
+└─ Scan: e
+8, 10, 0, -2
+-1, -2, 0, -2
+{"result":"explain","plan":{"statement":"select","root":{"node":"projection","expressions":[{"expr":{"op":"_ + _","args":[{"column":1,"label":"e.a"},{"op":"_ * _","args":[{"column":2,"label":"e.b"},{"constant":2}]}]},"alias":null},{"expr":{"op":"_ * _","args":[{"op":"_ + _","args":[{"column":1,"label":"e.a"},{"column":2,"label":"e.b"}]},{"constant":2}]},"alias":null},{"expr":{"op":"_ - _","args":[{"column":1,"label":"e.a"},{"op":"_ - _","args":[{"column":2,"label":"e.b"},{"constant":1}]}]},"alias":null},{"expr":{"op":"_ - _","args":[{"op":"_ - _","args":[{"column":1,"label":"e.a"},{"column":2,"label":"e.b"}]},{"constant":1}]},"alias":null}],"source":{"node":"scan","table":"e","alias":null,"filter":null}}}}
+
+# Exponentiation, prefix and postfix operators. A unary + is not displayed and
+# is written as its operand.
+[plan]> SELECT a ^ b ^ 2, (a ^ b) ^ 2, -a, +a, a!, -(a!) FROM e WHERE id = 1
+[json]> EXPLAIN SELECT a ^ b ^ 2, (a ^ b) ^ 2, -a, +a, a!, -(a!) FROM e WHERE id = 1
+---
+Projection: e.a ^ e.b ^ 2, e.a ^ e.b ^ 2, -e.a, e.a, e.a!, -(e.a!)
+└─ KeyLookup: e (1)
+512, 64, -2, 2, 2, -2
+{"result":"explain","plan":{"statement":"select","root":{"node":"projection","expressions":[{"expr":{"op":"_ ^ _","args":[{"column":1,"label":"e.a"},{"op":"_ ^ _","args":[{"column":2,"label":"e.b"},{"constant":2}]}]},"alias":null},{"expr":{"op":"_ ^ _","args":[{"op":"_ ^ _","args":[{"column":1,"label":"e.a"},{"column":2,"label":"e.b"}]},{"constant":2}]},"alias":null},{"expr":{"op":"-_","args":[{"column":1,"label":"e.a"}]},"alias":null},{"expr":{"column":1,"label":"e.a"},"alias":null},{"expr":{"op":"_!","args":[{"column":1,"label":"e.a"}]},"alias":null},{"expr":{"op":"-_","args":[{"op":"_!","args":[{"column":1,"label":"e.a"}]}]},"alias":null}],"source":{"node":"key_lookup","table":"e","alias":null,"keys":[1]}}}}
+
+# Functions; sqrt's argument parentheses are not part of the op.
+[plan]> SELECT sqrt(f), sqrt(f + 1), a % 2, a / 2, f / 2 FROM e
+[json]> EXPLAIN SELECT sqrt(f), sqrt(f + 1), a % 2, a / 2, f / 2 FROM e
+---
+Projection: sqrt(e.f), sqrt((e.f + 1)), e.a % 2, e.a / 2, e.f / 2
+└─ Scan: e
+2.0, 2.23606797749979, 0, 1, 2.0
+0.5, 1.118033988749895, -1, 0, 0.125
+{"result":"explain","plan":{"statement":"select","root":{"node":"projection","expressions":[{"expr":{"op":"sqrt(_)","args":[{"column":3,"label":"e.f"}]},"alias":null},{"expr":{"op":"sqrt(_)","args":[{"op":"_ + _","args":[{"column":3,"label":"e.f"},{"constant":1}]}]},"alias":null},{"expr":{"op":"_ % _","args":[{"column":1,"label":"e.a"},{"constant":2}]},"alias":null},{"expr":{"op":"_ / _","args":[{"column":1,"label":"e.a"},{"constant":2}]},"alias":null},{"expr":{"op":"_ / _","args":[{"column":3,"label":"e.f"},{"constant":2}]},"alias":null}],"source":{"node":"scan","table":"e","alias":null,"filter":null}}}}
+
+# LIKE and the logical operators.
+[json]> EXPLAIN SELECT s LIKE 'x%', t AND NOT t, t OR a = b, NOT (a = b AND t) FROM e
+---
+{"result":"explain","plan":{"statement":"select","root":{"node":"projection","expressions":[{"expr":{"op":"_ LIKE _","args":[{"column":4,"label":"e.s"},{"constant":"x%"}]},"alias":null},{"expr":{"op":"_ AND _","args":[{"column":5,"label":"e.t"},{"op":"NOT _","args":[{"column":5,"label":"e.t"}]}]},"alias":null},{"expr":{"op":"_ OR _","args":[{"column":5,"label":"e.t"},{"op":"_ = _","args":[{"column":1,"label":"e.a"},{"column":2,"label":"e.b"}]}]},"alias":null},{"expr":{"op":"NOT _","args":[{"op":"_ AND _","args":[{"op":"_ = _","args":[{"column":1,"label":"e.a"},{"column":2,"label":"e.b"}]},{"column":5,"label":"e.t"}]}]},"alias":null}],"source":{"node":"scan","table":"e","alias":null,"filter":null}}}}
+
+# Comparisons that the plan shows as combinations are written as those
+# combinations; IS NOT NULL is NOT of IS NULL.
+[plan]> SELECT a >= b, a <= b, a != b, a <> b, a IS NULL, f IS NAN, a IS NOT NULL FROM e
+[json]> EXPLAIN SELECT a >= b, a <= b, a != b, a <> b, a IS NULL, f IS NAN, a IS NOT NULL FROM e
+---
+Projection: e.a > e.b OR e.a = e.b, e.a < e.b OR e.a = e.b, NOT e.a = e.b, NOT e.a = e.b, e.a IS NULL, e.f IS NAN, NOT e.a IS NULL
+└─ Scan: e
+FALSE, TRUE, TRUE, TRUE, FALSE, FALSE, TRUE
+FALSE, TRUE, TRUE, TRUE, FALSE, FALSE, TRUE
+{"result":"explain","plan":{"statement":"select","root":{"node":"projection","expressions":[{"expr":{"op":"_ OR _","args":[{"op":"_ > _","args":[{"column":1,"label":"e.a"},{"column":2,"label":"e.b"}]},{"op":"_ = _","args":[{"column":1,"label":"e.a"},{"column":2,"label":"e.b"}]}]},"alias":null},{"expr":{"op":"_ OR _","args":[{"op":"_ < _","args":[{"column":1,"label":"e.a"},{"column":2,"label":"e.b"}]},{"op":"_ = _","args":[{"column":1,"label":"e.a"},{"column":2,"label":"e.b"}]}]},"alias":null},{"expr":{"op":"NOT _","args":[{"op":"_ = _","args":[{"column":1,"label":"e.a"},{"column":2,"label":"e.b"}]}]},"alias":null},{"expr":{"op":"NOT _","args":[{"op":"_ = _","args":[{"column":1,"label":"e.a"},{"column":2,"label":"e.b"}]}]},"alias":null},{"expr":{"op":"_ IS NULL","args":[{"column":1,"label":"e.a"}]},"alias":null},{"expr":{"op":"_ IS NAN","args":[{"column":3,"label":"e.f"}]},"alias":null},{"expr":{"op":"NOT _","args":[{"op":"_ IS NULL","args":[{"column":1,"label":"e.a"}]}]},"alias":null}],"source":{"node":"scan","table":"e","alias":null,"filter":null}}}}
+
+# A comparison as an operand of a comparison, in a pushed-down filter.
+[json]> EXPLAIN SELECT id FROM e WHERE (a > 1) = t
+---
+{"result":"explain","plan":{"statement":"select","root":{"node":"projection","expressions":[{"expr":{"column":0,"label":"e.id"},"alias":null}],"source":{"node":"scan","table":"e","alias":null,"filter":{"op":"_ = _","args":[{"op":"_ > _","args":[{"column":1,"label":"e.a"},{"constant":1}]},{"column":5,"label":"e.t"}]}}}}}
+
+# Constant sub-expressions are folded, so they are constants in the plan.
+[plan]> SELECT a * -1, 2 * 3 + a, a + 2 * 3 FROM e
+[json]> EXPLAIN SELECT a * -1, 2 * 3 + a, a + 2 * 3 FROM e
+---
+Projection: e.a * -1, 6 + e.a, e.a + 6
+└─ Scan: e
+-2, 8, 8
+1, 5, 5
+{"result":"explain","plan":{"statement":"select","root":{"node":"projection","expressions":[{"expr":{"op":"_ * _","args":[{"column":1,"label":"e.a"},{"constant":-1}]},"alias":null},{"expr":{"op":"_ + _","args":[{"constant":6},{"column":1,"label":"e.a"}]},"alias":null},{"expr":{"op":"_ + _","args":[{"column":1,"label":"e.a"},{"constant":6}]},"alias":null}],"source":{"node":"scan","table":"e","alias":null,"filter":null}}}}

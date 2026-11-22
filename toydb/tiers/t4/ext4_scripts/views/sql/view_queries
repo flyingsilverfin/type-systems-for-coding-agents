@@ -1,0 +1,73 @@
+# Views can be used like tables in every kind of query: joins, aggregates,
+# ordering, and in the queries of other views.
+
+> CREATE TABLE item (id INT PRIMARY KEY, name STRING INDEX, price FLOAT, qty INT, cat STRING)
+> INSERT INTO item VALUES (1, 'apple', 1.5, 10, 'fruit'), (2, 'pear', 2.25, 0, 'fruit'), (3, 'fig', NULL, 7, 'fruit'), (4, 'leek', 0.5, 10, 'veg'), (5, 'kale', 3.0, NULL, 'veg')
+> CREATE TABLE stock (item_id INT PRIMARY KEY REFERENCES item, shop STRING)
+> INSERT INTO stock VALUES (1, 'north'), (2, 'south'), (4, 'north')
+> CREATE VIEW cheap AS SELECT id, name, price FROM item WHERE price < 2
+---
+ok
+
+# Joins of views with tables, and of a view with itself.
+> SELECT c.name, s.shop FROM cheap c JOIN stock s ON s.item_id = c.id
+> SELECT i.name, c.price FROM item i LEFT JOIN cheap c ON c.id = i.id
+> SELECT a.name, b.name FROM cheap a JOIN cheap b ON a.price < b.price
+> SELECT c.name, s.shop FROM stock s RIGHT JOIN cheap c ON s.item_id = c.id
+---
+'apple', 'north'
+'leek', 'north'
+'apple', 1.5
+'pear', NULL
+'fig', NULL
+'leek', 0.5
+'kale', NULL
+'leek', 'apple'
+'apple', 'north'
+'leek', 'north'
+
+# Aggregates, GROUP BY, HAVING, ORDER BY, LIMIT over a view.
+> SELECT COUNT(*), MAX(price), MIN(name) FROM cheap
+> CREATE VIEW kinds AS SELECT cat, qty FROM item
+> SELECT cat, COUNT(*) AS n, SUM(qty) FROM kinds GROUP BY cat HAVING COUNT(*) > 2 ORDER BY n DESC
+> SELECT qty FROM kinds ORDER BY qty DESC, cat LIMIT 3 OFFSET 1
+---
+2, 1.5, 'apple'
+'fruit', 3, 17
+10
+7
+0
+
+# A view's query may use every clause.
+> CREATE VIEW top2 AS SELECT name, qty FROM item ORDER BY qty DESC LIMIT 2
+> CREATE VIEW per_cat AS SELECT cat AS category, COUNT(*) AS n FROM item WHERE price IS NOT NULL GROUP BY cat HAVING COUNT(*) > 0
+> SELECT * FROM top2
+> SELECT * FROM per_cat ORDER BY n
+---
+'apple', 10
+'leek', 10
+'fruit', 2
+'veg', 2
+
+# Views of views.
+> CREATE VIEW cheapest AS SELECT name FROM cheap WHERE price < 1
+> CREATE VIEW both_views AS SELECT c.name, p.n FROM cheapest c, per_cat p WHERE p.category = 'veg'
+> SELECT * FROM cheapest
+> SELECT * FROM both_views
+---
+'leek'
+'leek', 2
+
+# Empty results keep their columns.
+[header]> SELECT * FROM cheap WHERE price > 100
+---
+cheap.id, cheap.name, cheap.price
+
+# Ambiguous and unknown columns are reported as for tables.
+!> SELECT name FROM cheap, item
+!> SELECT cheap.qty FROM cheap
+!> SELECT nosuch.name FROM cheap
+---
+Error: invalid input: ambiguous column name
+Error: invalid input: unknown column cheap.qty
+Error: invalid input: unknown table nosuch

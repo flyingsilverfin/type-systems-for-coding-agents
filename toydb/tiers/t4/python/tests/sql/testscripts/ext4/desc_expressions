@@ -1,0 +1,131 @@
+# The type of an expression is the data type of the values it returns when it
+# succeeds, unknown (NULL) if that depends on the values or if it can't return a
+# non-NULL value. An expression is nullable if it can return NULL.
+
+> CREATE TABLE t (id INT PRIMARY KEY, i INT, f FLOAT, s STRING NOT NULL, b BOOLEAN)
+---
+ok
+
+# Constants and columns. Computed columns have no name.
+[header]> DESCRIBE SELECT 1, 1.5, 'a', TRUE, NULL, -1, -1.5, id, i, t.s, b AS flag FROM t
+---
+column, type, nullable
+NULL, 'INTEGER', FALSE
+NULL, 'FLOAT', FALSE
+NULL, 'STRING', FALSE
+NULL, 'BOOLEAN', FALSE
+NULL, NULL, TRUE
+NULL, 'INTEGER', FALSE
+NULL, 'FLOAT', FALSE
+'t.id', 'INTEGER', FALSE
+'t.i', 'INTEGER', TRUE
+'t.s', 'STRING', FALSE
+'flag', 'BOOLEAN', TRUE
+
+# Arithmetic: INTEGER with INTEGER is INTEGER, with a FLOAT it is FLOAT; ^ of
+# two integers is unknown (a negative exponent gives a float); other operand
+# types fail, so the type is unknown.
+> DESCRIBE SELECT id + 1, i + i, i + f, f * f, i / i, i % f, i - 2.5, i ^ i, i ^ f, f ^ i FROM t
+---
+NULL, 'INTEGER', FALSE
+NULL, 'INTEGER', TRUE
+NULL, 'FLOAT', TRUE
+NULL, 'FLOAT', TRUE
+NULL, 'INTEGER', TRUE
+NULL, 'FLOAT', TRUE
+NULL, 'FLOAT', TRUE
+NULL, NULL, TRUE
+NULL, 'FLOAT', TRUE
+NULL, 'FLOAT', TRUE
+
+> DESCRIBE SELECT -i, +f, -s, i!, f!, sqrt(i), sqrt(f), sqrt(s), s + 1, b + 1, i + NULL, NULL * NULL FROM t
+---
+NULL, 'INTEGER', TRUE
+NULL, 'FLOAT', TRUE
+NULL, NULL, FALSE
+NULL, 'INTEGER', TRUE
+NULL, NULL, TRUE
+NULL, 'FLOAT', TRUE
+NULL, 'FLOAT', TRUE
+NULL, NULL, FALSE
+NULL, NULL, FALSE
+NULL, NULL, TRUE
+NULL, NULL, TRUE
+NULL, NULL, TRUE
+
+# Comparisons, LIKE and logical operators are BOOLEAN, unless their operands
+# make them fail or always give NULL. IS NULL is never NULL.
+> DESCRIBE SELECT i = 1, s = 'a', s = 1, i < f, f > i, s LIKE 'a%', i LIKE 'a', b = TRUE, b < 1 FROM t
+---
+NULL, 'BOOLEAN', TRUE
+NULL, 'BOOLEAN', FALSE
+NULL, NULL, FALSE
+NULL, 'BOOLEAN', TRUE
+NULL, 'BOOLEAN', TRUE
+NULL, 'BOOLEAN', FALSE
+NULL, NULL, TRUE
+NULL, 'BOOLEAN', TRUE
+NULL, NULL, TRUE
+
+> DESCRIBE SELECT NOT b, NOT i, b AND TRUE, b OR i, s = 'a' OR id > 1, i IS NULL, s IS NOT NULL, f IS NAN, i IS NAN, i != 2, i >= 2 FROM t
+---
+NULL, 'BOOLEAN', TRUE
+NULL, NULL, TRUE
+NULL, 'BOOLEAN', TRUE
+NULL, NULL, TRUE
+NULL, 'BOOLEAN', FALSE
+NULL, 'BOOLEAN', FALSE
+NULL, 'BOOLEAN', FALSE
+NULL, 'BOOLEAN', TRUE
+NULL, NULL, TRUE
+NULL, 'BOOLEAN', TRUE
+NULL, 'BOOLEAN', TRUE
+
+# IS NOT NULL and IS NOT NAN are described like IS NULL and IS NAN. The forms
+# in which !=, >=, <= and IS NOT are planned (NOT a = b, a > b OR a = b,
+# a < b OR a = b, NOT a IS x) are described like them also when written out;
+# other combinations are described by their own rules.
+> DESCRIBE SELECT s IS NOT NAN, NULL IS NOT NAN, f IS NOT NAN, i IS NOT NULL, NULL != 1, s <= 1 FROM t
+> DESCRIBE SELECT NOT (s = 1), s > 1 OR s = 1, NOT (f IS NAN), s = 1 OR s > 1, NOT (NOT (s = 1)) FROM t
+---
+NULL, NULL, FALSE
+NULL, NULL, TRUE
+NULL, 'BOOLEAN', TRUE
+NULL, 'BOOLEAN', FALSE
+NULL, NULL, TRUE
+NULL, NULL, FALSE
+NULL, NULL, FALSE
+NULL, NULL, FALSE
+NULL, 'BOOLEAN', TRUE
+NULL, 'BOOLEAN', FALSE
+NULL, 'BOOLEAN', FALSE
+
+# The NULL constant only returns NULL.
+> DESCRIBE SELECT NULL = 1, NOT NULL, NULL AND b, NULL AND NULL, NULL IS NULL, NULL IS NAN, NULL LIKE 'a' FROM t
+---
+NULL, NULL, TRUE
+NULL, NULL, TRUE
+NULL, 'BOOLEAN', TRUE
+NULL, NULL, TRUE
+NULL, 'BOOLEAN', FALSE
+NULL, NULL, TRUE
+NULL, NULL, TRUE
+
+# Aggregate functions: COUNT is INTEGER and never NULL, the others are always
+# nullable.
+> DESCRIBE SELECT COUNT(*), COUNT(s), SUM(i), SUM(f), SUM(s), AVG(i), AVG(f), MIN(s), MAX(b), MIN(NULL), SUM(id), COUNT(*) + 1, SUM(i) * 2.0, MAX(id) > 0 FROM t
+---
+NULL, 'INTEGER', FALSE
+NULL, 'INTEGER', FALSE
+NULL, 'INTEGER', TRUE
+NULL, 'FLOAT', TRUE
+NULL, NULL, TRUE
+NULL, 'INTEGER', TRUE
+NULL, 'FLOAT', TRUE
+NULL, 'STRING', TRUE
+NULL, 'BOOLEAN', TRUE
+NULL, NULL, TRUE
+NULL, 'INTEGER', TRUE
+NULL, 'INTEGER', FALSE
+NULL, 'FLOAT', TRUE
+NULL, 'BOOLEAN', TRUE

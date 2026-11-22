@@ -1,0 +1,15 @@
+{
+ "run": "t4r_between_in_rs_oha",
+ "task": "between_in",
+ "suite": "toydb-t4",
+ "tier": "t4",
+ "lang": "rust",
+ "model": "opus",
+ "effort": "high",
+ "ws": "/home/user/agentbench/runs/t4r_between_in_rs_oha",
+ "hint": true,
+ "readme_from": "t2",
+ "baseline": "22d0c52f8eec31fe892b426621f29c12e27b7670",
+ "created": 1795249896.9760249,
+ "warm_ok": true
+}
