@@ -1,7 +1,7 @@
 # Type Systems for Coding Agents
 
 This repository was built to test whether type systems remain fundamentally useful in the age of agentic
-programming. It accompanies a Rust meetup talk.
+programming. 
 
 Historically, type systems were designed as guardrails for human developers. They catch entire classes of
 bugs before execution, co-locate interface documentation with the code, and offload cognitive overhead
