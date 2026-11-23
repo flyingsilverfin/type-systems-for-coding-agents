@@ -1,86 +1,80 @@
 # Type systems for coding agents
 
-Do static types still help when the programmer is an AI agent? This repo holds an experiment, built for a
-Rust meetup talk, that gives agents of different strength the same task on the same codebase in Rust and in
-Python, and measures what the type system changes.
+This repository was built to test whether type systems are still useful in the age of agentic
+programming. It accompanies a Rust meetup talk.
 
-## The question
+Type systems were designed for human developers. They catch whole classes of mistakes before the program
+runs, they document interfaces where the code is, and they take some of the load off a developer's memory.
+Instead of tracking every consequence of a change in their head, a developer can change a type and let the
+compiler list every place that has to follow. Part of the job of keeping the program correct is handed to
+an external verifier.
 
-Type systems were designed for people. They catch whole classes of mistakes before the program runs, they
-document interfaces where the code is, and they let a programmer hand part of the job of remembering a
-large codebase to the compiler. When you change a type, the compiler lists every place that has to change
-with it.
+## Two hypotheses
 
-Coding agents change this trade in two directions, and it is not obvious which one wins.
+Coding agents change that trade, and it isn't obvious in which direction.
 
-- **Agents might need types more.** An agent has no lasting memory of a codebase. Every session starts
-  cold, like a new contributor on their first day. It knows only the files it chose to open, so code that
-  depends on a change but was never opened is invisible to it. Agents also retry cheaply, so a verifier
-  whose errors say exactly what is wrong is cheap for them to use.
-- **Agents might need types less.** A context window holds more code at once than a person keeps in mind,
-  and an agent will read, grep and re-read without getting tired. Most of what a type error would tell it,
-  it can find by searching.
+**Agents might need types more than people do.** An agent has no lasting memory of a codebase. Every
+session starts cold, like a new contributor on their first day, and the agent knows only the files it
+chose to open. Code that depends on a change but was never opened is invisible to it. Agents also retry
+cheaply, so a verifier that says exactly what is wrong is cheap for them to use.
 
-Which effect dominates is an empirical question. The answer may well depend on how strong the agent is and
-how large the codebase is, so the experiment varies both.
+**Agents might need types less.** A context window holds more code at once than a person keeps in mind,
+and an agent will read, grep and re-read without getting tired. Most of what a type error would tell it,
+it can find by searching.
+
+Which effect wins is an empirical question, and the answer probably depends on how strong the agent is
+and how large the codebase is. So we varied both.
 
 ## Inspiration: query generation
 
-This experiment was inspired by TypeDB's
-[*Benchmarking LLM query generation across SQL, Cypher and TypeQL*](https://typedb.com/blog/benchmarking-llm-query-generation-across-sql-cypher-and-typeql)
-(September 2026). The highlights:
-- **Result.** With resources and a retry loop, Claude Sonnet 5 scored 92% on TypeQL, against 83% on SQL
-  and 82% on Cypher.
-- **Why.** Retries helped TypeQL most. TypeDB's schema turns semantic mistakes into type-check errors the
-  model can see and fix, where a wrong SQL query usually just returns wrong rows.
-- **Limit.** DeepSeek V4 Pro showed no such lead.
+The idea came from TypeDB's
+[*Benchmarking LLM query generation across SQL, Cypher and TypeQL*](https://typedb.com/blog/benchmarking-llm-query-generation-across-sql-cypher-and-typeql).
+With in-context resources and a retry loop, Claude Sonnet 5 reached 92% accuracy on TypeQL, against 83%
+for SQL and 82% for Cypher. Retries helped TypeQL the most, because TypeDB's schema turns semantic
+mistakes into type-check errors the model can see and fix, where a wrong SQL query usually just returns
+wrong rows. DeepSeek V4 Pro didn't show the same lead, and the post covers the full results and caveats.
+The question it left us with was whether a stricter verifier helps agents with general application code
+too, where the verifier is a compiler.
 
-The post has the full results and caveats. The question it raises is whether a stricter verifier helps
-agents in general application code too, with a compiler as the verifier.
+## The experiment: Rust vs. Python
 
-## The experiment: Rust vs Python
+To test this, we compared Rust (strong static types) with Python (dynamic types) on the same codebase.
+That codebase is [toydb](https://github.com/erikgrinaker/toydb), a distributed SQL database written in
+Rust, together with a structurally parallel Python port that passes the same golden tests byte for byte.
+Both are cut into four tiers of increasing size:
 
-The codebase is [toydb](https://github.com/erikgrinaker/toydb), a distributed SQL database written in Rust,
-together with a structurally parallel Python port that passes the same golden tests byte for byte. Both are
-cut into tiers of increasing size:
-
-| Tier | What it adds | Size |
+| Tier | What it adds | Size (approx. lines of application code) |
 |---|---|---|
-| t1 | SQL core, in-process | small |
-| t2 | Full toydb: Raft, server, client, cluster tests | medium |
-| t3 | Four extension layers: JSON output, statement digests, column statistics, export/import | larger |
-| t4 | Seven more: views, FORMAT, DESCRIBE, ESTIMATE, prepared statements, LINT, change log | 12.5k lines of Rust application code, 14.9k of Python |
+| 1 | The SQL core, in-process | Rust 6k, Python 7.6k |
+| 2 | The full database: Raft, server, client, cluster tests | Rust 8.5k, Python 11.3k |
+| 3 | Four extension layers: JSON output, statement digests, column statistics, export/import | Rust 10.1k, Python 12.7k |
+| 4 | Seven more: views, FORMAT, DESCRIBE, ESTIMATE, prepared statements, LINT, change log | Rust 12.5k, Python 14.9k |
 
-Each agent (Claude Haiku, Sonnet or Opus) gets one of seven feature or bugfix tasks. Its only feedback is
-what a developer would have: the compiler (in Rust), one visible test and the project's `./check.sh`.
-Hidden tests decide whether the run passes.
+Line counts are non-blank, non-comment lines, excluding tests (see each tier's `LAYOUT.md`).
 
-## Findings
+AI agents of varying strength (Claude Haiku, Sonnet and Opus) were each given an identical task. Their
+only feedback was what a developer would have: compiler errors (in Rust), one visible test and a local
+`./check.sh` script. Hidden tests decided whether a run passed.
 
-**In short: types tell you *where* a change must go, not *what* it must do.**
+## Key findings
 
-### 1. On small codebases, the language makes no difference
+**Types tell you *where* a change must go, not *what* it must do.**
 
-At tiers 1 and 2, agents in both languages pass almost everything. Rust costs somewhat more time and tokens.
+**Small codebases show no difference.** At tiers 1 and 2, agents in both languages pass almost
+everything. Rust costs somewhat more time and tokens, but Python's lack of types costs nothing in success
+rate.
 
-### 2. Types reach code the agent never looked at
+**Types reach code the agent never saw.** In a transplant test, we applied each agent's finished solution
+unchanged to the next tier up, which contains code that depends on the change but wasn't in the agent's
+workspace. In Python, solutions often passed every test the agent could run and then failed at code it
+had never seen: hand-written serialization at tier 2, JSON writers and import parsing at tier 3. From
+tier 1 to 2, 2 of 5 Python solutions failed silently, against none of 10 in Rust. In Rust, a
+non-exhaustive `match` or a derived impl flagged those sites or handled them automatically: from tier 2
+to 3 the compiler flagged 10 of 12 solutions, while Python's own checks caught 6 of 12.
 
-A *transplant* test applies each agent's finished solution, unchanged, to the next tier up. That tier
-contains code that depends on the change but did not exist in the agent's workspace.
-
-In Python, solutions often passed every test the agent could run and then failed at code it had never
-seen: hand-written serialization at tier 2, JSON writers and import parsing at tier 3. In Rust, a
-non-exhaustive `match` or a derived impl either flagged those sites at compile time or handled them
-automatically.
-
-- Tier 1 → 2: 2 of 5 Python solutions failed silently, against 0 of 10 in Rust.
-- Tier 2 → 3: the Rust compiler flagged 10 of 12 solutions. Python's own checks caught only 6 of 12.
-
-### 3. The compiler rescues the weakest model
-
-Experiment 1 ran tier 3 with the README's description of the extension layers removed, so the affected
-code could only be found by reading the code itself. 6 feature tasks × 3 repeats × 3 models, in each
-language (108 runs):
+**The compiler rescues weak models.** At tier 3 we removed the README's description of the extension
+layers, so the affected code could only be found from the code itself, and ran each task 3 times per
+model (108 runs):
 
 | Model | Rust pass | Python pass | Python missed a site the Rust compiler flags |
 |---|---|---|---|
@@ -88,21 +82,17 @@ language (108 runs):
 | Sonnet · medium effort | 11/18 | 12/18 | 0/18 |
 | Opus · high effort | 18/18 | 13/18 | 0/18 |
 
-Haiku, writing Python, missed sites the Rust compiler would have pointed at. Sonnet and Opus found them on
-their own in both languages. Their remaining failures were in content no type system checks: digest text,
-parser expansions, statistics upkeep. Part of Opus's 18 vs 13 comes from a documentation difference. The
-Rust digest module stated a rule ("optional words are left out") that the Python docstring only implied
-(see `analysis/notes.json`). Tier 4 uses identical doc comments in both languages.
+Haiku, writing Python, missed sites the compiler would have pointed it to. Sonnet and Opus found that code
+on their own in both languages, and their remaining failures were in things no type system checks: digest
+text, parser expansions, statistics upkeep. Part of Opus's 18 vs 13 comes from a documentation
+difference: the Rust digest module stated a rule ("optional words are left out") that the Python
+docstring only implied. Exhaustive matching cut the other way too. Weaker Rust agents sometimes filled a
+match arm the compiler forced on them with the wrong content, in places where Python's generic fallback
+was right automatically.
 
-Exhaustive matching also had a cost. Weaker Rust agents sometimes filled a match arm the compiler forced
-them to write with the wrong content. In the same places, Python's generic fallback was right
-automatically.
-
-### 4. At larger scale, the bottleneck moves to the rules
-
-Tier 4 adds seven more extension layers and keeps every doc comment identical across the two languages.
-The README again has no extension docs. 108 runs, graded after a post-run audit of the hidden tests (the
-audit is described in the report; its log is held back with the tests):
+**At scale, the bottleneck shifts to semantics.** Tier 4 adds seven more extension layers and uses
+identical doc comments in both languages. With the extension docs again left out of the README (108
+runs, graded after a post-run audit of the hidden tests):
 
 | Model | Rust pass | Python pass | Python crashed at an unhandled variant |
 |---|---|---|---|
@@ -110,32 +100,26 @@ audit is described in the report; its log is held back with the tests):
 | Sonnet · medium effort | 3/18 | 2/18 | 1/18 |
 | Opus · high effort | 8/18 | 4/18 (p ≈ 0.29) | 0/18 |
 
-Python agents of every strength now reach the sites the Rust compiler names, because grepping for a
-sibling variant turns up the same list. Rust still leads at every level, but none of the gaps is
-statistically significant. Nearly every failure, in both languages, is at a site no type checks:
-
-- lint rules that also have to apply through the BETWEEN/IN and CASE expansions (no run of 36 got this
-  right);
-- how DESCRIBE types date arithmetic;
-- the ALTER check for views that depend on a table;
-- constructs that get rewritten in the parser.
+At this size, Python agents of every strength reached the sites the Rust compiler names, simply by
+grepping for a sibling variant. Rust still leads at every level, but none of the gaps is statistically
+significant. Failures in both languages converged on rules no type system checks: lint rules that must
+also apply through the BETWEEN/IN and CASE expansions (no run of 36 got this right), how DESCRIBE types
+date arithmetic, the ALTER check for views that depend on a table, and constructs rewritten in the parser.
 
 ## What this means so far
 
-The compiler works as a search tool. It finds every place a change has to reach, quickly and with
-certainty. That matters most when the agent can't do the search itself: a weak model, or code it has no
-reason to open. A strong agent with grep reconstructs the same list at this scale, and then fails on the
-same thing in both languages, the rules that no type encodes.
+Both hypotheses hold, at different points. For a weak model, or for code the agent has no reason to
+open, the compiler is a search tool that does what the agent can't, and types matter more. For a strong
+agent with grep, on a codebase it can search through, the compiler finds nothing the agent wouldn't have
+found, and types matter less. Neither language helped with the rules themselves.
 
-This links back to the query benchmark. A verifier helps only as far as what it can check. TypeDB's schema
-checks the meaning of a query, so a wrong query fails visibly. Rust's types here check *which cases
-exist*, not *what each case must do*. They catch a forgotten variant, but not a lint rule that silently
-skips a CASE expansion.
+That connects back to the query benchmark: a verifier helps only as far as what it checks. TypeDB's
+schema checks what a query means. Rust's types here check which cases exist, not what each case must do,
+so they catch a forgotten variant but not a lint rule that silently skips a CASE expansion.
 
-Two questions are still open. The first is whether finding the sites gets hard again once a codebase is too
-large to grep through comfortably. A tier 5 with more than 20k lines of Rust is being built to test this.
-The second is whether a codebase that puts more of its rules into types would let the compiler help with the
-*what* as well.
+Two questions are still open. Does finding the sites get hard again once the codebase is too big to grep
+through comfortably? A tier 5, with more than 20k lines of Rust, is being built to find out. And would
+a codebase that puts more of its rules into types let the compiler help with the *what* as well?
 
 ## Method in brief
 
