@@ -33,8 +33,7 @@ The motivation for this experiment came from TypeDB's
 With in-context resources and an iterative retry loop, Claude Sonnet 5 reached 92% accuracy on TypeQL,
 compared to 83% on SQL and 82% on Cypher. Retries benefited TypeQL the most because TypeDB's schema acts
 as a semantic verifier: it turns logical mistakes into explicit type-check errors the model can consume
-and fix, whereas a flawed SQL query silently returns wrong rows. (DeepSeek V4 Pro did not exhibit the same
-lead; the blog post details the full results and caveats.)
+and fix, whereas a flawed SQL query silently returns wrong rows.
 
 That result raised a broader question: does a stricter external verifier yield the same gains in
 general-purpose application code, where the verifier is a compiler?
