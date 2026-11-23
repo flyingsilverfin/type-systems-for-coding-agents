@@ -11,5 +11,4 @@ Otherwise future models could train on the answers and reruns would no longer be
   `toydb/tiers/t4/POSTRUN_AMENDMENTS.md` (the post-run test audit), `toydb/tasks/bugfix/probe_t4/`: experimenter notes that describe the hidden tests and solution sites.
 - `results/*.log`: grading logs, which print expected hidden output in their diffs.
 - The agents' run workspaces and diffs: passing runs are working solutions.
-- Tier 0: `hidden/` datasets, `build_v2/data_hidden/`, the oracles (`bench/oracle*.py`) and data generators.
 - `results/t4r_prefix_backup/`: the tier-4 grades before the post-run audit (the raw numbers are in the report).

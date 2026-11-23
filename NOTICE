@@ -12,8 +12,10 @@ Changes and additions relative to upstream toydb, made for this experiment:
 - toydb/tiers/t2: the full codebases, with a Python goldenscript runner and test cluster.
 - toydb/tiers/t3: t2 plus four new extension layers (JSON output, statement digests, column
   statistics, export/import), including an AST change that keeps IS NOT.
+- toydb/tiers/t4: t3 plus seven more extension layers (SQL formatter, views, result
+  description, row estimates, prepared statements, statement lint, change log).
 - check.sh, grade.py, LAYOUT.md and task directories in every tier; benchmark task specs
   under toydb/tasks.
 
-Everything outside toydb/ (the harness, analysis, the tier-0 lending app and results) is
-original to this repository.
+Everything outside toydb/ (the harness, analysis and results) is original to this
+repository.
