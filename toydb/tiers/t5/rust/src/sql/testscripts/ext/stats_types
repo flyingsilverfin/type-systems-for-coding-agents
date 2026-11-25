@@ -1,0 +1,56 @@
+# Column statistics for every data type: NaN and infinities, Unicode strings,
+# booleans, ties, all-NULL columns and empty tables. Values are compared and
+# grouped as ORDER BY and GROUP BY do.
+
+> CREATE TABLE f (id INT PRIMARY KEY, x FLOAT, s STRING, z INT)
+> INSERT INTO f VALUES (1, NAN, '', NULL), (2, INFINITY, 'é', NULL), (3, -INFINITY, '👋👋', NULL), (4, 0.0, 'abc', NULL), (5, NAN, 'abc', NULL), (6, -0.0, NULL, NULL)
+> ANALYZE f
+---
+ok
+
+# NaN is one distinct value and sorts after infinity; 0.0 and the stored -0.0
+# are the same value, and the tie with NaN goes to the smaller 0.0. Lengths
+# count characters, not bytes. A column of only NULLs has no min, max or top.
+> SHOW STATISTICS f
+---
+'id', 6, 0, 6, 1, 6, 1, 1, NULL
+'x', 6, 0, 4, -inf, NaN, 0.0, 2, NULL
+'s', 6, 1, 4, '', '👋👋', 'abc', 2, 1.8
+'z', 6, 6, 0, NULL, NULL, NULL, NULL, NULL
+
+[json]> SHOW STATISTICS f
+---
+{"result":"select","columns":["column","rows","nulls","distinct","min","max","top","top_count","avg_length"],"rows":[["id",6,0,6,1,6,1,1,null],["x",6,0,4,{"type":"FLOAT","value":"-inf"},{"type":"FLOAT","value":"NaN"},0.0,2,null],["s",6,1,4,"","👋👋","abc",2,1.8],["z",6,6,0,null,null,null,null,null]]}
+
+# Booleans and ties: the smallest of the most common values is the top.
+# Strings compare by code points ('B' < 'a').
+> CREATE TABLE b (id INT PRIMARY KEY, flag BOOLEAN, i INT, s STRING)
+> INSERT INTO b VALUES (1, TRUE, -5, 'b'), (2, FALSE, 3, 'a'), (3, TRUE, 3, 'b'), (4, FALSE, -5, 'a'), (5, NULL, 7, 'B')
+> ANALYZE b
+> SHOW STATISTICS b
+---
+'id', 5, 0, 5, 1, 5, 1, 1, NULL
+'flag', 5, 1, 2, FALSE, TRUE, FALSE, 2, NULL
+'i', 5, 0, 3, -5, 7, -5, 2, NULL
+'s', 5, 0, 3, 'B', 'b', 'a', 2, 1.0
+
+# An analyzed empty table has row and NULL counts of 0, unlike a table that was
+# never analyzed.
+> CREATE TABLE e (id INT PRIMARY KEY, s STRING)
+> CREATE TABLE never (id INT PRIMARY KEY)
+> ANALYZE e
+> SHOW STATISTICS e
+> SHOW STATISTICS never
+---
+'id', 0, 0, 0, NULL, NULL, NULL, NULL, NULL
+'s', 0, 0, 0, NULL, NULL, NULL, NULL, NULL
+'id', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL
+
+# Column names are shown as stored, also names that need quotes in SQL.
+> CREATE TABLE "Odd" ("from" INT PRIMARY KEY, "a b" STRING)
+> INSERT INTO "Odd" VALUES (1, 'x y z')
+> ANALYZE "Odd"
+> SHOW STATISTICS "Odd"
+---
+'from', 1, 0, 1, 1, 1, 1, 1, NULL
+'a b', 1, 0, 1, 'x y z', 'x y z', 'x y z', 1, 5.0

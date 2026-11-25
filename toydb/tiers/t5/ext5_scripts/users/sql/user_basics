@@ -1,0 +1,120 @@
+# Users: CREATE USER, DROP USER and SHOW USERS. The superuser admin always
+# exists and is the user of every session of the SQL runner.
+
+[header]> SHOW USERS
+---
+name, is_superuser, has_password, member_of
+'admin', TRUE, FALSE, ''
+
+> CREATE USER alice
+> CREATE USER bob PASSWORD 'secret'
+> CREATE USER "Carol" PASSWORD 'it''s' SUPERUSER
+> create user Dave superuser
+> SHOW USERS
+---
+'Carol', TRUE, TRUE, ''
+'admin', TRUE, FALSE, ''
+'alice', FALSE, FALSE, ''
+'bob', FALSE, TRUE, ''
+'dave', TRUE, FALSE, ''
+
+# JSON results.
+[json]> CREATE USER erin
+[json]> DROP USER erin
+[json]> DROP USER IF EXISTS erin
+[json]> DROP USER IF EXISTS "Carol"
+---
+{"result":"create_user","user":"erin"}
+{"result":"drop_user","user":"erin","existed":true}
+{"result":"drop_user","user":"erin","existed":false}
+{"result":"drop_user","user":"Carol","existed":true}
+
+# Errors, in the order of the checks.
+!> CREATE USER alice
+!> CREATE USER admin
+!> CREATE USER ""
+!> DROP USER nosuch
+!> DROP USER carol
+!> DROP USER admin
+!> DROP USER IF EXISTS admin
+---
+Error: invalid input: user alice already exists
+Error: invalid input: user admin already exists
+Error: invalid input: user name can't be empty
+Error: invalid input: user nosuch does not exist
+Error: invalid input: user carol does not exist
+Error: invalid input: user admin can't be dropped
+Error: invalid input: user admin can't be dropped
+
+# A session can't drop its own current user.
+> SET ROLE dave
+!> DROP USER dave
+> CREATE USER frank
+> DROP USER frank
+> RESET ROLE
+> DROP USER dave
+> SHOW USERS
+---
+Error: invalid input: can't drop the current user dave
+'admin', TRUE, FALSE, ''
+'alice', FALSE, FALSE, ''
+'bob', FALSE, TRUE, ''
+
+# Only superusers create and drop users; the checks of the statement come
+# after that.
+a:> SET ROLE alice
+a:!> CREATE USER gina
+a:!> CREATE USER alice
+a:!> DROP USER bob
+a:!> DROP USER IF EXISTS nosuch
+---
+a: Error: permission denied: user alice is not a superuser
+a: Error: permission denied: user alice is not a superuser
+a: Error: permission denied: user alice is not a superuser
+a: Error: permission denied: user alice is not a superuser
+
+# In a read-only transaction, a statement that passes its checks fails.
+> BEGIN READ ONLY
+!> CREATE USER gina
+!> CREATE USER alice
+!> DROP USER bob
+!> DROP USER nosuch
+> DROP USER IF EXISTS nosuch
+> COMMIT
+---
+Error: read-only transaction
+Error: invalid input: user alice already exists
+Error: read-only transaction
+Error: invalid input: user nosuch does not exist
+
+# Users are transactional: seen at once by their own transaction, by others
+# after commit, undone by ROLLBACK.
+b:> BEGIN
+b:> CREATE USER hank
+b:> DROP USER bob
+b:> SHOW USERS
+c:> SHOW USERS
+b:> ROLLBACK
+c:> SHOW USERS
+---
+b: 'admin', TRUE, FALSE, ''
+b: 'alice', FALSE, FALSE, ''
+b: 'hank', FALSE, FALSE, ''
+c: 'admin', TRUE, FALSE, ''
+c: 'alice', FALSE, FALSE, ''
+c: 'bob', FALSE, TRUE, ''
+c: 'admin', TRUE, FALSE, ''
+c: 'alice', FALSE, FALSE, ''
+c: 'bob', FALSE, TRUE, ''
+
+b:> BEGIN
+c:> BEGIN
+b:> CREATE USER ivy
+c:!> CREATE USER ivy
+b:> COMMIT
+c:> ROLLBACK
+c:> SET ROLE ivy
+c:[json]> RESET ROLE
+---
+c: Error: serialization failure, retry transaction
+c: {"result":"reset_role","user":"admin"}

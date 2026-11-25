@@ -1,0 +1,15 @@
+{
+ "run": "t5r_alter_py_ohc",
+ "task": "alter",
+ "suite": "toydb-t5",
+ "tier": "t5",
+ "lang": "python",
+ "model": "opus",
+ "effort": "high",
+ "ws": "/home/user/agentbench/runs/t5r_alter_py_ohc",
+ "hint": true,
+ "readme_from": "t2",
+ "baseline": "7a2b167970990efc762aace642b04075386bbb09",
+ "created": 1795540535.162615,
+ "warm_ok": true
+}

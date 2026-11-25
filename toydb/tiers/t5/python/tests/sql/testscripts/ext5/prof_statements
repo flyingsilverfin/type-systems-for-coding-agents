@@ -1,0 +1,47 @@
+# EXPLAIN (ANALYZE) in FORMAT, digests, LINT, the audit log and the change
+# log. Its statement is executed: its writes are logged like any others.
+
+> CREATE TABLE t (id INT PRIMARY KEY, v STRING)
+> INSERT INTO t VALUES (1, 'a'), (2, 'b')
+> FORMAT explain (analyze) select v from T where id = 1
+> LINT EXPLAIN (ANALYZE) DELETE FROM t
+---
+EXPLAIN (ANALYZE)
+SELECT v
+FROM t
+WHERE id = 1
+'unfiltered_write', 'DELETE without WHERE deletes every row of t'
+
+> EXPLAIN (ANALYZE) SELECT * FROM t WHERE id = 2
+> EXPLAIN (ANALYZE) SELECT * FROM t WHERE id = 9
+> EXPLAIN (ANALYZE) DELETE FROM t WHERE id = 1
+> SHOW CHANGES SINCE 2
+> SHOW AUDIT SINCE 4
+---
+'KeyLookup: t (2)', 1, 1
+'KeyLookup: t (9)', 1, 0
+'Delete: t', 1, 1
+'└─ KeyLookup: t (1)', 1, 1
+3, 't', 'delete', 1, NULL
+5, 'admin', 'READ', 'explain', 't (read)', NULL
+6, 'admin', 'READ', 'explain', 't (read)', NULL
+7, 'admin', 'WRITE', 'explain', 't (delete)', NULL
+8, 'admin', 'MISC', 'show_changes', '', NULL
+
+# Digests: the rows of an EXPLAIN (ANALYZE) are its result's rows.
+a:> EXPLAIN (ANALYZE) SELECT v FROM t WHERE id = 2
+a:> EXPLAIN (ANALYZE) SELECT v FROM t WHERE id = 3
+a:[header]> SHOW STATEMENTS
+---
+a: 'Projection: t.v', 1, 1
+a: '└─ KeyLookup: t (2)', 1, 1
+a: 'Projection: t.v', 1, 0
+a: '└─ KeyLookup: t (3)', 1, 0
+a: digest, calls, errors, rows
+a: 'EXPLAIN (ANALYZE) SELECT v FROM t WHERE id = ?', 2, 0, 4
+
+# EXPLAIN without ANALYZE is unchanged.
+> EXPLAIN SELECT * FROM t
+[json]> EXPLAIN SELECT * FROM t
+---
+{"result":"explain","plan":{"statement":"select","root":{"node":"scan","table":"t","alias":null,"filter":null}}}

@@ -1,0 +1,40 @@
+# The audit log in a cluster: each server logs the statements of the sessions
+# connected to it, in memory, without replicating the log. A single client is
+# used, so the log of its server holds only its statements.
+
+cluster nodes=3
+---
+ok
+
+c1:> CREATE TABLE t (id INT PRIMARY KEY, v STRING)
+c1:> INSERT INTO t VALUES (1, 'a')
+c1:> CREATE USER alice PASSWORD 'pw'
+c1:> GRANT SELECT ON t TO alice
+c1:> SET ROLE alice
+c1:> SELECT v FROM t
+c1:!> DELETE FROM t
+c1:!> SHOW AUDIT
+c1:> RESET ROLE
+c1:[header]> SHOW AUDIT
+---
+c1: 'a'
+c1: Error: permission denied: user alice has no DELETE privilege on t
+c1: Error: permission denied: user alice is not a superuser
+c1: seq, username, class, statement, objects, error
+c1: 1, 'admin', 'DDL', 'create_table', 't (create)', NULL
+c1: 2, 'admin', 'WRITE', 'insert', 't (insert)', NULL
+c1: 3, 'admin', 'ROLE', 'create_user', '', NULL
+c1: 4, 'admin', 'ROLE', 'grant', 't (grant)', NULL
+c1: 5, 'admin', 'MISC', 'set_role', '', NULL
+c1: 6, 'alice', 'READ', 'select', 't (read)', NULL
+c1: 7, 'alice', 'WRITE', 'delete', 't (delete)', 'permission denied: user alice has no DELETE privilege on t'
+c1: 8, 'alice', 'MISC', 'reset_role', '', NULL
+
+# Statements that fail to parse aren't recorded; SINCE shows the later ones.
+c1:!> SELECT FROM t
+c1:> SELECT 1
+c1:> SHOW AUDIT SINCE 8
+---
+c1: Error: invalid input: expected expression atom, found FROM
+c1: 1
+c1: 9, 'admin', 'MISC', 'select', '', NULL

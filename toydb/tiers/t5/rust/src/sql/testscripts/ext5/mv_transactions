@@ -1,0 +1,54 @@
+# Materialized views are transactional like views, their stored rows included.
+
+> CREATE TABLE t (id INT PRIMARY KEY)
+> INSERT INTO t VALUES (1), (2)
+> CREATE MATERIALIZED VIEW mv AS SELECT id FROM t
+---
+ok
+
+a:> BEGIN
+a:> INSERT INTO t VALUES (3)
+a:> REFRESH MATERIALIZED VIEW mv
+a:> SELECT count(*) FROM mv
+b:> SELECT count(*) FROM mv
+a:> ROLLBACK
+b:> SELECT count(*) FROM mv
+---
+a: 3
+b: 2
+b: 2
+
+# A refresh is seen by other transactions after its commit; a transaction
+# that began before keeps its snapshot.
+b:> BEGIN
+> INSERT INTO t VALUES (3)
+> REFRESH MATERIALIZED VIEW mv
+b:> SELECT count(*) FROM mv
+b:> COMMIT
+b:> SELECT count(*) FROM mv
+---
+b: 2
+b: 3
+
+# Created and dropped in transactions; two concurrent refreshes conflict.
+a:> BEGIN
+a:> CREATE MATERIALIZED VIEW m2 AS SELECT id FROM t WHERE id > 1
+b:!> SELECT * FROM m2
+a:> DROP MATERIALIZED VIEW mv
+b:> SELECT count(*) FROM mv
+a:> COMMIT
+b:> SELECT * FROM m2
+b:!> SELECT * FROM mv
+a:> BEGIN
+b:> BEGIN
+a:> REFRESH MATERIALIZED VIEW m2
+b:!> REFRESH MATERIALIZED VIEW m2
+a:> COMMIT
+b:> ROLLBACK
+---
+b: Error: invalid input: table m2 does not exist
+b: 3
+b: 2
+b: 3
+b: Error: invalid input: table mv does not exist
+b: Error: serialization failure, retry transaction

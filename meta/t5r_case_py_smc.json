@@ -1,0 +1,15 @@
+{
+ "run": "t5r_case_py_smc",
+ "task": "case",
+ "suite": "toydb-t5",
+ "tier": "t5",
+ "lang": "python",
+ "model": "sonnet",
+ "effort": "medium",
+ "ws": "/home/user/agentbench/runs/t5r_case_py_smc",
+ "hint": true,
+ "readme_from": "t2",
+ "baseline": "209805bed3f4a9e289879fbc690a3b454effa91d",
+ "created": 1795540103.5805032,
+ "warm_ok": true
+}

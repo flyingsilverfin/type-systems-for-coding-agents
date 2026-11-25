@@ -1,0 +1,108 @@
+# Materialized views in the other extensions: EXPORT AS SQL, SHOW VIEWS,
+# system tables, DESCRIBE, ESTIMATE, EXPLAIN, FORMAT, LINT, digests, the
+# change log (which doesn't record them), backups.
+
+> CREATE TABLE t (id INT PRIMARY KEY, v INT)
+> INSERT INTO t VALUES (1, 10), (2, 20), (3, 30)
+> CREATE VIEW tv AS SELECT id, v FROM t WHERE v > 10
+> CREATE MATERIALIZED VIEW mv (k, w) AS SELECT id, v * 2 FROM tv
+> CREATE VIEW over AS SELECT k FROM mv
+> EXPORT AS SQL
+> SHOW VIEWS
+> SELECT * FROM toydb_matviews
+---
+CREATE TABLE t (
+  id INTEGER PRIMARY KEY,
+  v INTEGER DEFAULT NULL
+);
+INSERT INTO t VALUES (1, 10);
+INSERT INTO t VALUES (2, 20);
+INSERT INTO t VALUES (3, 30);
+CREATE VIEW tv (id, v) AS SELECT id, v FROM t WHERE v > 10;
+CREATE MATERIALIZED VIEW mv (k, w) AS SELECT id, v * 2 FROM tv;
+CREATE VIEW over (k) AS SELECT k FROM mv;
+'over', 'k', 'SELECT k FROM mv'
+'tv', 'id, v', 'SELECT id, v FROM t WHERE v > 10'
+'mv', 'admin', 'k, w', 'SELECT id, v * 2 FROM tv', 'tv', 2
+
+[header]> DESCRIBE mv
+> ESTIMATE SELECT * FROM mv
+> ESTIMATE SELECT * FROM mv WHERE w > 50
+[json]> EXPLAIN SELECT * FROM mv AS m
+---
+column, type, nullable
+'k', 'INTEGER', FALSE
+'w', 'INTEGER', TRUE
+'MaterializedView: mv', 2
+'Filter: mv.w > 50', 1
+'└─ MaterializedView: mv', 2
+{"result":"explain","plan":{"statement":"select","root":{"node":"materialized_view","view":"mv","alias":"m"}}}
+
+> FORMAT create materialized view MV (K) as select id from t where v > 1
+> FORMAT refresh materialized view "Mv"
+> FORMAT drop materialized view if exists mv
+> LINT CREATE MATERIALIZED VIEW m AS SELECT * FROM t WHERE v = NULL
+d:> REFRESH MATERIALIZED VIEW mv
+d:!> CREATE MATERIALIZED VIEW mv AS SELECT 1 AS one
+d:[header]> SHOW STATEMENTS
+> SHOW CHANGES SINCE 3
+---
+CREATE MATERIALIZED VIEW mv (k) AS
+SELECT id
+FROM t
+WHERE v > 1
+REFRESH MATERIALIZED VIEW "Mv"
+DROP MATERIALIZED VIEW IF EXISTS mv
+'null_comparison', 'comparison with NULL is never true: v = NULL'
+d: Error: invalid input: materialized view mv already exists
+d: digest, calls, errors, rows
+d: 'REFRESH MATERIALIZED VIEW mv', 1, 0, 0
+d: 'CREATE MATERIALIZED VIEW mv AS SELECT ? AS one', 1, 1, 0
+5, 'over', 'create_view', NULL, 'CREATE VIEW over (k) AS SELECT k FROM mv'
+
+# A backup has a MATVIEW record, in dependency order with the views; a
+# restore executes its query, so its rows are those of the restored tables
+# even if it was stale.
+> INSERT INTO t VALUES (4, 40)
+> SELECT * FROM mv
+backup b
+backup-list b
+> DROP VIEW over
+> DROP MATERIALIZED VIEW mv
+> DROP VIEW tv
+> DROP TABLE t
+restore b
+> SELECT * FROM mv
+---
+2, 40
+3, 60
+toydb backup version 1
+table t owner admin: CREATE TABLE t (id INTEGER PRIMARY KEY, v INTEGER DEFAULT NULL)
+row t: 1, 10
+row t: 2, 20
+row t: 3, 30
+row t: 4, 40
+view tv owner admin (id, v): SELECT id, v FROM t WHERE v > 10
+materialized view mv owner admin (k, w): SELECT id, v * 2 FROM tv
+view over owner admin (k): SELECT k FROM mv
+end 8 records, checksum 121d1eff
+2, 40
+3, 60
+4, 80
+
+# The restore executes the query in the restoring session, so system tables
+# in it show that session's state.
+> DROP VIEW over
+> DROP MATERIALIZED VIEW mv
+> DROP VIEW tv
+> DROP TABLE t
+> CREATE MATERIALIZED VIEW p AS SELECT count(*) AS n FROM toydb_prepared
+> SELECT * FROM p
+backup c
+> DROP MATERIALIZED VIEW p
+> PREPARE q AS SELECT 1
+restore c
+> SELECT * FROM p
+---
+0
+1

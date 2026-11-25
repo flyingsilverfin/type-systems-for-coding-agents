@@ -1,0 +1,15 @@
+{
+ "run": "t5r_date_py_hlb",
+ "task": "date",
+ "suite": "toydb-t5",
+ "tier": "t5",
+ "lang": "python",
+ "model": "haiku",
+ "effort": "low",
+ "ws": "/home/user/agentbench/runs/t5r_date_py_hlb",
+ "hint": true,
+ "readme_from": "t2",
+ "baseline": "929f50f61342738c081175b4480c2c9ffda2fa6b",
+ "created": 1795537945.783234,
+ "warm_ok": true
+}

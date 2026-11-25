@@ -1,0 +1,124 @@
+# LINT checks every kind of statement, and the statements contained in it. It
+# executes nothing and fails only on parse errors.
+
+> CREATE TABLE t (id INT PRIMARY KEY, s STRING, n INT)
+> INSERT INTO t VALUES (1, 'a', 1)
+---
+ok
+
+# Contained statements, at any depth.
+> LINT EXPLAIN DELETE FROM t
+> LINT CREATE VIEW v AS SELECT * FROM t WHERE s = NULL
+> LINT PREPARE p (INT) AS UPDATE t SET n = $1
+> LINT LINT DELETE FROM t
+> LINT FORMAT INSERT INTO t VALUES (2, 'b', 2)
+> LINT DESCRIBE UPDATE t SET n = 0
+> LINT ESTIMATE SELECT * FROM t ORDER BY 1
+> LINT EXPLAIN EXECUTE p (1 / 0)
+---
+'unfiltered_write', 'DELETE without WHERE deletes every row of t'
+'null_comparison', 'comparison with NULL is never true: s = NULL'
+'unfiltered_write', 'UPDATE without WHERE changes every row of t'
+'unfiltered_write', 'DELETE without WHERE deletes every row of t'
+'implicit_columns', 'INSERT without a column list depends on the column order of t'
+'unfiltered_write', 'UPDATE without WHERE changes every row of t'
+'order_by_constant', 'ORDER BY a constant has no effect: 1'
+'division_by_zero', 'division by zero: 1 / 0'
+
+# Expressions in CREATE TABLE defaults are checked.
+> LINT CREATE TABLE x (id INT PRIMARY KEY, n INT DEFAULT 1 / 0, b BOOLEAN DEFAULT 1 = NULL)
+---
+'division_by_zero', 'division by zero: 1 / 0'
+'null_comparison', 'comparison with NULL is never true: 1 = NULL'
+
+# Statements without anything to check.
+> LINT SELECT 1
+> LINT BEGIN
+> LINT COMMIT
+> LINT SHOW VIEWS
+> LINT SHOW STATEMENTS
+> LINT ANALYZE t
+> LINT EXPORT t AS CSV
+> LINT IMPORT INTO t FROM CSV 'id'
+> LINT DROP TABLE t
+> LINT DROP VIEW v
+> LINT DEALLOCATE p
+> LINT SHOW CHANGES
+---
+ok
+
+# Nothing was executed or created.
+> SELECT * FROM t
+!> SELECT * FROM v
+!> EXECUTE p (1)
+> SHOW PREPARED
+---
+1, 'a', 1
+Error: invalid input: table v does not exist
+Error: invalid input: prepared statement p does not exist
+
+# Parse errors, the keyword, EXPLAIN and DESCRIBE.
+!> LINT
+!> LINT x
+!> LINT SELECT FROM
+!> CREATE TABLE lint (id INT PRIMARY KEY)
+!> EXPLAIN LINT SELECT 1
+!> DESCRIBE LINT SELECT 1
+---
+Error: invalid input: unexpected end of input
+Error: invalid input: unexpected token x
+Error: invalid input: expected expression atom, found FROM
+Error: invalid input: expected identifier, got LINT
+Error: invalid input: EXPLAIN is not supported for LINT
+Error: invalid input: DESCRIBE is not supported for LINT
+
+# LINT works in any transaction and uses an implicit read-only one otherwise.
+> BEGIN READ ONLY
+> LINT DELETE FROM t
+> COMMIT
+[json]> BEGIN
+> ROLLBACK
+---
+'unfiltered_write', 'DELETE without WHERE deletes every row of t'
+{"result":"begin","version":3,"read_only":false}
+
+# The JSON form, and digests counting the warnings as rows.
+[json]> LINT SELECT * FROM t WHERE s = 1
+> SHOW STATEMENTS
+---
+{"result":"select","columns":["code","message"],"rows":[["type_mismatch","STRING column s compared with INTEGER value 1"]]}
+'CREATE TABLE t (id INTEGER PRIMARY KEY, s STRING, n INTEGER)', 1, 0, 0
+'INSERT INTO t VALUES (?, ?, ?)', 1, 0, 1
+'LINT EXPLAIN DELETE FROM t', 1, 0, 1
+'LINT CREATE VIEW v AS SELECT * FROM t WHERE s = ?', 1, 0, 1
+'LINT PREPARE p (INTEGER) AS UPDATE t SET n = $1', 1, 0, 1
+'LINT LINT DELETE FROM t', 1, 0, 1
+'LINT FORMAT INSERT INTO t VALUES (?, ?, ?)', 1, 0, 1
+'LINT DESCRIBE UPDATE t SET n = ?', 1, 0, 1
+'LINT ESTIMATE SELECT * FROM t ORDER BY ?', 1, 0, 1
+'LINT EXPLAIN EXECUTE p (? / ?)', 1, 0, 1
+'LINT CREATE TABLE x (id INTEGER PRIMARY KEY, n INTEGER DEFAULT ? / ?, b BOOLEAN DEFAULT ? = ?)', 1, 0, 2
+'LINT SELECT ?', 1, 0, 0
+'LINT BEGIN', 1, 0, 0
+'LINT COMMIT', 1, 0, 0
+'LINT SHOW VIEWS', 1, 0, 0
+'LINT SHOW STATEMENTS', 1, 0, 0
+'LINT ANALYZE t', 1, 0, 0
+'LINT EXPORT t AS CSV', 1, 0, 0
+'LINT IMPORT INTO t FROM CSV ?', 1, 0, 0
+'LINT DROP TABLE t', 1, 0, 0
+'LINT DROP VIEW v', 1, 0, 0
+'LINT DEALLOCATE p', 1, 0, 0
+'LINT SHOW CHANGES', 1, 0, 0
+'SELECT * FROM t', 1, 0, 1
+'SELECT * FROM v', 1, 1, 0
+'EXECUTE p (?)', 1, 1, 0
+'SHOW PREPARED', 1, 0, 0
+'EXPLAIN LINT SELECT ?', 1, 1, 0
+'DESCRIBE LINT SELECT ?', 1, 1, 0
+'BEGIN READ ONLY', 1, 0, 0
+'LINT DELETE FROM t', 1, 0, 1
+'COMMIT', 1, 0, 0
+'BEGIN', 1, 0, 0
+'ROLLBACK', 1, 0, 0
+'LINT SELECT * FROM t WHERE s = ?', 1, 0, 1

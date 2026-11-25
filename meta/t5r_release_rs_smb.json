@@ -1,0 +1,15 @@
+{
+ "run": "t5r_release_rs_smb",
+ "task": "release",
+ "suite": "toydb-t5",
+ "tier": "t5",
+ "lang": "rust",
+ "model": "sonnet",
+ "effort": "medium",
+ "ws": "/home/user/agentbench/runs/t5r_release_rs_smb",
+ "hint": true,
+ "readme_from": "t2",
+ "baseline": "bb709cb55276f56ae345c06b34820c6600876f24",
+ "created": 1795538118.8535357,
+ "warm_ok": true
+}

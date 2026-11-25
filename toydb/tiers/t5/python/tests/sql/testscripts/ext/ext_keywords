@@ -1,0 +1,77 @@
+# The extension keywords ANALYZE, CSV, EXPORT, IMPORT, JSON, SHOW, SQL,
+# STATEMENTS and STATISTICS are reserved like the other keywords.
+
+!> CREATE TABLE analyze (id INT PRIMARY KEY)
+!> CREATE TABLE t (id INT PRIMARY KEY, csv STRING)
+!> CREATE TABLE export (id INT PRIMARY KEY)
+!> CREATE TABLE import (id INT PRIMARY KEY)
+!> CREATE TABLE t (json STRING PRIMARY KEY)
+!> CREATE TABLE show (id INT PRIMARY KEY)
+!> SELECT 1 AS sql
+!> SELECT 1 AS Statements
+!> CREATE TABLE t (id INT PRIMARY KEY, STATISTICS INT)
+---
+Error: invalid input: expected identifier, got ANALYZE
+Error: invalid input: expected identifier, got CSV
+Error: invalid input: expected identifier, got EXPORT
+Error: invalid input: expected identifier, got IMPORT
+Error: invalid input: expected identifier, got JSON
+Error: invalid input: expected identifier, got SHOW
+Error: invalid input: expected identifier, got SQL
+Error: invalid input: expected identifier, got STATEMENTS
+Error: invalid input: expected identifier, got STATISTICS
+
+# Quoted, they are ordinary names, and the schema display quotes them.
+> CREATE TABLE "show" ("analyze" INT PRIMARY KEY, "csv" STRING, "json" STRING, "sql" BOOLEAN)
+> INSERT INTO "show" VALUES (1, 'a', 'b', TRUE)
+> SELECT "show"."csv", "json" AS "export" FROM "show"
+schema
+---
+'a', 'b'
+CREATE TABLE "show" (
+  "analyze" INTEGER PRIMARY KEY,
+  "csv" STRING DEFAULT NULL,
+  "json" STRING DEFAULT NULL,
+  "sql" BOOLEAN DEFAULT NULL
+)
+
+# Names that merely contain the keywords are unaffected.
+> CREATE TABLE shows (sqlite INT PRIMARY KEY, csv_file STRING, exported BOOLEAN)
+> INSERT INTO shows VALUES (1, 'x', FALSE)
+> SELECT * FROM shows
+---
+1, 'x', FALSE
+
+# The extension statements work on quoted names, and the extension outputs
+# write such names as stored (digests and SQL quote them).
+> ANALYZE "show"
+> SHOW STATISTICS "show"
+> EXPORT "show" AS CSV
+> EXPORT "show" AS SQL
+---
+'analyze', 1, 0, 1, 1, 1, 1, 1, NULL
+'csv', 1, 0, 1, 'a', 'a', 'a', 1, 1.0
+'json', 1, 0, 1, 'b', 'b', 'b', 1, 1.0
+'sql', 1, 0, 1, TRUE, TRUE, TRUE, 1, NULL
+analyze,csv,json,sql
+1,a,b,TRUE
+CREATE TABLE "show" (
+  "analyze" INTEGER PRIMARY KEY,
+  "csv" STRING DEFAULT NULL,
+  "json" STRING DEFAULT NULL,
+  "sql" BOOLEAN DEFAULT NULL
+);
+INSERT INTO "show" VALUES (1, 'a', 'b', TRUE);
+
+[json]> SHOW STATEMENTS
+---
+{"result":"select","columns":["digest","calls","errors","rows"],"rows":[["CREATE TABLE \"show\" (\"analyze\" INTEGER PRIMARY KEY, \"csv\" STRING, \"json\" STRING, \"sql\" BOOLEAN)",1,0,0],["INSERT INTO \"show\" VALUES (?, ?, ?, ?)",1,0,1],["SELECT \"show\".\"csv\", \"json\" AS \"export\" FROM \"show\"",1,0,1],["CREATE TABLE shows (sqlite INTEGER PRIMARY KEY, csv_file STRING, exported BOOLEAN)",1,0,0],["INSERT INTO shows VALUES (?, ?, ?)",1,0,1],["SELECT * FROM shows",1,0,1],["ANALYZE \"show\"",1,0,0],["SHOW STATISTICS \"show\"",1,0,4],["EXPORT \"show\" AS CSV",1,0,1],["EXPORT \"show\" AS SQL",1,0,1]]}
+
+# None of these statements can be explained.
+!> EXPLAIN SHOW STATEMENTS
+!> EXPLAIN EXPORT "show" AS CSV
+!> EXPLAIN IMPORT INTO "show" FROM CSV 'analyze'
+---
+Error: invalid input: EXPLAIN is not supported for SHOW
+Error: invalid input: EXPLAIN is not supported for EXPORT
+Error: invalid input: EXPLAIN is not supported for IMPORT

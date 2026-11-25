@@ -163,6 +163,42 @@ def simple_table(head, rows):
     return "\n".join(out)
 
 
+def token_table():
+    """Rust vs Python token totals per tier, over task/setting/repeat cells finished in both languages."""
+    M = dict(metrics)
+    part = ROOT / "analysis/t5r_partial_metrics.json"
+    partial = False
+    if part.exists() and not any(r.startswith("t5r_") for r in M):
+        M.update(json.loads(part.read_text()))
+        partial = True
+    tot = lambda m: m["total_in_tokens"] + m["out_tokens"]
+    pct = lambda r, p: f"{100 * (r - p) / p:+.0f}%" if p else "—"
+    rows = [("t1_", "1 · SQL core (Haiku-low, Opus-high)"), ("t2_", "2 · full toydb (Haiku-low, Opus-high)"),
+            ("t3r_", "3 · no README docs (3 models × 3)"), ("t4r_", "4 · (3 models × 3)"), ("t5r_", "5 · (3 models × 3)")]
+    out = ['<table><thead><tr><th>Tier</th><th class="n">Pairs</th><th class="n">Rust tokens</th><th class="n">Python tokens</th>'
+           '<th class="n">Rust vs Python</th><th class="n">Output only</th><th class="n">Haiku</th><th class="n">Sonnet</th>'
+           '<th class="n">Opus</th></tr></thead><tbody>']
+    for pre, label in rows:
+        cells = {}
+        for run, m in M.items():
+            if not run.startswith(pre):
+                continue
+            p = run.split("_")
+            cells.setdefault("_".join(p[:-2] + [p[-1]]), {})["py" if p[-2] == "py" else "rs"] = m
+        cells = {k: v for k, v in cells.items() if len(v) == 2}
+        if not cells:
+            continue
+        S = lambda l, f, ks=None: sum(f(v[l]) for k, v in cells.items() if ks is None or k.rsplit("_", 1)[1][:2] == ks)
+        per = [pct(S("rs", tot, s), S("py", tot, s)) for s in ("hl", "sm", "oh")]
+        lab = label + (" — partial, runs still going" if pre == "t5r_" and partial else "")
+        out.append(f"<tr><td>{e(lab)}</td><td class='n'>{len(cells)}</td><td class='n'>{S('rs', tot)/1e6:.0f}M</td>"
+                   f"<td class='n'>{S('py', tot)/1e6:.0f}M</td><td class='n'><b>{pct(S('rs', tot), S('py', tot))}</b></td>"
+                   f"<td class='n'>{pct(S('rs', lambda m: m['out_tokens']), S('py', lambda m: m['out_tokens']))}</td>"
+                   + "".join(f"<td class='n'>{x}</td>" for x in per) + "</tr>")
+    out.append("</tbody></table>")
+    return "\n".join(out)
+
+
 def bullets(items):
     return "<ul>" + "".join(f"<li>{x}</li>" for x in items) + "</ul>"
 
@@ -312,6 +348,24 @@ code {{ font: 12.5px var(--mono); background: var(--chip); padding: 1px 4px; bor
   {bullets(NOTES.get('tier4_sites', []))}
   <h3>All tier-4 runs (after the post-run test audit)</h3>
   <div class="scroll">{toydb_runs('t4', 't4r_')}</div>
+</section>
+
+<section>
+  <h2>Tier 5 · nine more extension layers, about 19.2k lines Rust / 20.7k Python (Haiku, Sonnet, Opus · 3 repeats each)</h2>
+  {bullets(NOTES.get('tier5', []))}
+  <div class="scroll">{simple_table(['Model', 'Rust pass', 'Python pass', 'Missed a compiler-flagged site (Rust · Python, excl. between_in)', 'Hidden scripts passed (Rust · Python)', 'Output tok/run (Rust · Python)', 'Turns/run'], NOTES.get('tier5_models', []))}</div>
+  <div class="scroll">{simple_table(['Task', 'Haiku R/P', 'Sonnet R/P', 'Opus R/P', 'Main failures'], NOTES.get('tier5_tasks', []))}</div>
+  <h3>Where the change had to land, and who got there</h3>
+  {bullets(NOTES.get('tier5_sites', []))}
+  <h3>All tier-5 runs</h3>
+  <div class="scroll">{toydb_runs('t5', 't5r_')}</div>
+</section>
+
+<section>
+  <h2>Token cost: Rust vs Python</h2>
+  {bullets(NOTES.get('tokens', []))}
+  <div class="scroll">{token_table()}</div>
+  <p class="foot">Tokens = input (uncached + cache reads + cache writes) + output, summed over every task × setting × repeat cell that finished in both languages. Rust vs Python = (Rust − Python) / Python. The Haiku/Sonnet/Opus columns are the same ratio per model; tiers 1–2 have no Sonnet runs.</p>
 </section>
 
 <section>

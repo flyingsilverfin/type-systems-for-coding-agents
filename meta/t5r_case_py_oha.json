@@ -1,0 +1,15 @@
+{
+ "run": "t5r_case_py_oha",
+ "task": "case",
+ "suite": "toydb-t5",
+ "tier": "t5",
+ "lang": "python",
+ "model": "opus",
+ "effort": "high",
+ "ws": "/home/user/agentbench/runs/t5r_case_py_oha",
+ "hint": true,
+ "readme_from": "t2",
+ "baseline": "d762ba44319eb2ec6237bb7fc2c4bc849b135791",
+ "created": 1795537390.1376672,
+ "warm_ok": true
+}

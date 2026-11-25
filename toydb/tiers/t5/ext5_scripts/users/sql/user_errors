@@ -1,0 +1,157 @@
+# Parsing, FORMAT, digests and the "not supported" checks of the users and
+# privileges statements.
+
+> CREATE TABLE t (id INT PRIMARY KEY)
+> CREATE USER alice
+> CREATE USER staff
+---
+ok
+
+# The new keywords are reserved; quoted, they are names.
+!> CREATE TABLE user (id INT PRIMARY KEY)
+!> SELECT 1 AS grants
+!> CREATE USER role
+> CREATE USER "role"
+> CREATE TABLE users_old (id INT PRIMARY KEY, "check" INT, checked INT)
+---
+Error: invalid input: expected identifier, got USER
+Error: invalid input: expected identifier, got GRANTS
+Error: invalid input: expected identifier, got ROLE
+
+# Parse errors.
+!> CREATE USER
+!> CREATE USER 1
+!> CREATE USER u PASSWORD x
+!> CREATE USER u SUPERUSER PASSWORD 'p'
+!> CREATE USER u PASSWORD 'p' PASSWORD 'q'
+!> CREATE USERS u
+!> DROP USER
+!> DROP USER u v
+!> GRANT
+!> GRANT SELECT t TO alice
+!> GRANT SELECT ON t alice
+!> GRANT SELECT ON t TO
+!> GRANT SELECT, ON t TO alice
+!> GRANT SELECT, x ON t TO alice
+!> GRANT ALL ON t TO alice
+!> GRANT staff alice
+!> REVOKE SELECT ON t TO alice
+!> REVOKE staff TO alice
+!> REVOKE staff FROM
+!> SET ROLE
+!> SET ROLE 1
+!> SET x
+!> RESET x
+!> RESET ROLE x
+!> SHOW USER
+!> SHOW GRANT
+!> SHOW USERS x
+---
+Error: invalid input: unexpected end of input
+Error: invalid input: expected identifier, got 1
+Error: invalid input: expected string, found x
+Error: invalid input: unexpected token PASSWORD
+Error: invalid input: unexpected token PASSWORD
+Error: invalid input: expected token TABLE, found USERS
+Error: invalid input: unexpected end of input
+Error: invalid input: unexpected token v
+Error: invalid input: unexpected end of input
+Error: invalid input: expected token ON, found t
+Error: invalid input: expected token TO, found alice
+Error: invalid input: unexpected end of input
+Error: invalid input: unexpected token ON
+Error: invalid input: unexpected token x
+Error: invalid input: expected token TO, found ON
+Error: invalid input: expected token TO, found alice
+Error: invalid input: expected token FROM, found TO
+Error: invalid input: expected token FROM, found TO
+Error: invalid input: unexpected end of input
+Error: invalid input: unexpected end of input
+Error: invalid input: expected identifier, got 1
+Error: invalid input: expected token ROLE, found x
+Error: invalid input: expected token ROLE, found x
+Error: invalid input: unexpected token x
+Error: invalid input: unexpected token USER
+Error: invalid input: unexpected token GRANT
+Error: invalid input: unexpected token x
+
+# FORMAT: one line each, names quoted to read back, literals as written.
+> FORMAT create user Bob password 'it''s' superuser
+> FORMAT drop user if exists "Bob"
+> FORMAT grant select, insert, select on T to "role"
+> FORMAT revoke delete on t from alice
+> FORMAT grant staff to alice
+> FORMAT revoke staff from alice
+> FORMAT set role alice
+> FORMAT reset role
+> FORMAT show users
+> FORMAT show grants
+---
+CREATE USER bob PASSWORD 'it''s' SUPERUSER
+DROP USER IF EXISTS "Bob"
+GRANT SELECT, INSERT, SELECT ON t TO "role"
+REVOKE DELETE ON t FROM alice
+GRANT staff TO alice
+REVOKE staff FROM alice
+SET ROLE alice
+RESET ROLE
+SHOW USERS
+SHOW GRANTS
+
+# None of the statements is a planned statement.
+!> EXPLAIN CREATE USER x
+!> DESCRIBE DROP USER x
+!> ESTIMATE GRANT SELECT ON t TO alice
+!> PREPARE p AS REVOKE staff FROM alice
+!> EXPLAIN SET ROLE alice
+!> DESCRIBE RESET ROLE
+!> PREPARE p AS SHOW USERS
+---
+Error: invalid input: EXPLAIN is not supported for CREATE USER
+Error: invalid input: DESCRIBE is not supported for DROP USER
+Error: invalid input: ESTIMATE is not supported for GRANT
+Error: invalid input: PREPARE is not supported for REVOKE
+Error: invalid input: EXPLAIN is not supported for SET
+Error: invalid input: DESCRIBE is not supported for RESET
+Error: invalid input: PREPARE is not supported for SHOW
+
+# LINT has no rules for them.
+> LINT CREATE USER x PASSWORD 'p'
+> LINT GRANT DELETE ON t TO alice
+---
+ok
+
+# Digests: literals (the password) as ?, names as the schema display writes
+# them.
+d:> CREATE USER "Dan" PASSWORD 'secret'
+d:> GRANT SELECT, DELETE ON t TO "Dan"
+d:!> GRANT SELECT ON nosuch TO "Dan"
+d:> REVOKE DELETE ON t FROM "Dan"
+d:> GRANT staff TO "Dan"
+d:> SET ROLE "Dan"
+d:> RESET ROLE
+d:> SHOW USERS
+d:> SHOW GRANTS
+d:> DROP USER IF EXISTS "Dan"
+d:[header]> SHOW STATEMENTS
+---
+d: Error: invalid input: table nosuch does not exist
+d: 'Dan', FALSE, TRUE, 'staff'
+d: 'admin', TRUE, FALSE, ''
+d: 'alice', FALSE, FALSE, ''
+d: 'role', FALSE, FALSE, ''
+d: 'staff', FALSE, FALSE, ''
+d: 't', 'admin', 'OWNER'
+d: 't', 'Dan', 'SELECT'
+d: 'users_old', 'admin', 'OWNER'
+d: digest, calls, errors, rows
+d: 'CREATE USER Dan PASSWORD ?', 1, 0, 0
+d: 'GRANT SELECT, DELETE ON t TO Dan', 1, 0, 0
+d: 'GRANT SELECT ON nosuch TO Dan', 1, 1, 0
+d: 'REVOKE DELETE ON t FROM Dan', 1, 0, 0
+d: 'GRANT staff TO Dan', 1, 0, 0
+d: 'SET ROLE Dan', 1, 0, 0
+d: 'RESET ROLE', 1, 0, 0
+d: 'SHOW USERS', 1, 0, 5
+d: 'SHOW GRANTS', 1, 0, 3
+d: 'DROP USER IF EXISTS Dan', 1, 0, 0

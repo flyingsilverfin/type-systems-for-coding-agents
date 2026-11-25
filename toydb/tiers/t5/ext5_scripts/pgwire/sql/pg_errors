@@ -1,0 +1,112 @@
+# Error codes by kind of error, and PostgreSQL connections as sessions of the
+# server: their statements are checked, audited and listed like those of any
+# other session.
+
+> CREATE TABLE t (id INT PRIMARY KEY, v STRING)
+> INSERT INTO t VALUES (1, 'a')
+> CREATE USER alice
+pg startup
+a:pg startup user=alice
+---
+AuthenticationOk
+ParameterStatus application_name= client_encoding=UTF8 DateStyle=ISO integer_datetimes=on is_superuser=on server_encoding=UTF8 server_version=14.0 session_authorization=admin standard_conforming_strings=on
+BackendKeyData
+ReadyForQuery idle
+a: AuthenticationOk
+a: ParameterStatus application_name= client_encoding=UTF8 DateStyle=ISO integer_datetimes=on is_superuser=off server_encoding=UTF8 server_version=14.0 session_authorization=alice standard_conforming_strings=on
+a: BackendKeyData
+a: ReadyForQuery idle
+
+# invalid input 42000, permission denied 42501, read-only transaction 25006,
+# serialization failure 40001.
+pg query "SELECT 1 / 0"
+a:pg query "DELETE FROM t"
+pg query "BEGIN READ ONLY; DELETE FROM t"
+pg query "ROLLBACK"
+pg query "BEGIN; UPDATE t SET v = 'x'"
+b:> BEGIN
+b:!> UPDATE t SET v = 'y'
+b:> ROLLBACK
+b:> BEGIN
+pg query "COMMIT"
+b:!> UPDATE t SET v = 'z'
+b:> ROLLBACK
+c:pg startup
+pg query "BEGIN; UPDATE t SET v = 'p'"
+c:pg query "UPDATE t SET v = 'q'"
+pg query "ROLLBACK"
+---
+ErrorResponse ERROR 42000 invalid input: can't divide by zero
+ReadyForQuery idle
+a: ErrorResponse ERROR 42501 permission denied: user alice has no DELETE privilege on t
+a: ReadyForQuery idle
+CommandComplete BEGIN
+ErrorResponse ERROR 25006 read-only transaction
+ReadyForQuery transaction
+CommandComplete ROLLBACK
+ReadyForQuery idle
+CommandComplete BEGIN
+CommandComplete UPDATE 1
+ReadyForQuery transaction
+b: Error: serialization failure, retry transaction
+CommandComplete COMMIT
+ReadyForQuery idle
+b: Error: serialization failure, retry transaction
+c: AuthenticationOk
+c: ParameterStatus application_name= client_encoding=UTF8 DateStyle=ISO integer_datetimes=on is_superuser=on server_encoding=UTF8 server_version=14.0 session_authorization=admin standard_conforming_strings=on
+c: BackendKeyData
+c: ReadyForQuery idle
+CommandComplete BEGIN
+CommandComplete UPDATE 1
+ReadyForQuery transaction
+c: ErrorResponse ERROR 40001 serialization failure, retry transaction
+c: ReadyForQuery idle
+CommandComplete ROLLBACK
+ReadyForQuery idle
+
+# The audit log records the statements of PostgreSQL sessions; their
+# connections are sessions of the server (the SQL runner creates a prefix's
+# own session, then the connection's).
+> SHOW AUDIT SINCE 2
+> SHOW SESSIONS
+---
+3, 'admin', 'ROLE', 'create_user', '', NULL
+4, 'admin', 'MISC', 'select', '', 'invalid input: can\'t divide by zero'
+5, 'alice', 'WRITE', 'delete', 't (delete)', 'permission denied: user alice has no DELETE privilege on t'
+6, 'admin', 'MISC', 'begin', '', NULL
+7, 'admin', 'WRITE', 'delete', 't (delete)', 'read-only transaction'
+8, 'admin', 'MISC', 'rollback', '', NULL
+9, 'admin', 'MISC', 'begin', '', NULL
+10, 'admin', 'WRITE', 'update', 't (update)', NULL
+11, 'admin', 'MISC', 'begin', '', NULL
+12, 'admin', 'WRITE', 'update', 't (update)', 'serialization failure, retry transaction'
+13, 'admin', 'MISC', 'rollback', '', NULL
+14, 'admin', 'MISC', 'begin', '', NULL
+15, 'admin', 'MISC', 'commit', '', NULL
+16, 'admin', 'WRITE', 'update', 't (update)', 'serialization failure, retry transaction'
+17, 'admin', 'MISC', 'rollback', '', NULL
+18, 'admin', 'MISC', 'begin', '', NULL
+19, 'admin', 'WRITE', 'update', 't (update)', NULL
+20, 'admin', 'WRITE', 'update', 't (update)', 'serialization failure, retry transaction'
+21, 'admin', 'MISC', 'rollback', '', NULL
+1, 'admin', 'admin', NULL, 3
+2, 'admin', 'admin', NULL, 10
+3, 'admin', 'admin', NULL, 0
+4, 'alice', 'alice', NULL, 1
+5, 'admin', 'admin', NULL, 6
+6, 'admin', 'admin', NULL, 0
+7, 'admin', 'admin', NULL, 1
+
+# Terminate ends a connection's session.
+c:pg terminate
+a:pg query "SHOW SESSIONS"
+---
+a: RowDescription session int8(20,8), username text(25,-1), login text(25,-1), txn text(25,-1), executed int8(20,8)
+a: DataRow '1', 'admin', 'admin', NULL, '4'
+a: DataRow '2', 'admin', 'admin', NULL, '10'
+a: DataRow '3', 'admin', 'admin', NULL, '0'
+a: DataRow '4', 'alice', 'alice', NULL, '1'
+a: DataRow '5', 'admin', 'admin', NULL, '6'
+a: DataRow '6', 'admin', 'admin', NULL, '0'
+a: CommandComplete SELECT 6
+a: ReadyForQuery idle

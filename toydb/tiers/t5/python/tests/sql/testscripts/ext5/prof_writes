@@ -1,0 +1,81 @@
+# Writes and definitions are executed, with their effects. A write's statement
+# line has the count of its result; CreateTable and DropTable have 0.
+
+> CREATE TABLE t (id INT PRIMARY KEY, v INT)
+> INSERT INTO t VALUES (1, 10), (2, 20), (3, 30)
+> EXPLAIN (ANALYZE) INSERT INTO t VALUES (4, 40), (5, 50)
+> EXPLAIN (ANALYZE) UPDATE t SET v = v + 1 WHERE v > 15
+> EXPLAIN (ANALYZE) DELETE FROM t WHERE id = 1 OR id = 7
+> SELECT * FROM t
+---
+'Insert: t', 2, 2
+'└─ Values: 2 rows', 2, 2
+'Update: t (v=t.v + 1)', 333, 4
+'└─ Scan: t (t.v > 15)', 333, 4
+'Delete: t', 2, 1
+'└─ KeyLookup: t (1, 7)', 2, 1
+2, 21
+3, 31
+4, 41
+5, 51
+
+> EXPLAIN (ANALYZE) CREATE TABLE u (id INT PRIMARY KEY, CHECK (id < 10))
+> EXPLAIN (ANALYZE) INSERT INTO u VALUES (1)
+!> EXPLAIN (ANALYZE) INSERT INTO u VALUES (2), (20)
+> SELECT * FROM u
+> EXPLAIN (ANALYZE) DROP TABLE u
+!> SELECT * FROM u
+---
+'CreateTable: u', 0, 0
+'Insert: u', 1, 1
+'└─ Values: 1', 1, 1
+Error: invalid input: row 20 violates check constraint u_check1
+1
+'DropTable: u', 0, 0
+Error: invalid input: table u does not exist
+
+# Transactions: the statement runs in the session's transaction, or in an
+# implicit one of its own.
+> BEGIN
+> EXPLAIN (ANALYZE) DELETE FROM t
+> SELECT count(*) FROM t
+> ROLLBACK
+> SELECT count(*) FROM t
+> BEGIN READ ONLY
+> EXPLAIN (ANALYZE) SELECT count(*) FROM t
+!> EXPLAIN (ANALYZE) DELETE FROM t
+> COMMIT
+---
+'Delete: t', 1000, 4
+'└─ Scan: t', 1000, 4
+0
+4
+'Aggregate: count(TRUE)', 1, 1
+'└─ Scan: t', 1000, 4
+Error: read-only transaction
+
+# Prepared statements: EXPLAIN (ANALYZE) EXECUTE executes the bound statement,
+# but is not an execution of the prepared statement.
+> PREPARE del (INT) AS DELETE FROM t WHERE id = $1
+> EXPLAIN (ANALYZE) EXECUTE del (2)
+> EXECUTE del (3)
+> SHOW PREPARED
+> SELECT id FROM t
+---
+'Delete: t', 1, 1
+'└─ KeyLookup: t (2)', 1, 1
+'del', 'INTEGER', 'DELETE FROM t WHERE id = $1', 1, 1
+4
+5
+
+# The privileges of the statement are checked, and policies apply to the rows
+# that the user's statement reads.
+> CREATE USER alice
+> GRANT SELECT ON t TO alice
+> CREATE POLICY big ON t TO alice USING (v > 45)
+a:> SET ROLE alice
+a:> EXPLAIN (ANALYZE) SELECT * FROM t
+a:!> EXPLAIN (ANALYZE) DELETE FROM t
+---
+a: 'Scan: t', 1000, 1
+a: Error: permission denied: user alice has no DELETE privilege on t

@@ -1,0 +1,15 @@
+{
+ "run": "t5r_alter_py_smc",
+ "task": "alter",
+ "suite": "toydb-t5",
+ "tier": "t5",
+ "lang": "python",
+ "model": "sonnet",
+ "effort": "medium",
+ "ws": "/home/user/agentbench/runs/t5r_alter_py_smc",
+ "hint": true,
+ "readme_from": "t2",
+ "baseline": "f7dfffacd21ce2a837b76029776d2db68c3538f4",
+ "created": 1795540391.0390468,
+ "warm_ok": true
+}

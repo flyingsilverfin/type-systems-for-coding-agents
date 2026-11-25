@@ -1,0 +1,65 @@
+# The audit log: every statement that a server's sessions execute, with the
+# user, the class, the statement name, the objects it accesses and its error.
+
+> CREATE TABLE t (id INT PRIMARY KEY, v STRING)
+> INSERT INTO t VALUES (1, 'a'), (2, 'b')
+> SELECT * FROM t WHERE id = 1
+!> SELECT * FROM nosuch
+!> SELECT FROM t
+> UPDATE t SET v = 'c' WHERE id = 2
+[header]> SHOW AUDIT
+---
+1, 'a'
+Error: invalid input: table nosuch does not exist
+Error: invalid input: expected expression atom, found FROM
+seq, username, class, statement, objects, error
+1, 'admin', 'DDL', 'create_table', 't (create)', NULL
+2, 'admin', 'WRITE', 'insert', 't (insert)', NULL
+3, 'admin', 'READ', 'select', 't (read)', NULL
+4, 'admin', 'READ', 'select', 'nosuch (read)', 'invalid input: table nosuch does not exist'
+5, 'admin', 'WRITE', 'update', 't (update)', NULL
+
+# SHOW AUDIT is not recorded. SINCE shows the entries above a number. All
+# sessions of the server share the log.
+> SHOW AUDIT SINCE 4
+a:> SELECT v FROM t WHERE id = 2
+b:> SHOW AUDIT SINCE 5
+b:> SHOW AUDIT SINCE 6
+b:> SHOW AUDIT SINCE 18446744073709551615
+---
+5, 'admin', 'WRITE', 'update', 't (update)', NULL
+a: 'c'
+b: 6, 'admin', 'READ', 'select', 't (read)', NULL
+
+# The user is the session's current user when the statement began. SHOW
+# AUDIT requires a superuser.
+> CREATE USER alice
+c:> SET ROLE alice
+c:> SELECT 1 + 1
+c:!> SHOW AUDIT
+c:!> SHOW AUDIT SINCE 7
+c:> RESET ROLE
+[json]> SHOW AUDIT SINCE 7
+---
+c: 2
+c: Error: permission denied: user alice is not a superuser
+c: Error: permission denied: user alice is not a superuser
+{"result":"select","columns":["seq","username","class","statement","objects","error"],"rows":[[8,"admin","MISC","set_role","",null],[9,"alice","MISC","select","",null],[10,"alice","MISC","reset_role","",null]]}
+
+# Parse errors.
+!> SHOW AUDIT SINCE
+!> SHOW AUDIT SINCE x
+!> SHOW AUDIT SINCE -1
+!> SHOW AUDIT x
+!> SHOW AUDITS
+---
+Error: invalid input: unexpected end of input
+Error: invalid input: unexpected token x, wanted number
+Error: invalid input: unexpected token -, wanted number
+Error: invalid input: unexpected token x
+Error: invalid input: unexpected token audits
+
+# Statements that fail to parse are not recorded.
+> SHOW AUDIT SINCE 10
+---
+ok

@@ -1,0 +1,52 @@
+# The log records statements as they are executed, whatever their
+# transaction does: statements of rolled-back transactions stay recorded, and
+# so do statements that fail in an explicit transaction.
+
+> CREATE TABLE t (id INT PRIMARY KEY, v STRING)
+a:> BEGIN
+a:> INSERT INTO t VALUES (1, 'a')
+a:!> INSERT INTO t VALUES (1, 'b')
+a:> ROLLBACK
+b:> BEGIN READ ONLY
+b:!> INSERT INTO t VALUES (3, 'c')
+b:> COMMIT
+---
+a: Error: invalid input: primary key 1 already exists
+b: Error: read-only transaction
+
+# Two transactions writing the same row: the conflict is recorded with its
+# error.
+a:> BEGIN
+b:> BEGIN
+a:> INSERT INTO t VALUES (2, 'a')
+b:!> INSERT INTO t VALUES (2, 'b')
+a:> COMMIT
+b:> ROLLBACK
+> SHOW AUDIT
+---
+b: Error: serialization failure, retry transaction
+1, 'admin', 'DDL', 'create_table', 't (create)', NULL
+2, 'admin', 'MISC', 'begin', '', NULL
+3, 'admin', 'WRITE', 'insert', 't (insert)', NULL
+4, 'admin', 'WRITE', 'insert', 't (insert)', 'invalid input: primary key 1 already exists'
+5, 'admin', 'MISC', 'rollback', '', NULL
+6, 'admin', 'MISC', 'begin', '', NULL
+7, 'admin', 'WRITE', 'insert', 't (insert)', 'read-only transaction'
+8, 'admin', 'MISC', 'commit', '', NULL
+9, 'admin', 'MISC', 'begin', '', NULL
+10, 'admin', 'MISC', 'begin', '', NULL
+11, 'admin', 'WRITE', 'insert', 't (insert)', NULL
+12, 'admin', 'WRITE', 'insert', 't (insert)', 'serialization failure, retry transaction'
+13, 'admin', 'MISC', 'commit', '', NULL
+14, 'admin', 'MISC', 'rollback', '', NULL
+
+# SHOW AUDIT uses no transaction: inside one it shows entries recorded after
+# the transaction began.
+a:> BEGIN
+b:> SELECT * FROM t
+a:> SHOW AUDIT SINCE 14
+a:> COMMIT
+---
+b: 2, 'a'
+a: 15, 'admin', 'MISC', 'begin', '', NULL
+a: 16, 'admin', 'READ', 'select', 't (read)', NULL

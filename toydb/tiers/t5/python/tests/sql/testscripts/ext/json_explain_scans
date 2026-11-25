@@ -1,0 +1,102 @@
+# JSON output: plans of single-table queries (scans, key and index lookups,
+# filters, projections, constants, limits, ordering).
+
+> CREATE TABLE item (id INT PRIMARY KEY, name STRING INDEX, price FLOAT, qty INT)
+> INSERT INTO item VALUES (1, 'apple', 1.5, 10), (2, 'pear', 2.25, 0), (3, 'fig', NULL, 7)
+---
+ok
+
+# A full scan. EXPLAIN executes nothing, so only the JSON line is printed.
+[json]> EXPLAIN SELECT * FROM item
+---
+{"result":"explain","plan":{"statement":"select","root":{"node":"scan","table":"item","alias":null,"filter":null}}}
+
+# A pushed-down filter and a projection over it.
+[plan]> SELECT id, price IS NAN, NOT qty > 1 FROM item WHERE price IS NULL OR price > 2.0
+[json]> EXPLAIN SELECT id, price IS NAN, NOT qty > 1 FROM item WHERE price IS NULL OR price > 2.0
+---
+Projection: item.id, item.price IS NAN, NOT item.qty > 1
+└─ Scan: item (item.price IS NULL OR item.price > 2.0)
+2, FALSE, TRUE
+3, NULL, FALSE
+{"result":"explain","plan":{"statement":"select","root":{"node":"projection","expressions":[{"expr":{"column":0,"label":"item.id"},"alias":null},{"expr":{"op":"_ IS NAN","args":[{"column":2,"label":"item.price"}]},"alias":null},{"expr":{"op":"NOT _","args":[{"op":"_ > _","args":[{"column":3,"label":"item.qty"},{"constant":1}]}]},"alias":null}],"source":{"node":"scan","table":"item","alias":null,"filter":{"op":"_ OR _","args":[{"op":"_ IS NULL","args":[{"column":2,"label":"item.price"}]},{"op":"_ > _","args":[{"column":2,"label":"item.price"},{"constant":2.0}]}]}}}}}
+
+# A NaN constant uses the typed form.
+[json]> EXPLAIN SELECT * FROM item WHERE price = NAN
+---
+{"result":"explain","plan":{"statement":"select","root":{"node":"scan","table":"item","alias":null,"filter":{"op":"_ = _","args":[{"column":2,"label":"item.price"},{"constant":{"type":"FLOAT","value":"NaN"}}]}}}}
+
+# Primary key lookups list the keys in plan order, all of them even when the
+# plan display only shows their number.
+[json]> EXPLAIN SELECT * FROM item WHERE id = 2
+[json]> EXPLAIN SELECT * FROM item WHERE id = 3 OR id = 1
+---
+{"result":"explain","plan":{"statement":"select","root":{"node":"key_lookup","table":"item","alias":null,"keys":[2]}}}
+{"result":"explain","plan":{"statement":"select","root":{"node":"key_lookup","table":"item","alias":null,"keys":[3,1]}}}
+
+[plan]> SELECT * FROM item WHERE id = 10 OR id = 9 OR id = 8 OR id = 7 OR id = 6 OR id = 5 OR id = 4 OR id = 3 OR id = 2 OR id = 1
+[json]> EXPLAIN SELECT * FROM item WHERE id = 10 OR id = 9 OR id = 8 OR id = 7 OR id = 6 OR id = 5 OR id = 4 OR id = 3 OR id = 2 OR id = 1
+---
+KeyLookup: item (10 keys)
+3, 'fig', NULL, 7
+2, 'pear', 2.25, 0
+1, 'apple', 1.5, 10
+{"result":"explain","plan":{"statement":"select","root":{"node":"key_lookup","table":"item","alias":null,"keys":[10,9,8,7,6,5,4,3,2,1]}}}
+
+# Table aliases, column aliases and secondary index lookups.
+[json]> EXPLAIN SELECT x.id AS i FROM item AS x WHERE x.id = 1
+---
+{"result":"explain","plan":{"statement":"select","root":{"node":"projection","expressions":[{"expr":{"column":0,"label":"x.id"},"alias":"i"}],"source":{"node":"key_lookup","table":"item","alias":"x","keys":[1]}}}}
+
+[json]> EXPLAIN SELECT id FROM item WHERE name = 'it''s' OR name = 'a"b'
+---
+{"result":"explain","plan":{"statement":"select","root":{"node":"projection","expressions":[{"expr":{"column":0,"label":"item.id"},"alias":null}],"source":{"node":"index_lookup","table":"item","alias":null,"column":"name","values":["it's","a\"b"]}}}}
+
+[plan]> SELECT * FROM item i WHERE i.name = 'fig' OR i.name IS NULL
+[json]> EXPLAIN SELECT * FROM item i WHERE i.name = 'fig' OR i.name IS NULL
+---
+IndexLookup: item.name as i.name ('fig', NULL)
+3, 'fig', NULL, 7
+{"result":"explain","plan":{"statement":"select","root":{"node":"index_lookup","table":"item","alias":"i","column":"name","values":["fig",null]}}}
+
+# A remaining filter above a lookup.
+[json]> EXPLAIN SELECT id FROM item WHERE id = 1 AND qty > 2
+---
+{"result":"explain","plan":{"statement":"select","root":{"node":"projection","expressions":[{"expr":{"column":0,"label":"item.id"},"alias":null}],"source":{"node":"filter","predicate":{"op":"_ > _","args":[{"column":3,"label":"item.qty"},{"constant":2}]},"source":{"node":"key_lookup","table":"item","alias":null,"keys":[1]}}}}}
+
+# Nothing, and constants without FROM (folded) over a blank Values row.
+[json]> EXPLAIN SELECT * FROM item WHERE FALSE
+[json]> EXPLAIN SELECT 1 + 2, 'x' AS s
+---
+{"result":"explain","plan":{"statement":"select","root":{"node":"nothing"}}}
+{"result":"explain","plan":{"statement":"select","root":{"node":"projection","expressions":[{"expr":{"constant":3},"alias":null},{"expr":{"constant":"x"},"alias":"s"}],"source":{"node":"values","rows":[[]]}}}}
+
+# Limit, offset, ordering by a hidden column, and the remap that drops it.
+[json]> EXPLAIN SELECT * FROM item LIMIT 2 OFFSET 1
+---
+{"result":"explain","plan":{"statement":"select","root":{"node":"limit","limit":2,"source":{"node":"offset","offset":1,"source":{"node":"scan","table":"item","alias":null,"filter":null}}}}}
+
+[plan]> SELECT id, name FROM item ORDER BY qty LIMIT 1
+[json]> EXPLAIN SELECT id, name FROM item ORDER BY qty LIMIT 1
+---
+Remap: item.id, item.name (dropped: item.qty)
+└─ Limit: 1
+   └─ Order: item.qty asc
+      └─ Projection: item.id, item.name, item.qty
+         └─ Scan: item
+2, 'pear'
+{"result":"explain","plan":{"statement":"select","root":{"node":"remap","columns":[{"column":0,"label":"item.id"},{"column":1,"label":"item.name"}],"dropped":[{"column":2,"label":"item.qty"}],"source":{"node":"limit","limit":1,"source":{"node":"order","key":[{"expr":{"column":2,"label":"item.qty"},"direction":"asc"}],"source":{"node":"projection","expressions":[{"expr":{"column":0,"label":"item.id"},"alias":null},{"expr":{"column":1,"label":"item.name"},"alias":null},{"expr":{"column":3,"label":"item.qty"},"alias":null}],"source":{"node":"scan","table":"item","alias":null,"filter":null}}}}}}}
+
+[json]> EXPLAIN SELECT name, qty * 2 AS q FROM item WHERE qty > 5 ORDER BY price DESC
+---
+{"result":"explain","plan":{"statement":"select","root":{"node":"remap","columns":[{"column":0,"label":"item.name"},{"column":1,"label":"q"}],"dropped":[{"column":2,"label":"item.price"}],"source":{"node":"order","key":[{"expr":{"column":2,"label":"item.price"},"direction":"desc"}],"source":{"node":"projection","expressions":[{"expr":{"column":1,"label":"item.name"},"alias":null},{"expr":{"op":"_ * _","args":[{"column":3,"label":"item.qty"},{"constant":2}]},"alias":"q"},{"expr":{"column":2,"label":"item.price"},"alias":null}],"source":{"node":"scan","table":"item","alias":null,"filter":{"op":"_ > _","args":[{"column":3,"label":"item.qty"},{"constant":5}]}}}}}}}
+
+# The query itself runs as before.
+[plan]> SELECT name, qty * 2 AS q FROM item WHERE qty > 5 ORDER BY price DESC
+---
+Remap: item.name, q (dropped: item.price)
+└─ Order: item.price desc
+   └─ Projection: item.name, item.qty * 2 as q, item.price
+      └─ Scan: item (item.qty > 5)
+'apple', 20
+'fig', 14

@@ -1,0 +1,78 @@
+# System tables of the catalog: toydb_tables and toydb_columns, computed when
+# they are read, in the statement's transaction.
+
+> CREATE TABLE dept (id INT PRIMARY KEY, name STRING NOT NULL UNIQUE)
+> CREATE TABLE emp (id INT PRIMARY KEY, name STRING DEFAULT 'it''s', dept_id INT REFERENCES dept, salary FLOAT DEFAULT 1.5, active BOOLEAN NOT NULL DEFAULT TRUE INDEX, CHECK (salary > 0), CHECK (id > 0))
+> CREATE USER alice
+a:> SET ROLE alice
+a:> CREATE TABLE "Mine" (id STRING PRIMARY KEY)
+> CREATE POLICY p ON emp USING (TRUE)
+[header]> SELECT * FROM toydb_tables
+---
+toydb_tables.name, toydb_tables.owner, toydb_tables.primary_key, toydb_tables.columns, toydb_tables.checks, toydb_tables.policies
+'Mine', 'alice', 'id', 1, 0, 0
+'dept', 'admin', 'id', 2, 0, 0
+'emp', 'admin', 'id', 5, 2, 1
+
+[header]> SELECT * FROM toydb_columns
+---
+toydb_columns.table_name, toydb_columns.name, toydb_columns.position, toydb_columns.type, toydb_columns.nullable, toydb_columns.default_value, toydb_columns.primary_key, toydb_columns.is_unique, toydb_columns.has_index, toydb_columns.references_table
+'Mine', 'id', 1, 'STRING', FALSE, NULL, TRUE, TRUE, FALSE, NULL
+'dept', 'id', 1, 'INTEGER', FALSE, NULL, TRUE, TRUE, FALSE, NULL
+'dept', 'name', 2, 'STRING', FALSE, NULL, FALSE, TRUE, TRUE, NULL
+'emp', 'id', 1, 'INTEGER', FALSE, NULL, TRUE, TRUE, FALSE, NULL
+'emp', 'name', 2, 'STRING', TRUE, '\'it\'\'s\'', FALSE, FALSE, FALSE, NULL
+'emp', 'dept_id', 3, 'INTEGER', TRUE, 'NULL', FALSE, FALSE, TRUE, 'dept'
+'emp', 'salary', 4, 'FLOAT', TRUE, '1.5', FALSE, FALSE, FALSE, NULL
+'emp', 'active', 5, 'BOOLEAN', FALSE, 'TRUE', FALSE, FALSE, TRUE, NULL
+
+# System tables are planned as SystemTable nodes; conditions stay above them.
+[plan]> SELECT name FROM toydb_tables WHERE owner = 'admin'
+[plan]> SELECT c.name, c.position FROM toydb_columns AS c WHERE c.table_name = 'emp' AND c.has_index ORDER BY c.position DESC
+[json]> EXPLAIN SELECT * FROM toydb_tables AS t
+---
+Projection: toydb_tables.name
+└─ Filter: toydb_tables.owner = 'admin'
+   └─ SystemTable: toydb_tables
+'dept'
+'emp'
+Order: c.position desc
+└─ Projection: c.name, c.position
+   └─ Filter: c.table_name = 'emp' AND c.has_index
+      └─ SystemTable: toydb_columns as c
+'active', 5
+'dept_id', 3
+{"result":"explain","plan":{"statement":"select","root":{"node":"system_table","table":"toydb_tables","alias":"t"}}}
+
+# DESCRIBE describes their columns with the declared types and nullability;
+# ESTIMATE estimates a SystemTable node, which has no input, at 0 rows.
+[header]> DESCRIBE toydb_tables
+> DESCRIBE SELECT default_value, references_table FROM toydb_columns
+> ESTIMATE SELECT * FROM toydb_tables WHERE columns > 1
+---
+column, type, nullable
+'name', 'STRING', FALSE
+'owner', 'STRING', FALSE
+'primary_key', 'STRING', FALSE
+'columns', 'INTEGER', FALSE
+'checks', 'INTEGER', FALSE
+'policies', 'INTEGER', FALSE
+'toydb_columns.default_value', 'STRING', TRUE
+'toydb_columns.references_table', 'STRING', TRUE
+'Filter: toydb_tables.columns > 1', 0
+'└─ SystemTable: toydb_tables', 0
+
+# The rows are what the statement's transaction sees.
+b:> BEGIN
+b:> CREATE TABLE tmp (k BOOLEAN PRIMARY KEY)
+b:> SELECT name, primary_key FROM toydb_tables
+> SELECT name FROM toydb_tables
+b:> ROLLBACK
+---
+b: 'Mine', 'id'
+b: 'dept', 'id'
+b: 'emp', 'id'
+b: 'tmp', 'k'
+'Mine'
+'dept'
+'emp'

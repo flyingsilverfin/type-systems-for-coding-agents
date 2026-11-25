@@ -1,0 +1,61 @@
+# EXPLAIN (ANALYZE): executes a statement and returns its plan, one row per
+# line, with the estimate of ESTIMATE and the number of rows each node
+# produced, every node run to completion.
+
+> CREATE TABLE t (id INT PRIMARY KEY, v INT, s STRING INDEX)
+> INSERT INTO t VALUES (1, 10, 'a'), (2, 20, 'b'), (3, 30, 'a'), (4, NULL, NULL)
+[header]> EXPLAIN (ANALYZE) SELECT v FROM t WHERE v > 15 ORDER BY v DESC LIMIT 1
+---
+node, estimate, rows
+'Limit: 1', 1, 1
+'└─ Order: t.v desc', 333, 2
+'   └─ Projection: t.v', 333, 2
+'      └─ Scan: t (t.v > 15)', 333, 2
+
+> EXPLAIN (ANALYZE) SELECT * FROM t WHERE id = 2 OR id = 9
+> EXPLAIN (ANALYZE) SELECT id FROM t WHERE s = 'a'
+> EXPLAIN (ANALYZE) SELECT count(*), s FROM t GROUP BY s
+> EXPLAIN (ANALYZE) SELECT 1
+> EXPLAIN (ANALYZE) SELECT * FROM t WHERE FALSE
+---
+'KeyLookup: t (2, 9)', 2, 1
+'Projection: t.id', 100, 2
+'└─ IndexLookup: t.s (\'a\')', 100, 2
+'Projection: #1, t.s', 10, 3
+'└─ Aggregate: t.s, count(TRUE)', 10, 3
+'   └─ Scan: t', 1000, 4
+'Projection: 1', 1, 1
+'└─ Values: blank row', 1, 1
+'Nothing', 0, 0
+
+# Every node runs to completion: the nodes below a LIMIT produce all their
+# rows.
+> EXPLAIN (ANALYZE) SELECT * FROM t LIMIT 2 OFFSET 1
+> EXPLAIN (ANALYZE) SELECT id, v * 2 AS w FROM t ORDER BY s, id LIMIT 1
+---
+'Limit: 2', 2, 2
+'└─ Offset: 1', 999, 3
+'   └─ Scan: t', 1000, 4
+'Remap: t.id, w (dropped: t.s)', 1, 1
+'└─ Limit: 1', 1, 1
+'   └─ Order: t.s asc, t.id asc', 1000, 4
+'      └─ Projection: t.id, t.v * 2 as w, t.s', 1000, 4
+'         └─ Scan: t', 1000, 4
+
+# The estimates use the statistics, the rows are the actual ones.
+> ANALYZE t
+> EXPLAIN (ANALYZE) SELECT v FROM t WHERE v > 15
+> EXPLAIN (ANALYZE) SELECT * FROM t WHERE s = 'a' OR s IS NULL
+> INSERT INTO t VALUES (5, 50, 'a')
+> EXPLAIN (ANALYZE) SELECT * FROM t WHERE s = 'a' OR s IS NULL
+---
+'Projection: t.v', 2, 2
+'└─ Scan: t (t.v > 15)', 2, 2
+'IndexLookup: t.s (\'a\', NULL)', 3, 3
+'IndexLookup: t.s (\'a\', NULL)', 3, 4
+
+# The result is an ordinary query result; it doesn't include the rows that
+# the statement returns.
+[json]> EXPLAIN (ANALYZE) SELECT id FROM t WHERE id = 1
+---
+{"result":"select","columns":["node","estimate","rows"],"rows":[["Projection: t.id",1,1],["└─ KeyLookup: t (1)",1,1]]}

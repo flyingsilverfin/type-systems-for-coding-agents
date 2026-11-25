@@ -1,0 +1,38 @@
+# CHECK constraints in a cluster: they are replicated with the table and
+# enforced through every node.
+
+cluster nodes=3
+---
+ok
+
+c1:> CREATE TABLE t (id INT PRIMARY KEY, n INT, CHECK (n >= 0), CONSTRAINT small CHECK (n < 10))
+c2:> INSERT INTO t VALUES (1, 5)
+c3:!> INSERT INTO t VALUES (2, -1)
+c2:!> UPDATE t SET n = n + 5
+c3:> SELECT * FROM t
+---
+c3: Error: invalid input: row 2 violates check constraint t_check1
+c2: Error: invalid input: row 1 violates check constraint small
+c3: 1, 5
+
+# A table created in a transaction, with its constraints, becomes visible to
+# the other nodes on commit; DROP TABLE drops them everywhere.
+c1:> BEGIN
+c1:> CREATE TABLE u (id INT PRIMARY KEY, CHECK (id > 100))
+c2:!> INSERT INTO u VALUES (1)
+c1:> COMMIT
+c2:!> INSERT INTO u VALUES (1)
+c3:> DROP TABLE u
+c3:> CREATE TABLE u (id INT PRIMARY KEY)
+c2:> INSERT INTO u VALUES (1)
+c1:> EXPORT t AS SQL
+---
+c2: Error: invalid input: table u does not exist
+c2: Error: invalid input: row 1 violates check constraint u_check1
+c1: CREATE TABLE t (
+c1:   id INTEGER PRIMARY KEY,
+c1:   n INTEGER DEFAULT NULL,
+c1:   CONSTRAINT t_check1 CHECK (n >= 0),
+c1:   CONSTRAINT small CHECK (n < 10)
+c1: );
+c1: INSERT INTO t VALUES (1, 5);

@@ -1,0 +1,59 @@
+# Creating and restoring backups requires a superuser. Policies don't apply to
+# a backup: a superuser reads every row.
+
+> CREATE TABLE t (id INT PRIMARY KEY, owner_name STRING)
+> INSERT INTO t VALUES (1, 'alice'), (2, 'bob')
+> CREATE USER alice
+> CREATE USER root SUPERUSER
+> GRANT SELECT ON t TO alice
+> CREATE POLICY own ON t TO alice USING (owner_name = 'alice')
+a:> SET ROLE alice
+a:!backup x
+r:> SET ROLE root
+r:backup full
+r:backup-list full
+a:!restore full
+a:> SELECT * FROM t
+---
+a: Error: permission denied: user alice is not a superuser
+r: toydb backup version 1
+r: user alice
+r: user root superuser
+r: table t owner admin: CREATE TABLE t (id INTEGER PRIMARY KEY, owner_name STRING DEFAULT NULL)
+r: row t: 1, 'alice'
+r: row t: 2, 'bob'
+r: grant t to alice: SELECT
+r: policy t.own to alice: owner_name = 'alice'
+r: end 7 records, checksum 3619df32
+a: Error: permission denied: user alice is not a superuser
+a: 1, 'alice'
+
+# A backup can be created in a read-only transaction; a restore needs a
+# read-write one, after the file has been checked.
+backup-load x 54 4f 59 44 42 42 41 4b 00 01 03 00 00 00 22 00 00 00 01 78 00 00 00 05 61 64 6d 69 6e 00 00 00 00 00 00 00 01 00 00 00 02 69 64 02 00 00 01 00 00 ff 00 00 00 04 00 00 00 01 ed 35 f9 69
+> BEGIN READ ONLY
+backup ro
+!restore x
+backup-patch ro offset=12 hex=ff
+!restore ro
+> COMMIT
+backup-list ro
+---
+Error: read-only transaction
+Error: invalid input: invalid backup: checksum mismatch
+toydb backup version 1
+Error: invalid input: invalid backup: checksum mismatch
+
+# Restoring into a database that has the users fails with their CREATE USER
+# error; once they and the table are dropped, the restore re-creates all.
+!restore full
+> DROP TABLE t
+> DROP USER alice
+> DROP USER root
+r:!restore full
+restore full
+a:> SELECT * FROM t
+---
+Error: invalid input: user alice already exists
+r: Error: permission denied: user root is not a superuser
+a: 1, 'alice'

@@ -1,0 +1,15 @@
+{
+ "run": "t5r_between_in_py_smc",
+ "task": "between_in",
+ "suite": "toydb-t5",
+ "tier": "t5",
+ "lang": "python",
+ "model": "sonnet",
+ "effort": "medium",
+ "ws": "/home/user/agentbench/runs/t5r_between_in_py_smc",
+ "hint": true,
+ "readme_from": "t2",
+ "baseline": "fa0c91078e30cd4bbe8d70f66eb88a434cdc281f",
+ "created": 1795540796.5850792,
+ "warm_ok": true
+}

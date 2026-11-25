@@ -1,0 +1,64 @@
+# Dependencies: a table, view or materialized view that a materialized view
+# depends on can't be dropped; neither can a materialized view that a view or
+# another materialized view depends on.
+
+> CREATE TABLE t (id INT PRIMARY KEY, v INT)
+> CREATE TABLE u (id INT PRIMARY KEY)
+> INSERT INTO t VALUES (1, 10), (2, 20)
+> INSERT INTO u VALUES (2)
+> CREATE VIEW tv AS SELECT id FROM t
+> CREATE MATERIALIZED VIEW m1 AS SELECT id FROM tv
+> CREATE MATERIALIZED VIEW m2 AS SELECT m1.id FROM m1 JOIN u ON m1.id = u.id
+> CREATE VIEW v2 AS SELECT * FROM m2
+> CREATE MATERIALIZED VIEW m3 AS SELECT * FROM m2
+!> DROP TABLE t
+!> DROP VIEW tv
+!> DROP TABLE u
+!> DROP MATERIALIZED VIEW m1
+!> DROP MATERIALIZED VIEW m2
+---
+Error: invalid input: table t is used by view tv
+Error: invalid input: view tv is used by materialized view m1
+Error: invalid input: table u is used by materialized view m2
+Error: invalid input: materialized view m1 is used by materialized view m2
+Error: invalid input: materialized view m2 is used by view v2
+
+> DROP VIEW v2
+!> DROP MATERIALIZED VIEW m2
+> DROP MATERIALIZED VIEW m3
+> DROP MATERIALIZED VIEW m2
+> SELECT * FROM m1
+> DROP MATERIALIZED VIEW m1
+> DROP VIEW tv
+> DROP TABLE t
+---
+Error: invalid input: materialized view m2 is used by materialized view m3
+1
+2
+
+# REFRESH plans and executes the stored query again; when that fails, the
+# stored rows stay.
+> CREATE TABLE z (id INT PRIMARY KEY, d INT)
+> INSERT INTO z VALUES (1, 1), (2, 5)
+> CREATE MATERIALIZED VIEW mz AS SELECT id, 10 / d AS q FROM z
+> INSERT INTO z VALUES (3, 0)
+!> REFRESH MATERIALIZED VIEW mz
+> SELECT * FROM mz
+> DELETE FROM z WHERE id = 3
+> REFRESH MATERIALIZED VIEW mz
+> SELECT * FROM mz
+---
+Error: invalid input: can't divide by zero
+1, 10
+2, 2
+1, 10
+2, 2
+
+# A materialized view's column names are checked like a view's.
+!> CREATE MATERIALIZED VIEW bad AS SELECT 10 / d FROM z
+!> CREATE MATERIALIZED VIEW bad (a) AS SELECT id, d FROM z
+!> CREATE MATERIALIZED VIEW bad AS SELECT id, d AS id FROM z
+---
+Error: invalid input: column 1 of view bad has no name
+Error: invalid input: wrong number of column names for view bad: expected 2, found 1
+Error: invalid input: duplicate column id in view bad

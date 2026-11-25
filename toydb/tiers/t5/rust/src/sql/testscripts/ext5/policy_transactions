@@ -1,0 +1,61 @@
+# Policies are transactional like the rest of the catalog, and a statement
+# applies the policies its transaction sees.
+
+> CREATE TABLE t (id INT PRIMARY KEY)
+> INSERT INTO t VALUES (1), (2), (3)
+> CREATE USER alice
+> GRANT SELECT ON t TO alice
+a:> SET ROLE alice
+---
+ok
+
+> BEGIN
+> CREATE POLICY p ON t TO alice USING (id = 1)
+a:> SELECT * FROM t
+> COMMIT
+a:> SELECT * FROM t
+---
+a: 1
+a: 2
+a: 3
+a: 1
+
+# A transaction that began before a change keeps its snapshot.
+a:> BEGIN
+> DROP POLICY p ON t
+a:> SELECT * FROM t
+a:> COMMIT
+a:> SELECT * FROM t
+---
+a: 1
+a: 1
+a: 2
+a: 3
+
+# ROLLBACK undoes CREATE POLICY and DROP POLICY.
+> BEGIN
+> CREATE POLICY q ON t USING (id > 2)
+> ROLLBACK
+a:> SELECT count(*) FROM t
+> CREATE POLICY q ON t USING (id > 2)
+> BEGIN
+> DROP POLICY q ON t
+> ROLLBACK
+a:> SELECT count(*) FROM t
+---
+a: 3
+a: 1
+
+# Two transactions creating the same policy conflict.
+> BEGIN
+b:> BEGIN
+> CREATE POLICY r ON t USING (TRUE)
+b:!> CREATE POLICY r ON t USING (FALSE)
+> COMMIT
+b:> ROLLBACK
+a:> SELECT * FROM t
+---
+b: Error: serialization failure, retry transaction
+a: 1
+a: 2
+a: 3

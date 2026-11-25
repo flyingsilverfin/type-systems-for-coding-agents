@@ -1,0 +1,72 @@
+# Written rows: every row that a user subject to a table's policies inserts or
+# updates must satisfy the check condition of an applicable policy — its WITH
+# CHECK condition, or its USING condition if it has none.
+
+> CREATE TABLE doc (id INT PRIMARY KEY, owner_name STRING, body STRING)
+> INSERT INTO doc VALUES (1, 'alice', 'a'), (2, 'bob', 'b')
+> CREATE USER alice
+> CREATE USER bob
+> GRANT SELECT, INSERT, UPDATE ON doc TO alice
+> GRANT INSERT ON doc TO bob
+> CREATE POLICY own ON doc TO alice USING (owner_name = 'alice')
+a:> SET ROLE alice
+b:> SET ROLE bob
+a:> INSERT INTO doc VALUES (3, 'alice', 'c')
+a:!> INSERT INTO doc VALUES (4, 'bob', 'd')
+a:!> UPDATE doc SET owner_name = 'bob' WHERE id = 1
+a:> UPDATE doc SET body = 'x'
+b:!> INSERT INTO doc VALUES (5, 'bob', 'e')
+> SELECT * FROM doc
+---
+a: Error: invalid input: new row violates row-level security policy for table doc
+a: Error: invalid input: new row violates row-level security policy for table doc
+b: Error: invalid input: new row violates row-level security policy for table doc
+1, 'alice', 'x'
+2, 'bob', 'b'
+3, 'alice', 'x'
+
+# A WITH CHECK condition of its own: bob may write drafts, but reads nothing.
+> CREATE POLICY drafts ON doc TO bob USING (FALSE) WITH CHECK (body LIKE 'draft%')
+b:> INSERT INTO doc VALUES (5, 'bob', 'draft 1')
+b:!> INSERT INTO doc VALUES (6, 'bob', 'final')
+b:!> IMPORT INTO doc FROM CSV 'id,owner_name,body', '7,bob,draft 2', '8,bob,done'
+> GRANT SELECT ON doc TO bob
+b:> SELECT * FROM doc
+> SELECT id FROM doc WHERE id > 4
+---
+b: Error: invalid input: new row violates row-level security policy for table doc
+b: Error: invalid input: new row violates row-level security policy for table doc
+5
+
+# CHECK constraints are checked first, then the policies, for each row,
+# before any row is written.
+> CREATE TABLE c (id INT PRIMARY KEY, n INT, CHECK (n > 0))
+> GRANT INSERT ON c TO alice
+> CREATE POLICY pc ON c TO alice USING (n < 10)
+a:!> INSERT INTO c VALUES (1, 0)
+a:!> INSERT INTO c VALUES (2, 20)
+a:> INSERT INTO c VALUES (3, 5)
+a:!> INSERT INTO c VALUES (4, 5), (3, 50)
+a:!> INSERT INTO c VALUES (4, 50), (5, 0)
+a:!> INSERT INTO c VALUES (3, 6)
+---
+a: Error: invalid input: row 1 violates check constraint c_check1
+a: Error: invalid input: new row violates row-level security policy for table c
+a: Error: invalid input: new row violates row-level security policy for table c
+a: Error: invalid input: new row violates row-level security policy for table c
+a: Error: invalid input: primary key 3 already exists
+
+# The owner and superusers are not restricted. A WITH CHECK condition is
+# planned with the USING condition, and appears in FORMAT and digests.
+> INSERT INTO c VALUES (9, 99)
+!> CREATE POLICY q ON doc USING (TRUE) WITH CHECK (nosuch)
+!> CREATE POLICY q ON doc USING (nosuch) WITH CHECK (nosuch2)
+!> CREATE POLICY q ON doc USING (TRUE) WITH (TRUE)
+!> CREATE POLICY q ON doc USING (TRUE) WITH CHECK TRUE
+> FORMAT create policy p on t using (true) with check (id > 2)
+---
+Error: invalid input: unknown column nosuch
+Error: invalid input: unknown column nosuch
+Error: invalid input: expected token CHECK, found (
+Error: invalid input: expected token (, found TRUE
+CREATE POLICY p ON t USING (TRUE) WITH CHECK (id > 2)

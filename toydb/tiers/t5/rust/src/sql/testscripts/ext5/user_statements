@@ -1,0 +1,119 @@
+# What each statement requires: the privileges of its accesses, in the order
+# of the statement's text, then its own requirement.
+
+> CREATE TABLE t (id INT PRIMARY KEY, v STRING)
+> CREATE TABLE u (id INT PRIMARY KEY, t_id INT REFERENCES t)
+> INSERT INTO t VALUES (1, 'a')
+> INSERT INTO u VALUES (10, 1)
+> CREATE USER alice
+> GRANT SELECT ON u TO alice
+a:> SET ROLE alice
+---
+ok
+
+# Every table and view of the FROM clause is checked, left to right; a name
+# that is neither a table nor a view isn't checked.
+a:> SELECT * FROM u
+a:!> SELECT * FROM u JOIN t ON u.t_id = t.id
+a:!> SELECT * FROM t JOIN u ON u.t_id = t.id
+a:!> SELECT * FROM nosuch JOIN t ON TRUE
+a:!> SELECT * FROM u, nosuch
+---
+a: 10, 1
+a: Error: permission denied: user alice has no SELECT privilege on t
+a: Error: permission denied: user alice has no SELECT privilege on t
+a: Error: permission denied: user alice has no SELECT privilege on t
+a: Error: invalid input: table nosuch does not exist
+
+# The privilege check comes before the statement's own errors.
+a:!> SELECT nosuch FROM t
+a:!> INSERT INTO t VALUES ('x')
+a:!> UPDATE t SET nosuch = 1
+a:> DROP TABLE IF EXISTS nosuch
+---
+a: Error: permission denied: user alice has no SELECT privilege on t
+a: Error: permission denied: user alice has no INSERT privilege on t
+a: Error: permission denied: user alice has no UPDATE privilege on t
+
+# EXPLAIN, DESCRIBE and ESTIMATE of a statement require what the statement
+# requires; DESCRIBE of a name, FORMAT, LINT and PREPARE require nothing.
+a:!> EXPLAIN SELECT * FROM t
+a:!> DESCRIBE SELECT v FROM t
+a:!> ESTIMATE DELETE FROM t
+a:> EXPLAIN SELECT * FROM u
+a:[header]> DESCRIBE t
+a:> FORMAT update t set v = 'x'
+a:> LINT DELETE FROM t
+a:> PREPARE get (INT) AS SELECT v FROM t WHERE id = $1
+---
+a: Error: permission denied: user alice has no SELECT privilege on t
+a: Error: permission denied: user alice has no SELECT privilege on t
+a: Error: permission denied: user alice has no DELETE privilege on t
+a: column, type, nullable
+a: 'id', 'INTEGER', FALSE
+a: 'v', 'STRING', TRUE
+a: UPDATE t
+a: SET v = 'x'
+a: 'unfiltered_write', 'DELETE without WHERE deletes every row of t'
+
+# EXECUTE is checked each time, for the statement it executes.
+a:!> EXECUTE get (1)
+> GRANT SELECT ON t TO alice
+a:> EXECUTE get (1)
+> REVOKE SELECT ON t FROM alice
+a:!> EXECUTE get (1)
+a:!> EXECUTE nosuch (1)
+---
+a: Error: permission denied: user alice has no SELECT privilege on t
+a: 'a'
+a: Error: permission denied: user alice has no SELECT privilege on t
+a: Error: invalid input: prepared statement nosuch does not exist
+
+# The tier-3 statements.
+a:!> SHOW STATISTICS t
+a:!> EXPORT t AS CSV
+a:!> IMPORT INTO t FROM CSV 'id,v', '2,b'
+a:!> ANALYZE u
+a:> EXPORT u AS CSV
+---
+a: Error: permission denied: user alice has no SELECT privilege on t
+a: Error: permission denied: user alice has no SELECT privilege on t
+a: Error: permission denied: user alice has no INSERT privilege on t
+a: Error: permission denied: user alice is not the owner of u
+a: id,t_id
+a: 10,1
+
+# Creating requires nothing: alice owns what she creates. A reference to
+# another table is not an access.
+a:> CREATE TABLE mine (id INT PRIMARY KEY, t_id INT REFERENCES t)
+a:> INSERT INTO mine VALUES (1, 1)
+a:!> INSERT INTO mine VALUES (2, 2)
+a:!> CREATE VIEW mv AS SELECT * FROM t
+a:> CREATE VIEW mv AS SELECT id FROM mine
+a:> SELECT * FROM mv
+---
+a: Error: invalid input: reference 2 not in table t
+a: Error: permission denied: user alice has no SELECT privilege on t
+a: 1
+
+# Statements that show the catalog or the session require nothing; SHOW
+# CHANGES requires a superuser.
+a:> SHOW VIEWS
+a:> SHOW PREPARED
+a:!> SHOW CHANGES
+a:!> SHOW CHANGES SINCE 99
+---
+a: 'mv', 'id', 'SELECT id FROM mine'
+a: 'get', 'INTEGER', 'SELECT v FROM t WHERE id = $1', 3, 1
+a: Error: permission denied: user alice is not a superuser
+a: Error: permission denied: user alice is not a superuser
+
+# A transaction sees the privileges of its snapshot.
+a:> BEGIN
+> GRANT SELECT ON t TO alice
+a:!> SELECT * FROM t
+a:> COMMIT
+a:> SELECT * FROM t
+---
+a: Error: permission denied: user alice has no SELECT privilege on t
+a: 1, 'a'

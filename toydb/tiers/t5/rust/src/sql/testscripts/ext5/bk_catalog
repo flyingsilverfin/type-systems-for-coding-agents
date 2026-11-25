@@ -1,0 +1,158 @@
+# A backup holds the catalog: users (with their passwords) and memberships,
+# tables with their owners and check constraints, views, grants and policies.
+
+> CREATE USER alice PASSWORD 'pw'
+> CREATE USER bob SUPERUSER
+> CREATE USER staff
+> GRANT staff TO alice
+> GRANT staff TO bob
+> CREATE TABLE t (id INT PRIMARY KEY, n INT, CHECK (n > 0), CONSTRAINT small CHECK (n < 100))
+> INSERT INTO t VALUES (1, 5)
+a:> SET ROLE alice
+a:> CREATE TABLE at (id INT PRIMARY KEY)
+> CREATE VIEW tv AS SELECT n FROM t
+a:> CREATE VIEW av AS SELECT id FROM at
+> GRANT SELECT, UPDATE ON t TO staff
+> GRANT SELECT ON tv TO bob
+a:> GRANT SELECT ON at TO bob
+> CREATE POLICY p1 ON t TO staff USING (n > 1)
+> CREATE POLICY p0 ON t USING (id = 1)
+backup c
+backup-list c
+---
+toydb backup version 1
+user alice password
+user bob superuser
+user staff
+member alice of staff
+member bob of staff
+table at owner alice: CREATE TABLE at (id INTEGER PRIMARY KEY)
+table t owner admin: CREATE TABLE t (id INTEGER PRIMARY KEY, n INTEGER DEFAULT NULL)
+check t.t_check1: n > 0
+check t.small: n < 100
+row t: 1, 5
+view av owner alice (id): SELECT id FROM at
+view tv owner admin (n): SELECT n FROM t
+grant at to bob: SELECT
+grant t to staff: SELECT, UPDATE
+grant tv to bob: SELECT
+policy t.p0: id = 1
+policy t.p1 to staff: n > 1
+end 17 records, checksum ac448b23
+
+# The bytes of the whole backup.
+backup-hex c
+---
+54 4f 59 44 42 42 41 4b 00 01 01 00 00 00 32 00
+00 00 05 61 6c 69 63 65 00 01 00 00 00 23 6d 64
+35 61 61 37 62 62 36 66 63 32 37 30 30 65 37 31
+37 61 65 36 31 65 63 35 63 31 35 36 37 34 36 39
+63 01 00 00 00 09 00 00 00 03 62 6f 62 01 00 01
+00 00 00 0b 00 00 00 05 73 74 61 66 66 00 00 02
+00 00 00 12 00 00 00 05 61 6c 69 63 65 00 00 00
+05 73 74 61 66 66 02 00 00 00 10 00 00 00 03 62
+6f 62 00 00 00 05 73 74 61 66 66 03 00 00 00 23
+00 00 00 02 61 74 00 00 00 05 61 6c 69 63 65 00
+00 00 00 00 00 00 01 00 00 00 02 69 64 02 00 00
+01 00 00 03 00 00 00 2e 00 00 00 01 74 00 00 00
+05 61 64 6d 69 6e 00 00 00 00 00 00 00 02 00 00
+00 02 69 64 02 00 00 01 00 00 00 00 00 01 6e 02
+01 01 00 00 00 00 04 00 00 00 1a 00 00 00 01 74
+00 00 00 08 74 5f 63 68 65 63 6b 31 00 00 00 05
+6e 20 3e 20 30 04 00 00 00 19 00 00 00 01 74 00
+00 00 05 73 6d 61 6c 6c 00 00 00 07 6e 20 3c 20
+31 30 30 05 00 00 00 1b 00 00 00 01 74 00 00 00
+02 02 00 00 00 00 00 00 00 01 02 00 00 00 00 00
+00 00 05 06 00 00 00 2e 00 00 00 02 61 76 00 00
+00 05 61 6c 69 63 65 00 00 00 01 00 00 00 02 69
+64 00 00 00 11 53 45 4c 45 43 54 20 69 64 20 46
+52 4f 4d 20 61 74 06 00 00 00 2b 00 00 00 02 74
+76 00 00 00 05 61 64 6d 69 6e 00 00 00 01 00 00
+00 01 6e 00 00 00 0f 53 45 4c 45 43 54 20 6e 20
+46 52 4f 4d 20 74 07 00 00 00 0e 00 00 00 02 61
+74 00 00 00 03 62 6f 62 01 07 00 00 00 0f 00 00
+00 01 74 00 00 00 05 73 74 61 66 66 05 07 00 00
+00 0e 00 00 00 02 74 76 00 00 00 03 62 6f 62 01
+08 00 00 00 17 00 00 00 01 74 00 00 00 02 70 30
+00 00 00 00 06 69 64 20 3d 20 31 00 08 00 00 00
+1f 00 00 00 01 74 00 00 00 02 70 31 01 00 00 00
+05 73 74 61 66 66 00 00 00 05 6e 20 3e 20 31 00
+ff 00 00 00 04 00 00 00 11 ac 44 8b 23
+
+# Restoring into a database without these objects re-creates them, with their
+# owners and passwords.
+> DROP VIEW av
+> DROP VIEW tv
+> DROP TABLE at
+> DROP TABLE t
+> DROP USER alice
+> DROP USER bob
+> DROP USER staff
+> SHOW USERS
+> SHOW GRANTS
+restore c
+> SHOW USERS
+> SHOW GRANTS
+---
+'admin', TRUE, FALSE, ''
+'admin', TRUE, FALSE, ''
+'alice', FALSE, TRUE, 'staff'
+'bob', TRUE, FALSE, 'staff'
+'staff', FALSE, FALSE, ''
+'at', 'alice', 'OWNER'
+'at', 'bob', 'SELECT'
+'av', 'alice', 'OWNER'
+'t', 'admin', 'OWNER'
+'t', 'staff', 'SELECT'
+'t', 'staff', 'UPDATE'
+'tv', 'admin', 'OWNER'
+'tv', 'bob', 'SELECT'
+
+a:> SELECT * FROM t
+!> INSERT INTO t VALUES (2, 0)
+> EXPORT AS SQL
+p:pg startup user=alice password=pw
+---
+a: 1, 5
+Error: invalid input: row 2 violates check constraint t_check1
+CREATE TABLE at (
+  id INTEGER PRIMARY KEY
+);
+CREATE TABLE t (
+  id INTEGER PRIMARY KEY,
+  n INTEGER DEFAULT NULL,
+  CONSTRAINT t_check1 CHECK (n > 0),
+  CONSTRAINT small CHECK (n < 100)
+);
+INSERT INTO t VALUES (1, 5);
+CREATE VIEW av (id) AS SELECT id FROM at;
+CREATE VIEW tv (n) AS SELECT n FROM t;
+p: AuthenticationMD5Password
+p: AuthenticationOk
+p: ParameterStatus application_name= client_encoding=UTF8 DateStyle=ISO integer_datetimes=on is_superuser=off server_encoding=UTF8 server_version=14.0 session_authorization=alice standard_conforming_strings=on
+p: BackendKeyData
+p: ReadyForQuery idle
+
+# A second backup of the restored database is byte for byte the same.
+backup c2
+backup-list c2
+---
+toydb backup version 1
+user alice password
+user bob superuser
+user staff
+member alice of staff
+member bob of staff
+table at owner alice: CREATE TABLE at (id INTEGER PRIMARY KEY)
+table t owner admin: CREATE TABLE t (id INTEGER PRIMARY KEY, n INTEGER DEFAULT NULL)
+check t.t_check1: n > 0
+check t.small: n < 100
+row t: 1, 5
+view av owner alice (id): SELECT id FROM at
+view tv owner admin (n): SELECT n FROM t
+grant at to bob: SELECT
+grant t to staff: SELECT, UPDATE
+grant tv to bob: SELECT
+policy t.p0: id = 1
+policy t.p1 to staff: n > 1
+end 17 records, checksum ac448b23

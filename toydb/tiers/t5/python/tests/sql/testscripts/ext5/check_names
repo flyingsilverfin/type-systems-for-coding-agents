@@ -1,0 +1,69 @@
+# Constraint names: a constraint without a name is named <table>_check<i>,
+# <i> its position among the statement's CHECK constraints.
+
+> CREATE TABLE t (id INT PRIMARY KEY, CHECK (id > 0), CONSTRAINT c CHECK (id < 9), n INT, CHECK (id != 5))
+> EXPORT t AS SQL
+!> INSERT INTO t VALUES (5, 1)
+!> INSERT INTO t VALUES (9, 1)
+---
+CREATE TABLE t (
+  id INTEGER PRIMARY KEY,
+  n INTEGER DEFAULT NULL,
+  CONSTRAINT t_check1 CHECK (id > 0),
+  CONSTRAINT c CHECK (id < 9),
+  CONSTRAINT t_check3 CHECK (id != 5)
+);
+Error: invalid input: row 5 violates check constraint t_check3
+Error: invalid input: row 9 violates check constraint c
+
+# Names must be unique in the table, also when a given name equals a generated
+# one, and can't be empty.
+!> CREATE TABLE d (id INT PRIMARY KEY, CONSTRAINT d_check2 CHECK (id > 0), CHECK (id < 9))
+!> CREATE TABLE d (id INT PRIMARY KEY, CONSTRAINT x CHECK (id > 0), CONSTRAINT x CHECK (id < 9))
+!> CREATE TABLE d (id INT PRIMARY KEY, CONSTRAINT "" CHECK (id > 0))
+> CREATE TABLE d (id INT PRIMARY KEY, CONSTRAINT d_check1 CHECK (id > 0), CONSTRAINT "X" CHECK (id < 9), CONSTRAINT x CHECK (id != 3))
+> CREATE TABLE e (id INT PRIMARY KEY, CONSTRAINT t_check1 CHECK (id > 0))
+!> INSERT INTO d VALUES (9)
+!> INSERT INTO d VALUES (3)
+---
+Error: invalid input: duplicate check constraint d_check2 in table d
+Error: invalid input: duplicate check constraint x in table d
+Error: invalid input: check constraint name can't be empty
+Error: invalid input: row 9 violates check constraint X
+Error: invalid input: row 3 violates check constraint x
+
+# The statement's own checks come first; then each constraint in order, its
+# name and then its condition.
+!> CREATE TABLE t (id INT PRIMARY KEY, CHECK (nosuch > 0))
+!> CREATE TABLE f (id INT, CHECK (nosuch > 0))
+!> CREATE TABLE f (id INT PRIMARY KEY, v INT DEFAULT 'a', CHECK (nosuch > 0))
+!> CREATE TABLE f (id INT PRIMARY KEY, r INT REFERENCES nosuch, CHECK (nosuch > 0))
+!> CREATE TABLE f (id INT PRIMARY KEY, CHECK (nosuch > 0), CONSTRAINT x CHECK (id > 0), CONSTRAINT x CHECK (TRUE))
+!> CREATE TABLE f (id INT PRIMARY KEY, CONSTRAINT x CHECK (id > 0), CONSTRAINT x CHECK (nosuch > 0))
+!> SELECT * FROM f
+---
+Error: invalid input: table t already exists
+Error: invalid input: no primary key for table f
+Error: invalid input: invalid default type STRING for INTEGER column v
+Error: invalid input: unknown table nosuch referenced by column r
+Error: invalid input: unknown column nosuch
+Error: invalid input: duplicate check constraint x in table f
+Error: invalid input: table f does not exist
+
+# Quoted names; generated names use the table name as stored. EXPORT AS SQL
+# writes names as the schema display does.
+> CREATE TABLE "Big" (id INT PRIMARY KEY, CHECK (id > 0), CONSTRAINT "Max" CHECK (id < 10), CONSTRAINT "check" CHECK (id != 7))
+!> INSERT INTO "Big" VALUES (0)
+!> INSERT INTO "Big" VALUES (10)
+!> INSERT INTO "Big" VALUES (7)
+> EXPORT "Big" AS SQL
+---
+Error: invalid input: row 0 violates check constraint Big_check1
+Error: invalid input: row 10 violates check constraint Max
+Error: invalid input: row 7 violates check constraint check
+CREATE TABLE Big (
+  id INTEGER PRIMARY KEY,
+  CONSTRAINT Big_check1 CHECK (id > 0),
+  CONSTRAINT Max CHECK (id < 10),
+  CONSTRAINT "check" CHECK (id != 7)
+);

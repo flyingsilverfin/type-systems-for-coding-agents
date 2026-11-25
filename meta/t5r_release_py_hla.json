@@ -1,0 +1,15 @@
+{
+ "run": "t5r_release_py_hla",
+ "task": "release",
+ "suite": "toydb-t5",
+ "tier": "t5",
+ "lang": "python",
+ "model": "haiku",
+ "effort": "low",
+ "ws": "/home/user/agentbench/runs/t5r_release_py_hla",
+ "hint": true,
+ "readme_from": "t2",
+ "baseline": "0910cfcb45d033b44bee30c1d501b827a08e7dbb",
+ "created": 1795536826.362873,
+ "warm_ok": true
+}

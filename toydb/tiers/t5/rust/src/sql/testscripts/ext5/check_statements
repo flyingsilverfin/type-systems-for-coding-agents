@@ -1,0 +1,52 @@
+# CHECK constraints in FORMAT, digests, LINT, DESCRIBE, ESTIMATE and EXPLAIN.
+
+> FORMAT create table T (ID int primary key, check (id > 0), N int, constraint "Small" check (n < 10 and n != 5))
+---
+CREATE TABLE t (
+  id INTEGER PRIMARY KEY,
+  CHECK (id > 0),
+  n INTEGER,
+  CONSTRAINT "Small" CHECK (n < 10 AND n != 5)
+)
+
+# The CREATE TABLE plan is unchanged; DESCRIBE, ESTIMATE and EXPLAIN don't
+# check the constraints.
+> ESTIMATE CREATE TABLE t (id INT PRIMARY KEY, CHECK (nosuch > 0))
+> DESCRIBE CREATE TABLE t (id INT PRIMARY KEY, CHECK (nosuch > 0))
+> EXPLAIN CREATE TABLE t (id INT PRIMARY KEY, CHECK (nosuch > 0))
+!> SELECT * FROM t
+---
+'CreateTable: t', 0
+Error: invalid input: table t does not exist
+
+# LINT checks the conditions with its expression rules, without resolving
+# their columns, and without constant_condition.
+> LINT CREATE TABLE t (id INT PRIMARY KEY, n INT, s STRING, CHECK (n = NULL), CHECK (n / 0 > 1), CHECK (1 = 1), CHECK (s = 1 AND s LIKE 'abc'))
+---
+'null_comparison', 'comparison with NULL is never true: n = NULL'
+'division_by_zero', 'division by zero: n / 0'
+'like_without_wildcard', 'LIKE without wildcards matches like =: s LIKE \'abc\''
+
+# Digests write the constraints in the order written, literals as ?.
+> CREATE TABLE t (id INT PRIMARY KEY, CHECK (id > 0), n INT DEFAULT 5, CONSTRAINT "Big" CHECK (n < 100))
+!> INSERT INTO t VALUES (0, 1)
+> INSERT INTO t VALUES (1, 1)
+[header]> SHOW STATEMENTS
+---
+Error: invalid input: row 0 violates check constraint t_check1
+digest, calls, errors, rows
+'FORMAT CREATE TABLE t (id INTEGER PRIMARY KEY, CHECK (id > ?), n INTEGER, CONSTRAINT Small CHECK (n < ? AND n != ?))', 1, 0, 0
+'ESTIMATE CREATE TABLE t (id INTEGER PRIMARY KEY, CHECK (nosuch > ?))', 1, 0, 1
+'DESCRIBE CREATE TABLE t (id INTEGER PRIMARY KEY, CHECK (nosuch > ?))', 1, 0, 0
+'EXPLAIN CREATE TABLE t (id INTEGER PRIMARY KEY, CHECK (nosuch > ?))', 1, 0, 0
+'SELECT * FROM t', 1, 1, 0
+'LINT CREATE TABLE t (id INTEGER PRIMARY KEY, n INTEGER, s STRING, CHECK (n = ?), CHECK (n / ? > ?), CHECK (? = ?), CHECK (s = ? AND s LIKE ?))', 1, 0, 3
+'CREATE TABLE t (id INTEGER PRIMARY KEY, CHECK (id > ?), n INTEGER DEFAULT ?, CONSTRAINT Big CHECK (n < ?))', 1, 0, 0
+'INSERT INTO t VALUES (?, ?)', 2, 1, 1
+
+# The change log records the table as before: its schema display doesn't
+# show the constraints.
+> SHOW CHANGES
+---
+1, 't', 'create_table', NULL, 'CREATE TABLE t (id INTEGER PRIMARY KEY, n INTEGER DEFAULT 5)'
+3, 't', 'insert', 1, '{\"id\":1,\"n\":1}'

@@ -1,0 +1,106 @@
+# Invalid backups: the whole file is checked before anything is restored, in
+# this order: the header, the version, the CRC, then the records.
+
+> CREATE TABLE t (id INT PRIMARY KEY, v STRING)
+> INSERT INTO t VALUES (1, 'a')
+backup b
+backup empty
+---
+ok
+
+backup-load short 00
+backup-list short
+backup-verify short
+!restore short
+backup-load magic 54 4f 59 44 42 42 41 58 00 01 ff 00 00 00 04 00 00 00 00 3b fd 59 57
+backup-list magic
+!restore magic
+---
+Error: invalid input: invalid backup: not a toydb backup
+Error: invalid input: invalid backup: not a toydb backup
+Error: invalid input: invalid backup: not a toydb backup
+Error: invalid input: invalid backup: not a toydb backup
+Error: invalid input: invalid backup: not a toydb backup
+
+# The version is checked before the CRC; a changed byte breaks the CRC, as
+# does a truncated file.
+backup-patch empty offset=9 hex=02
+backup-list empty
+backup-patch b offset=30 hex=ff
+backup-list b
+!restore b
+backup-truncate b length=20
+backup-verify b
+backup-truncate b length=13
+backup-verify b
+---
+Error: invalid input: invalid backup: unsupported version 2
+toydb backup version 1
+Error: invalid input: invalid backup: checksum mismatch
+Error: invalid input: invalid backup: checksum mismatch
+Error: invalid input: invalid backup: checksum mismatch
+Error: invalid input: invalid backup: not a toydb backup
+
+# Backups with a valid CRC whose records are invalid. The records before the
+# problem are listed.
+backup-load trunc 54 4f 59 44 42 42 41 4b 00 01 01 00 00 00 64 00 00 00 01 61 0b 24 cf 68
+backup-list trunc
+backup-load kind 54 4f 59 44 42 42 41 4b 00 01 01 00 00 00 0b 00 00 00 05 61 6c 69 63 65 00 00 2a 00 00 00 00 ff 00 00 00 04 00 00 00 02 de c5 7b f3
+backup-list kind
+backup-load typetag 54 4f 59 44 42 42 41 4b 00 01 03 00 00 00 22 00 00 00 01 74 00 00 00 05 61 64 6d 69 6e 00 00 00 00 00 00 00 01 00 00 00 02 69 64 09 00 00 01 00 00 ff 00 00 00 04 00 00 00 01 cb 4f 20 f9
+backup-list typetag
+backup-load valtag 54 4f 59 44 42 42 41 4b 00 01 05 00 00 00 0a 00 00 00 01 74 00 00 00 01 07 ff 00 00 00 04 00 00 00 01 ac 3b b4 d7
+backup-list valtag
+backup-load string 54 4f 59 44 42 42 41 4b 00 01 01 00 00 00 07 00 00 00 01 ff 00 00 ff 00 00 00 04 00 00 00 01 e4 0a 9b d1
+backup-list string
+backup-load after 54 4f 59 44 42 42 41 4b 00 01 ff 00 00 00 04 00 00 00 00 00 2e fb 1c 97
+backup-list after
+backup-load count 54 4f 59 44 42 42 41 4b 00 01 01 00 00 00 0b 00 00 00 05 61 6c 69 63 65 00 00 ff 00 00 00 04 00 00 00 05 7a 76 0c 21
+backup-list count
+backup-load noend 54 4f 59 44 42 42 41 4b 00 01 01 00 00 00 0b 00 00 00 05 61 6c 69 63 65 00 00 4f 32 f2 ae
+backup-list noend
+backup-load shortrec 54 4f 59 44 42 42 41 4b 00 01 01 00 00 00 09 00 00 00 05 61 6c 69 63 65 ff 00 00 00 04 00 00 00 01 75 48 f0 3e
+backup-list shortrec
+---
+toydb backup version 1
+Error: invalid input: invalid backup: truncated
+toydb backup version 1
+user alice
+Error: invalid input: invalid backup: unknown record kind 42
+toydb backup version 1
+Error: invalid input: invalid backup: unknown type tag 9
+toydb backup version 1
+Error: invalid input: invalid backup: unknown value tag 7
+toydb backup version 1
+Error: invalid input: invalid backup: invalid string
+toydb backup version 1
+Error: invalid input: invalid backup: data after end record
+toydb backup version 1
+user alice
+Error: invalid input: invalid backup: wrong record count
+toydb backup version 1
+user alice
+Error: invalid input: invalid backup: truncated
+toydb backup version 1
+Error: invalid input: invalid backup: truncated
+
+# Nothing of an invalid backup is restored, also when its first records are
+# valid.
+!restore kind
+!restore count
+> SHOW USERS
+---
+Error: invalid input: invalid backup: unknown record kind 42
+Error: invalid input: invalid backup: wrong record count
+'admin', TRUE, FALSE, ''
+
+# A valid backup that fails when it is applied (a ROW of a table that doesn't
+# exist) is a restore error of the statement.
+backup-load orphan 54 4f 59 44 42 42 41 4b 00 01 05 00 00 00 12 00 00 00 01 78 00 00 00 01 02 00 00 00 00 00 00 00 01 ff 00 00 00 04 00 00 00 01 7f 37 4d f4
+backup-list orphan
+!restore orphan
+---
+toydb backup version 1
+row x: 1
+end 1 records, checksum 7f374df4
+Error: invalid input: table x does not exist

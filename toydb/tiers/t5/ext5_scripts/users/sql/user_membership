@@ -1,0 +1,115 @@
+# Membership: GRANT <user> TO <user> makes a user a member of another one, so
+# that it acts for it (transitively) and has its privileges and ownership.
+
+> CREATE TABLE t (id INT PRIMARY KEY)
+> INSERT INTO t VALUES (1)
+> CREATE USER staff
+> CREATE USER alice
+> CREATE USER bob
+> GRANT SELECT ON t TO staff
+[json]> GRANT staff TO alice
+> GRANT alice TO bob
+> GRANT staff TO alice
+[header]> SHOW USERS
+---
+{"result":"grant"}
+name, is_superuser, has_password, member_of
+'admin', TRUE, FALSE, ''
+'alice', FALSE, FALSE, 'staff'
+'bob', FALSE, FALSE, 'alice'
+'staff', FALSE, FALSE, ''
+
+b:> SET ROLE bob
+b:> SELECT * FROM t
+b:!> INSERT INTO t VALUES (2)
+---
+b: 1
+b: Error: permission denied: user bob has no INSERT privilege on t
+
+# Acting for the owner of an object gives its owner's rights.
+a:> SET ROLE alice
+a:> CREATE TABLE at (id INT PRIMARY KEY)
+b:> INSERT INTO at VALUES (1)
+b:> GRANT SELECT ON at TO staff
+b:> DROP TABLE at
+---
+ok
+
+# Errors of membership grants, in the order of their checks.
+!> GRANT nosuch TO alice
+!> GRANT staff TO nosuch
+!> GRANT nosuch TO nosuch2
+!> GRANT alice TO alice
+!> GRANT bob TO staff
+!> GRANT alice TO staff
+!> REVOKE nosuch FROM alice
+b:!> GRANT staff TO bob
+b:!> REVOKE alice FROM bob
+---
+Error: invalid input: user nosuch does not exist
+Error: invalid input: user nosuch does not exist
+Error: invalid input: user nosuch does not exist
+Error: invalid input: user alice can't be a member of itself
+Error: invalid input: granting bob to staff would create a cycle
+Error: invalid input: granting alice to staff would create a cycle
+Error: invalid input: user nosuch does not exist
+b: Error: permission denied: user bob is not a superuser
+b: Error: permission denied: user bob is not a superuser
+
+> BEGIN READ ONLY
+!> GRANT bob TO staff
+!> GRANT staff TO bob
+> COMMIT
+---
+Error: invalid input: granting bob to staff would create a cycle
+Error: read-only transaction
+
+# Being a member of a superuser doesn't make a user a superuser, and gives no
+# privileges: a superuser has them without having been granted them.
+> CREATE USER root SUPERUSER
+> GRANT root TO alice
+a:!> CREATE USER carl
+a:!> SHOW CHANGES
+a:!> DELETE FROM t
+---
+a: Error: permission denied: user alice is not a superuser
+a: Error: permission denied: user alice is not a superuser
+a: Error: permission denied: user alice has no DELETE privilege on t
+
+# REVOKE ends a membership (doing nothing if there is none); dropping a user
+# ends its memberships both ways and removes its privileges.
+[json]> REVOKE alice FROM bob
+> REVOKE alice FROM bob
+b:!> SELECT * FROM t
+> GRANT staff TO bob
+b:> SELECT * FROM t
+> DROP USER staff
+b:!> SELECT * FROM t
+> SHOW USERS
+> SHOW GRANTS
+---
+{"result":"revoke"}
+b: Error: permission denied: user bob has no SELECT privilege on t
+b: 1
+b: Error: permission denied: user bob has no SELECT privilege on t
+'admin', TRUE, FALSE, ''
+'alice', FALSE, FALSE, 'root'
+'bob', FALSE, FALSE, ''
+'root', TRUE, FALSE, ''
+'t', 'admin', 'OWNER'
+
+# Memberships are transactional.
+> BEGIN
+> GRANT alice TO bob
+c:> SHOW USERS
+> ROLLBACK
+> SHOW USERS
+---
+c: 'admin', TRUE, FALSE, ''
+c: 'alice', FALSE, FALSE, 'root'
+c: 'bob', FALSE, FALSE, ''
+c: 'root', TRUE, FALSE, ''
+'admin', TRUE, FALSE, ''
+'alice', FALSE, FALSE, 'root'
+'bob', FALSE, FALSE, ''
+'root', TRUE, FALSE, ''

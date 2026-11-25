@@ -1,0 +1,79 @@
+# Which policies apply: those for a user the current user acts for, and those
+# without TO. They are evaluated in order of name, until one is TRUE.
+
+> CREATE TABLE t (id INT PRIMARY KEY, grp STRING, n INT)
+> INSERT INTO t VALUES (1, 'x', 1), (2, 'y', 2), (3, 'x', NULL), (4, 'z', 0)
+> CREATE USER staff
+> CREATE USER alice
+> CREATE USER bob
+> GRANT staff TO alice
+> GRANT SELECT ON t TO staff
+> GRANT SELECT ON t TO bob
+> CREATE POLICY px ON t TO staff USING (grp = 'x')
+> CREATE POLICY py ON t TO alice USING (grp = 'y')
+a:> SET ROLE alice
+b:> SET ROLE bob
+s:> SET ROLE staff
+a:> SELECT id FROM t
+s:> SELECT id FROM t
+b:> SELECT id FROM t
+---
+a: 1
+a: 2
+a: 3
+s: 1
+s: 3
+
+> CREATE POLICY pz ON t USING (n > 0)
+a:> SELECT id FROM t
+b:> SELECT id FROM t
+---
+a: 1
+a: 2
+a: 3
+b: 1
+b: 2
+
+# A policy that returns a non-boolean value fails the statement when it is
+# evaluated; so does a policy whose evaluation fails. A policy that comes later
+# by name is not evaluated for a row that an earlier one shows.
+> CREATE POLICY bad ON t TO alice USING (n)
+a:!> SELECT id FROM t
+b:> SELECT id FROM t
+> DROP POLICY bad ON t
+> CREATE POLICY pw ON t TO alice USING (1 / (n - 2) > 0)
+a:!> SELECT id FROM t
+b:> SELECT id FROM t WHERE id = 1
+> DROP POLICY pw ON t
+> CREATE POLICY q_last ON t TO alice USING (1 / (n - 2) > 0)
+a:> SELECT id FROM t
+> CREATE POLICY a_first ON t TO alice USING (n = 2 OR grp != 'y')
+a:> SELECT id FROM t
+---
+a: Error: invalid input: policy bad returned 1, expected boolean
+b: 1
+b: 2
+a: Error: invalid input: can't divide by zero
+b: 1
+a: 1
+a: 2
+a: 3
+a: 1
+a: 2
+a: 3
+a: 4
+
+# Several policies for the same user.
+> DROP POLICY a_first ON t
+> DROP POLICY q_last ON t
+> CREATE POLICY also ON t TO alice USING (id = 4)
+a:> SELECT id FROM t
+s:> SELECT id FROM t
+---
+a: 1
+a: 2
+a: 3
+a: 4
+s: 1
+s: 2
+s: 3

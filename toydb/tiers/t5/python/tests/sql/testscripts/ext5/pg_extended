@@ -1,0 +1,215 @@
+# The extended query protocol: Parse, Bind, Describe, Execute, Close and
+# Sync. Responses are printed when the runner sends Sync.
+
+> CREATE TABLE t (id INT PRIMARY KEY, v STRING)
+> INSERT INTO t VALUES (1, 'a'), (2, 'b'), (3, 'c')
+pg startup
+---
+AuthenticationOk
+ParameterStatus application_name= client_encoding=UTF8 DateStyle=ISO integer_datetimes=on is_superuser=on server_encoding=UTF8 server_version=14.0 session_authorization=admin standard_conforming_strings=on
+BackendKeyData
+ReadyForQuery idle
+
+pg parse name=s1 "SELECT id, v FROM t WHERE id >= $1 ORDER BY id" types=20
+pg describe statement=s1
+pg bind portal=p1 statement=s1 params=2
+pg describe portal=p1
+pg execute portal=p1
+pg sync
+---
+ParseComplete
+ParameterDescription int8(20)
+RowDescription id int8(20,8), v text(25,-1)
+BindComplete
+RowDescription id int8(20,8), v text(25,-1)
+DataRow '2', 'b'
+DataRow '3', 'c'
+CommandComplete SELECT 2
+ReadyForQuery idle
+
+# A maximum number of rows suspends the portal; an Execute after it has
+# completed sends a count of 0. Sync closes the portals.
+pg bind statement=s1 params=1
+pg execute max_rows=2
+pg execute max_rows=2
+pg execute
+pg sync
+---
+BindComplete
+DataRow '1', 'a'
+DataRow '2', 'b'
+PortalSuspended
+DataRow '3', 'c'
+CommandComplete SELECT 3
+CommandComplete SELECT 0
+ReadyForQuery idle
+
+# After an error, every message up to Sync is skipped. Named statements stay
+# after Sync.
+pg execute portal=p1
+pg bind portal=p1 statement=s1 params=3
+pg execute portal=p1
+pg sync
+pg bind statement=s1 params=3
+pg execute
+pg sync
+---
+ErrorResponse ERROR 34000 portal p1 does not exist
+ReadyForQuery idle
+BindComplete
+DataRow '3', 'c'
+CommandComplete SELECT 1
+ReadyForQuery idle
+
+# The unnamed statement and portal; writes; Describe of a statement without
+# result columns.
+pg parse "INSERT INTO t VALUES ($1, $2)" types="20,25"
+pg describe statement=""
+pg bind params="4,d"
+pg execute
+pg execute
+pg bind params="5,NULL"
+pg execute
+pg sync
+pg query "SELECT * FROM t WHERE id > 3"
+---
+ParseComplete
+ParameterDescription int8(20), text(25)
+NoData
+BindComplete
+CommandComplete INSERT 0 1
+CommandComplete INSERT 0 0
+BindComplete
+CommandComplete INSERT 0 1
+ReadyForQuery idle
+RowDescription id int8(20,8), v text(25,-1)
+DataRow '4', 'd'
+DataRow '5', NULL
+CommandComplete SELECT 2
+ReadyForQuery idle
+
+# Describe of a statement describes it with every parameter replaced by NULL;
+# Describe of a portal describes the bound statement. Types are those of
+# DESCRIBE, text for an unknown type.
+pg parse name=s2 "SELECT $1 + 1, v, $2 FROM t WHERE id = 1" types="23,25"
+pg describe statement=s2
+pg bind portal=p2 statement=s2 params="41,x"
+pg describe portal=p2
+pg execute portal=p2
+pg sync
+---
+ParseComplete
+ParameterDescription int4(23), text(25)
+RowDescription ?column? text(25,-1), v text(25,-1), ?column? text(25,-1)
+BindComplete
+RowDescription ?column? int8(20,8), v text(25,-1), ?column? text(25,-1)
+DataRow '42', 'a', 'x'
+CommandComplete SELECT 1
+ReadyForQuery idle
+
+# Statements without parameters, and statements other than queries; the
+# session's transaction spans Syncs.
+pg parse name=b "BEGIN"
+pg parse name=ins "INSERT INTO t VALUES (6, 'f')"
+pg parse name=c "COMMIT"
+pg bind statement=b
+pg execute
+pg bind statement=ins
+pg execute
+pg sync
+pg bind statement=c
+pg execute
+pg sync
+---
+ParseComplete
+ParseComplete
+ParseComplete
+BindComplete
+CommandComplete BEGIN
+BindComplete
+CommandComplete INSERT 0 1
+ReadyForQuery transaction
+BindComplete
+CommandComplete COMMIT
+ReadyForQuery idle
+
+# Close removes statements and portals, also those that don't exist.
+pg close statement=s2
+pg close portal=nosuch
+pg sync
+pg bind statement=s2
+pg sync
+---
+CloseComplete
+CloseComplete
+ReadyForQuery idle
+ErrorResponse ERROR 26000 prepared statement s2 does not exist
+ReadyForQuery idle
+
+# Errors of Parse, Bind and Describe, and errors of the statement itself,
+# reported by Describe and Execute.
+pg parse name=s1 "SELECT 1"
+pg sync
+pg parse name=x "SELECT 1; SELECT 2"
+pg sync
+pg parse name=x "SELECT FROM t"
+pg sync
+pg bind
+pg sync
+pg describe portal=""
+pg sync
+pg close statement=""
+pg bind
+pg sync
+pg parse name=x "SELECT nosuch FROM t"
+pg bind portal=px statement=x
+pg describe portal=px
+pg sync
+pg bind portal=px statement=x
+pg execute portal=px
+pg sync
+---
+ErrorResponse ERROR 42P05 prepared statement s1 already exists
+ReadyForQuery idle
+ErrorResponse ERROR 42601 cannot insert multiple commands into a prepared statement
+ReadyForQuery idle
+ErrorResponse ERROR 42000 invalid input: expected expression atom, found FROM
+ReadyForQuery idle
+ErrorResponse ERROR 08P01 bind message supplies 0 parameters, but prepared statement requires 2
+ReadyForQuery idle
+ErrorResponse ERROR 34000 unnamed portal does not exist
+ReadyForQuery idle
+CloseComplete
+ErrorResponse ERROR 26000 unnamed prepared statement does not exist
+ReadyForQuery idle
+ParseComplete
+BindComplete
+ErrorResponse ERROR 42000 invalid input: unknown column nosuch
+ReadyForQuery idle
+BindComplete
+ErrorResponse ERROR 42000 invalid input: unknown column nosuch
+ReadyForQuery idle
+
+# A portal's result formats decide the format of its DataRows, also without
+# Describe. A format code other than 0 and 1 is an error; result formats of a
+# statement without result columns are not checked.
+pg bind statement=s1 params=6 results=1
+pg execute
+pg bind statement=s1 params=6 formats=2
+pg sync
+pg parse "DELETE FROM t WHERE id = 6"
+pg bind results="0,1"
+pg describe portal=""
+pg execute
+pg sync
+---
+BindComplete
+DataRow \x0000000000000006, \x66
+CommandComplete SELECT 1
+ErrorResponse ERROR 22023 unsupported format code: 2
+ReadyForQuery idle
+ParseComplete
+BindComplete
+NoData
+CommandComplete DELETE 1
+ReadyForQuery idle

@@ -1,0 +1,85 @@
+# The order of the records: users and memberships by name, tables after the
+# tables they reference, views after the views they depend on, grants and
+# policies by object and name.
+
+> CREATE USER zed
+> CREATE USER "Ann"
+> CREATE USER bob
+> GRANT zed TO bob
+> GRANT "Ann" TO bob
+> CREATE TABLE zz (id INT PRIMARY KEY)
+> CREATE TABLE mm (id INT PRIMARY KEY, z INT REFERENCES zz)
+> CREATE TABLE aa (id INT PRIMARY KEY, m INT REFERENCES mm)
+> INSERT INTO zz VALUES (2), (1)
+> INSERT INTO mm VALUES (10, 1)
+> INSERT INTO aa VALUES (100, 10)
+> CREATE VIEW v1 AS SELECT id FROM zz
+> CREATE VIEW v0 AS SELECT id FROM v1
+> CREATE VIEW v2 AS SELECT id FROM aa
+> GRANT DELETE, SELECT ON aa TO zed
+> GRANT SELECT ON aa TO "Ann"
+> GRANT SELECT ON v0 TO bob
+> GRANT UPDATE, INSERT ON mm TO bob
+> CREATE POLICY p_b ON zz TO bob USING (id = 2)
+> CREATE POLICY q ON aa USING (id > 0)
+> CREATE POLICY p_a ON zz USING (TRUE)
+backup o
+backup-list o
+---
+toydb backup version 1
+user Ann
+user bob
+user zed
+member bob of Ann
+member bob of zed
+table zz owner admin: CREATE TABLE zz (id INTEGER PRIMARY KEY)
+row zz: 1
+row zz: 2
+table mm owner admin: CREATE TABLE mm (id INTEGER PRIMARY KEY, z INTEGER DEFAULT NULL INDEX REFERENCES zz)
+row mm: 10, 1
+table aa owner admin: CREATE TABLE aa (id INTEGER PRIMARY KEY, m INTEGER DEFAULT NULL INDEX REFERENCES mm)
+row aa: 100, 10
+view v1 owner admin (id): SELECT id FROM zz
+view v0 owner admin (id): SELECT id FROM v1
+view v2 owner admin (id): SELECT id FROM aa
+grant aa to Ann: SELECT
+grant aa to zed: SELECT, DELETE
+grant mm to bob: INSERT, UPDATE
+grant v0 to bob: SELECT
+policy aa.q: id > 0
+policy zz.p_a: TRUE
+policy zz.p_b to bob: id = 2
+end 22 records, checksum 03da4da6
+
+# Restoring into an empty database applies the records in this order, so the
+# references, view dependencies and policies' users exist when needed.
+> DROP VIEW v0
+> DROP VIEW v1
+> DROP VIEW v2
+> DROP TABLE aa
+> DROP TABLE mm
+> DROP TABLE zz
+> DROP USER bob
+> DROP USER zed
+> DROP USER "Ann"
+restore o
+b:> SET ROLE bob
+b:> SELECT * FROM v0
+b:!> DELETE FROM zz
+> SHOW GRANTS
+---
+b: 1
+b: 2
+b: Error: permission denied: user bob has no DELETE privilege on zz
+'aa', 'admin', 'OWNER'
+'aa', 'Ann', 'SELECT'
+'aa', 'zed', 'SELECT'
+'aa', 'zed', 'DELETE'
+'mm', 'admin', 'OWNER'
+'mm', 'bob', 'INSERT'
+'mm', 'bob', 'UPDATE'
+'v0', 'admin', 'OWNER'
+'v0', 'bob', 'SELECT'
+'v1', 'admin', 'OWNER'
+'v2', 'admin', 'OWNER'
+'zz', 'admin', 'OWNER'

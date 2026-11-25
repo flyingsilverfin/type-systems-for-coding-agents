@@ -1,0 +1,105 @@
+# EXPORT ... AS SQL: the table's CREATE TABLE statement (the schema display,
+# with default values as SQL literals) and one INSERT per row in primary key
+# order. Executing the lines re-creates the table.
+
+> CREATE TABLE d (id INT PRIMARY KEY, s STRING NOT NULL DEFAULT 'it''s', f FLOAT DEFAULT NAN, g FLOAT DEFAULT -INFINITY, h FLOAT DEFAULT 1.0 / 4, n INT DEFAULT -5, u STRING UNIQUE, r INT REFERENCES d, b BOOLEAN DEFAULT NOT TRUE)
+> INSERT INTO d VALUES (1, 'a''b', NAN, INFINITY, -0.0, -9223372036854775807 - 1, 'é', NULL, TRUE)
+> INSERT INTO d (id, u, r) VALUES (2, 'x"y', 1), (3, '', 3)
+---
+ok
+
+# The schema display writes values as in query results; the export writes SQL
+# literals instead.
+schema
+---
+CREATE TABLE d (
+  id INTEGER PRIMARY KEY,
+  s STRING NOT NULL DEFAULT 'it\'s',
+  f FLOAT DEFAULT NaN,
+  g FLOAT DEFAULT -inf,
+  h FLOAT DEFAULT 0.25,
+  n INTEGER DEFAULT -5,
+  u STRING DEFAULT NULL UNIQUE INDEX,
+  r INTEGER DEFAULT NULL INDEX REFERENCES d,
+  b BOOLEAN DEFAULT FALSE
+)
+
+> EXPORT d AS SQL
+---
+CREATE TABLE d (
+  id INTEGER PRIMARY KEY,
+  s STRING NOT NULL DEFAULT 'it''s',
+  f FLOAT DEFAULT NAN,
+  g FLOAT DEFAULT -INFINITY,
+  h FLOAT DEFAULT 0.25,
+  n INTEGER DEFAULT -5,
+  u STRING DEFAULT NULL UNIQUE INDEX,
+  r INTEGER DEFAULT NULL INDEX REFERENCES d,
+  b BOOLEAN DEFAULT FALSE
+);
+INSERT INTO d VALUES (1, 'a''b', NAN, INFINITY, 0.0, -9223372036854775807 - 1, 'é', NULL, TRUE);
+INSERT INTO d VALUES (2, 'it''s', NAN, -INFINITY, 0.25, -5, 'x"y', 1, FALSE);
+INSERT INTO d VALUES (3, 'it''s', NAN, -INFINITY, 0.25, -5, '', 3, FALSE);
+
+[json]> EXPORT d AS SQL
+---
+{"result":"export","format":"sql","lines":["CREATE TABLE d (","  id INTEGER PRIMARY KEY,","  s STRING NOT NULL DEFAULT 'it''s',","  f FLOAT DEFAULT NAN,","  g FLOAT DEFAULT -INFINITY,","  h FLOAT DEFAULT 0.25,","  n INTEGER DEFAULT -5,","  u STRING DEFAULT NULL UNIQUE INDEX,","  r INTEGER DEFAULT NULL INDEX REFERENCES d,","  b BOOLEAN DEFAULT FALSE",");","INSERT INTO d VALUES (1, 'a''b', NAN, INFINITY, 0.0, -9223372036854775807 - 1, 'é', NULL, TRUE);","INSERT INTO d VALUES (2, 'it''s', NAN, -INFINITY, 0.25, -5, 'x\"y', 1, FALSE);","INSERT INTO d VALUES (3, 'it''s', NAN, -INFINITY, 0.25, -5, '', 3, FALSE);"]}
+
+# Executing the exported statements gives the same table and rows.
+> DROP TABLE d
+> CREATE TABLE d ( \
+  id INTEGER PRIMARY KEY, \
+  s STRING NOT NULL DEFAULT 'it''s', \
+  f FLOAT DEFAULT NAN, \
+  g FLOAT DEFAULT -INFINITY, \
+  h FLOAT DEFAULT 0.25, \
+  n INTEGER DEFAULT -5, \
+  u STRING DEFAULT NULL UNIQUE INDEX, \
+  r INTEGER DEFAULT NULL INDEX REFERENCES d, \
+  b BOOLEAN DEFAULT FALSE \
+);
+> INSERT INTO d VALUES (1, 'a''b', NAN, INFINITY, 0.0, -9223372036854775807 - 1, 'é', NULL, TRUE);
+> INSERT INTO d VALUES (2, 'it''s', NAN, -INFINITY, 0.25, -5, 'x"y', 1, FALSE);
+> INSERT INTO d VALUES (3, 'it''s', NAN, -INFINITY, 0.25, -5, '', 3, FALSE);
+> SELECT * FROM d
+---
+1, 'a\'b', NaN, inf, 0.0, -9223372036854775808, 'é', NULL, TRUE
+2, 'it\'s', NaN, -inf, 0.25, -5, 'x\"y', 1, FALSE
+3, 'it\'s', NaN, -inf, 0.25, -5, '', 3, FALSE
+
+> EXPORT d AS SQL
+---
+CREATE TABLE d (
+  id INTEGER PRIMARY KEY,
+  s STRING NOT NULL DEFAULT 'it''s',
+  f FLOAT DEFAULT NAN,
+  g FLOAT DEFAULT -INFINITY,
+  h FLOAT DEFAULT 0.25,
+  n INTEGER DEFAULT -5,
+  u STRING DEFAULT NULL UNIQUE INDEX,
+  r INTEGER DEFAULT NULL INDEX REFERENCES d,
+  b BOOLEAN DEFAULT FALSE
+);
+INSERT INTO d VALUES (1, 'a''b', NAN, INFINITY, 0.0, -9223372036854775807 - 1, 'é', NULL, TRUE);
+INSERT INTO d VALUES (2, 'it''s', NAN, -INFINITY, 0.25, -5, 'x"y', 1, FALSE);
+INSERT INTO d VALUES (3, 'it''s', NAN, -INFINITY, 0.25, -5, '', 3, FALSE);
+
+# Names that need quotes are quoted, in the CREATE TABLE statement (as in the
+# schema display) and in the INSERT statements. A table without rows exports
+# only its CREATE TABLE statement.
+> CREATE TABLE "my table" ("select" INT PRIMARY KEY, "x""y" FLOAT DEFAULT 1e100)
+> EXPORT "my table" AS SQL
+---
+CREATE TABLE "my table" (
+  "select" INTEGER PRIMARY KEY,
+  "x""y" FLOAT DEFAULT 1e100
+);
+
+> INSERT INTO "my table" VALUES (-1, 1.5e-7)
+> EXPORT "my table" AS SQL
+---
+CREATE TABLE "my table" (
+  "select" INTEGER PRIMARY KEY,
+  "x""y" FLOAT DEFAULT 1e100
+);
+INSERT INTO "my table" VALUES (-1, 1.5e-7);

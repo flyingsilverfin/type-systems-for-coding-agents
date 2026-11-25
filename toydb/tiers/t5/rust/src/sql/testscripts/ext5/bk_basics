@@ -1,0 +1,102 @@
+# Backups: a binary file of the whole database, created and restored through
+# the session. backup-list shows its records, backup-hex its bytes.
+
+backup empty
+backup-list empty
+backup-hex empty
+backup-verify empty
+---
+toydb backup version 1
+end 0 records, checksum 407b665b
+54 4f 59 44 42 42 41 4b 00 01 ff 00 00 00 04 00
+00 00 00 40 7b 66 5b
+ok: 0 records
+
+> CREATE TABLE t (id INT PRIMARY KEY, v STRING)
+> INSERT INTO t VALUES (1, 'a')
+backup b
+backup-list b
+backup-hex b
+backup-verify b
+---
+toydb backup version 1
+table t owner admin: CREATE TABLE t (id INTEGER PRIMARY KEY, v STRING DEFAULT NULL)
+row t: 1, 'a'
+end 2 records, checksum f4f47c67
+54 4f 59 44 42 42 41 4b 00 01 03 00 00 00 2e 00
+00 00 01 74 00 00 00 05 61 64 6d 69 6e 00 00 00
+00 00 00 00 02 00 00 00 02 69 64 02 00 00 01 00
+00 00 00 00 01 76 04 01 01 00 00 00 00 05 00 00
+00 18 00 00 00 01 74 00 00 00 02 02 00 00 00 00
+00 00 00 01 04 00 00 00 01 61 ff 00 00 00 04 00
+00 00 02 f4 f4 7c 67
+ok: 2 records
+
+# Restoring re-creates what was backed up. It fails, restoring nothing, if an
+# object exists already.
+!restore b
+> DROP TABLE t
+restore b
+> SELECT * FROM t
+schema
+---
+Error: invalid input: table t already exists
+1, 'a'
+CREATE TABLE t (
+  id INTEGER PRIMARY KEY,
+  v STRING DEFAULT NULL
+)
+
+# A backup is a snapshot: later changes don't change it. Restoring an empty
+# backup does nothing.
+> INSERT INTO t VALUES (2, 'b')
+> CREATE TABLE u (id INT PRIMARY KEY)
+backup b2
+> DROP TABLE t
+> DROP TABLE u
+restore empty
+!> SELECT * FROM t
+restore b2
+> SELECT * FROM t
+> SELECT * FROM u
+backup-list b
+---
+Error: invalid input: table t does not exist
+1, 'a'
+2, 'b'
+toydb backup version 1
+table t owner admin: CREATE TABLE t (id INTEGER PRIMARY KEY, v STRING DEFAULT NULL)
+row t: 1, 'a'
+end 2 records, checksum f4f47c67
+
+# A restore that fails part-way restores nothing.
+> DROP TABLE t
+!restore b2
+> SELECT * FROM u
+!> SELECT * FROM t
+---
+Error: invalid input: table u already exists
+Error: invalid input: table t does not exist
+
+# Inside a transaction, a backup sees the transaction's own changes, and a
+# restore is undone by ROLLBACK.
+> BEGIN
+> CREATE TABLE w (id INT PRIMARY KEY)
+backup b3
+> ROLLBACK
+backup-list b3
+---
+toydb backup version 1
+table u owner admin: CREATE TABLE u (id INTEGER PRIMARY KEY)
+table w owner admin: CREATE TABLE w (id INTEGER PRIMARY KEY)
+end 2 records, checksum 25a67a34
+
+> BEGIN
+> DROP TABLE u
+restore b3
+> SELECT * FROM w
+> ROLLBACK
+!> SELECT * FROM w
+> SELECT * FROM u
+---
+Error: invalid input: table w does not exist

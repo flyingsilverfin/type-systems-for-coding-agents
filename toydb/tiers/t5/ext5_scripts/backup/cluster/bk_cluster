@@ -1,0 +1,35 @@
+# Backups in a cluster: created and restored through a client's connection;
+# backup-list runs the toybackup binary on the file.
+
+cluster nodes=3
+---
+ok
+
+c1:> CREATE TABLE t (id INT PRIMARY KEY, v STRING)
+c1:> INSERT INTO t VALUES (1, 'a'), (2, 'b')
+c1:> CREATE USER alice PASSWORD 'pw'
+c2:backup b
+c3:backup-list b
+c3:backup-verify b
+---
+c3: toydb backup version 1
+c3: user alice password
+c3: table t owner admin: CREATE TABLE t (id INTEGER PRIMARY KEY, v STRING DEFAULT NULL)
+c3: row t: 1, 'a'
+c3: row t: 2, 'b'
+c3: end 4 records, checksum f5e5aa04
+c3: ok: 4 records
+
+# A restore through one node is replicated to the others.
+c1:> DROP TABLE t
+c1:> DROP USER alice
+c2:restore b
+c3:> SELECT * FROM t
+c4:login alice password=pw
+c4:!backup x
+c4:!restore b
+---
+c3: 1, 'a'
+c3: 2, 'b'
+c4: Error: permission denied: user alice is not a superuser
+c4: Error: permission denied: user alice is not a superuser

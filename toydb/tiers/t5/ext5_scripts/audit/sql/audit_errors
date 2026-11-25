@@ -1,0 +1,54 @@
+# FORMAT, digests, JSON and the "not supported" checks of SHOW AUDIT and SHOW
+# SESSIONS.
+
+> FORMAT show audit
+> FORMAT show audit since 007
+> FORMAT show sessions
+---
+SHOW AUDIT
+SHOW AUDIT SINCE 7
+SHOW SESSIONS
+
+!> EXPLAIN SHOW AUDIT
+!> DESCRIBE SHOW SESSIONS
+!> ESTIMATE SHOW AUDIT SINCE 1
+!> PREPARE p AS SHOW SESSIONS
+!> SHOW SESSIONS x
+!> SHOW SESSION
+---
+Error: invalid input: EXPLAIN is not supported for SHOW
+Error: invalid input: DESCRIBE is not supported for SHOW
+Error: invalid input: ESTIMATE is not supported for SHOW
+Error: invalid input: PREPARE is not supported for SHOW
+Error: invalid input: unexpected token x
+Error: invalid input: unexpected token session
+
+# Statements rejected after parsing are recorded with their error.
+> SHOW AUDIT
+---
+1, 'admin', 'MISC', 'format', '', NULL
+2, 'admin', 'MISC', 'format', '', NULL
+3, 'admin', 'MISC', 'format', '', NULL
+4, 'admin', 'MISC', 'explain', '', 'invalid input: EXPLAIN is not supported for SHOW'
+5, 'admin', 'MISC', 'describe', '', 'invalid input: DESCRIBE is not supported for SHOW'
+6, 'admin', 'MISC', 'estimate', '', 'invalid input: ESTIMATE is not supported for SHOW'
+7, 'admin', 'MISC', 'prepare', '', 'invalid input: PREPARE is not supported for SHOW'
+
+# Digests: SHOW SESSIONS counts its rows; SHOW AUDIT is a statement like any
+# other for digests.
+a:> SHOW SESSIONS
+a:> SHOW AUDIT SINCE 99
+a:!> SHOW AUDIT SINCE 99 x
+a:[header]> SHOW STATEMENTS
+---
+a: 1, 'admin', 'admin', NULL, 7
+a: 2, 'admin', 'admin', NULL, 0
+a: Error: invalid input: unexpected token x
+a: digest, calls, errors, rows
+a: 'SHOW SESSIONS', 1, 0, 2
+a: 'SHOW AUDIT SINCE ?', 1, 0, 0
+
+# LINT has no rules for them.
+> LINT SHOW AUDIT
+---
+ok

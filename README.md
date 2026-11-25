@@ -43,7 +43,7 @@ general-purpose application code, where the verifier is a compiler?
 To test this, we compared Rust (strong static types) against Python (dynamic types) on the same codebase:
 [toydb](https://github.com/erikgrinaker/toydb), a distributed SQL database in Rust, paired with a
 structurally parallel Python port that passes the same golden tests byte for byte. Both codebases are
-split into four tiers of increasing complexity:
+split into five tiers of increasing complexity:
 
 | Tier | What it adds | Size (approx. LOC, excl. comments/blanks/tests) |
 |---|---|---|
@@ -51,6 +51,7 @@ split into four tiers of increasing complexity:
 | 2 | Full database: Raft, server, client, cluster tests | Rust 8.5k · Python 11.3k |
 | 3 | Four extension layers: JSON output, statement digests, column statistics, export/import | Rust 10.1k · Python 12.7k |
 | 4 | Seven more layers: views, FORMAT, DESCRIBE, ESTIMATE, prepared statements, LINT, change log | Rust 12.5k · Python 14.9k |
+| 5 | Nine more layers: users and privileges, audit log, CHECK constraints, row-level security, PostgreSQL wire protocol, backups, system tables, materialized views, query profiles | Rust 19.2k · Python 20.7k |
 
 Agents of varying strength (Claude Haiku, Sonnet, and Opus) were given identical feature and bugfix tasks.
 Their only feedback was a standard developer loop: compiler errors (in Rust), one visible test, and a local
@@ -120,6 +121,43 @@ significant. Failures in both languages converged on semantic rules outside the 
 - ALTER checks for views depending on a table;
 - constructs rewritten directly in the parser.
 
+### 5. At about 20k lines, the same split (Tier 5)
+
+Tier 5 adds nine more layers, about 19k lines of Rust in all. They were designed so that once an agent finds a
+site, what has to go there follows mechanically from the module's documentation. That isolates the question of
+whether *finding* the sites gets hard again at this size. As before, 108 runs were graded, and a post-run review
+found no test faults:
+
+| Model | Rust pass | Python pass | Missed a site the Rust compiler flags (Rust · Python) |
+|---|---|---|---|
+| Haiku · low effort | 1/18 | 0/18 | 0/15 · 6/15 (p ≈ 0.02) |
+| Sonnet · medium effort | 4/18 | 3/18 | 0/15 · 2/15 |
+| Opus · high effort | 10/18 | 4/18 (p ≈ 0.09) | 0/15 · 0/15 |
+
+The site counts come from a per-site analysis of every run's diff. They exclude BETWEEN/IN: there, 15 of 18 runs
+rewrote the construct in the parser, so no new type existed for the compiler to check.
+
+For Sonnet and Opus, finding the sites did not get hard again. No Opus run in either language missed a site the
+compiler names. For Haiku it looks like Tier 3: the compiler took every Rust Haiku run to every flagged site, while
+Python Haiku missed them in 6 of 15 runs. Being taken there didn't make Haiku pass, though: it filled those sites
+with wrong content.
+
+Opus's Rust lead is the largest so far, so we traced every cell where the two languages differ to the sites that
+decided it. The compiler's net effect on passes is about zero. It rescued one Haiku run: its Python counterpart
+failed only on two sites the compiler flags. It cost two Sonnet runs, whose forced JSON arms got wrong content where
+Python's generic fallback was automatically right. The rest of Rust's 8-run lead (15/54 vs 7/54):
+
+- **A test-suite asymmetry (+3).** Python's base has a unit test pinning the list of change-log kinds, and Rust has
+  none, since a Rust test can't enumerate enum variants. Python agents cite that test as their reason not to record
+  ALTER in the change log: 0/9 Python runs did, against 4/9 Rust.
+- **Possibly types as notation (+2).** All three Rust Opus runs typed date arithmetic with an unknown operand
+  correctly, writing patterns like `Some(Integer) | None`. All three Python Opus runs matched only concrete types
+  and failed on that one rule. No compiler check is involved, and n = 3.
+- **Silent semantic sites and content (+4)**, which looks like chance at three repeats.
+
+Sites nothing flags were missed in both languages, Rust 41 times and Python 62. They include the lint rules through
+simple-CASE expansions (missed by all 18 runs) and BETWEEN/IN and NOT LIKE rewritten in the parser.
+
 ## What This Means So Far
 
 Both hypotheses hold—just at different boundaries.
@@ -134,11 +172,12 @@ TypeDB's schema checks what a query means, catching semantic errors at check tim
 checks which cases exist, not what each case must do—it catches a forgotten enum variant, not a lint rule
 that silently skips a CASE expansion.
 
-Two open questions remain:
+Tier 5 bears this out at 19k lines of Rust: grepping did not lose its edge for strong models.
 
-1. **Does site discovery break down again at larger scale?** A Tier 5 (20k+ lines of Rust) is currently in
-   development to test whether grepping loses its edge once a codebase grows too large to navigate
-   comfortably.
+Open questions:
+
+1. **Does documentation close the semantic gap?** The Tier 3 repeat runs, Tier 4 and Tier 5 all hid the extension docs from the README.
+   A run with them restored would show whether the silent semantic misses are a documentation problem.
 2. **Can encoding more invariants into types bridge the gap?** If a codebase pushes more of its semantic
    rules into the type system, can the compiler start helping with the *what* as well as the *where*?
 
@@ -164,7 +203,7 @@ Open that file in a browser to explore the data.
 | Path | Description |
 |---|---|
 | `toydb/rust`, `toydb/python` | Upstream [toydb](https://github.com/erikgrinaker/toydb) (commit 2d7cd32) and its structurally parallel Python port (`toydb/PORTING.md`) |
-| `toydb/tiers/t1..t4/{rust,python}` | The four benchmark tiers. Specs live in `toydb/tiers/t3/EXT_SPEC.md` and `toydb/tiers/t4/EXT4_SPEC.md` (module docs in `EXT4_DOCS.md`). Each tier contains `check.sh`, `grade.py`, and `LAYOUT.md` |
+| `toydb/tiers/t1..t5/{rust,python}` | The five benchmark tiers. Specs live in `toydb/tiers/t3/EXT_SPEC.md`, `toydb/tiers/t4/EXT4_SPEC.md` and `toydb/tiers/t5/EXT5_SPEC.md` (module docs in `EXT4_DOCS.md`, `EXT5_DOCS.md`). Each tier contains `check.sh`, `grade.py`, and `LAYOUT.md` |
 | `toydb/tasks/<task>/` | The 7 tasks (between_in, case, date, distinct, alter, release, bugfix): `SPEC.md` (+ tier addenda) and the visible golden script |
 | `bench/` | Evaluation harness: workspace builders (`make_run*.py`), graders, run lists, transplant scripts, usage guard, and `bench/workflows/` |
 | `analysis/` | `transcripts.py` (tokens, turns, timings, and isolation audit), `render.py` (HTML report generator), and `notes.json` |

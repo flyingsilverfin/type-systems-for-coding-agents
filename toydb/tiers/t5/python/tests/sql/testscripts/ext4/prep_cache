@@ -1,0 +1,156 @@
+# Each prepared statement caches the plan of its last successful planning. It
+# is used again for the same argument values, as long as every table and view
+# it used has the same definition. SHOW PREPARED counts executions and plans.
+
+> CREATE TABLE t (id INT PRIMARY KEY, v STRING)
+> INSERT INTO t VALUES (1, 'a'), (2, 'b')
+> PREPARE get (INT) AS SELECT v FROM t WHERE id = $1
+---
+ok
+
+# The same arguments use the cached plan; other arguments plan anew.
+> EXECUTE get (1)
+> EXECUTE get (1)
+> EXECUTE get (2)
+> EXECUTE get (1)
+> SHOW PREPARED
+---
+'a'
+'a'
+'b'
+'a'
+'get', 'INTEGER', 'SELECT v FROM t WHERE id = $1', 4, 3
+
+# Writes, ANALYZE and changes to other tables don't affect the cached plan.
+> INSERT INTO t VALUES (3, 'c')
+> UPDATE t SET v = 'A' WHERE id = 1
+> ANALYZE t
+> CREATE TABLE other (id INT PRIMARY KEY)
+> EXECUTE get (1)
+> SHOW PREPARED
+---
+'A'
+'get', 'INTEGER', 'SELECT v FROM t WHERE id = $1', 5, 3
+
+# A table dropped and created again with the same definition counts as
+# unchanged; another definition makes EXECUTE plan anew.
+> DROP TABLE t
+> CREATE TABLE t (id INT PRIMARY KEY, v STRING)
+> INSERT INTO t VALUES (1, 'new')
+> EXECUTE get (1)
+> SHOW PREPARED
+---
+'new'
+'get', 'INTEGER', 'SELECT v FROM t WHERE id = $1', 6, 3
+
+> DROP TABLE t
+> CREATE TABLE t (id INT PRIMARY KEY, v STRING NOT NULL)
+> INSERT INTO t VALUES (1, 'x')
+> EXECUTE get (1)
+> SHOW PREPARED
+---
+'x'
+'get', 'INTEGER', 'SELECT v FROM t WHERE id = $1', 7, 4
+
+# A failed planning counts as a plan and keeps the cached plan, which is used
+# again once the table has its definition again.
+> DROP TABLE t
+!> EXECUTE get (1)
+> CREATE TABLE t (id INT PRIMARY KEY, v STRING NOT NULL)
+> INSERT INTO t VALUES (1, 'y')
+> EXECUTE get (1)
+> SHOW PREPARED
+---
+Error: invalid input: table t does not exist
+'y'
+'get', 'INTEGER', 'SELECT v FROM t WHERE id = $1', 9, 5
+
+# An execution that fails with a cached plan still counts.
+> PREPARE ins (INT) AS INSERT INTO t VALUES ($1, 'z')
+> EXECUTE ins (5)
+!> EXECUTE ins (5)
+> SHOW PREPARED
+---
+Error: invalid input: primary key 5 already exists
+'get', 'INTEGER', 'SELECT v FROM t WHERE id = $1', 9, 5
+'ins', 'INTEGER', 'INSERT INTO t VALUES ($1, \'z\')', 2, 1
+
+# Views: the cached plan depends on the view's definition too.
+> CREATE VIEW tv AS SELECT v FROM t WHERE id = 1
+> PREPARE pv AS SELECT * FROM tv
+> EXECUTE pv
+> EXECUTE pv
+> DROP VIEW tv
+> CREATE VIEW tv AS SELECT v FROM t WHERE id = 5
+> EXECUTE pv
+> DROP VIEW tv
+> CREATE VIEW tv AS SELECT v FROM t WHERE id = 5
+> EXECUTE pv
+> SHOW PREPARED
+---
+'y'
+'y'
+'z'
+'z'
+'get', 'INTEGER', 'SELECT v FROM t WHERE id = $1', 9, 5
+'ins', 'INTEGER', 'INSERT INTO t VALUES ($1, \'z\')', 2, 1
+'pv', '', 'SELECT * FROM tv', 4, 2
+
+# Plans made in a transaction that is rolled back.
+> BEGIN
+> CREATE TABLE w (id INT PRIMARY KEY)
+> PREPARE pw AS SELECT * FROM w
+> EXECUTE pw
+> ROLLBACK
+!> EXECUTE pw
+> CREATE TABLE w (id INT PRIMARY KEY)
+> INSERT INTO w VALUES (1)
+> EXECUTE pw
+> SHOW PREPARED
+---
+Error: invalid input: table w does not exist
+1
+'get', 'INTEGER', 'SELECT v FROM t WHERE id = $1', 9, 5
+'ins', 'INTEGER', 'INSERT INTO t VALUES ($1, \'z\')', 2, 1
+'pv', '', 'SELECT * FROM tv', 4, 2
+'pw', '', 'SELECT * FROM w', 3, 2
+
+# EXPLAIN, DESCRIBE and ESTIMATE of an EXECUTE neither use nor change the cache
+# and don't count. DEALLOCATE discards the counts with the statement.
+> EXPLAIN EXECUTE get (1)
+> DESCRIBE EXECUTE get (1)
+> ESTIMATE EXECUTE get (1)
+> DEALLOCATE get
+> PREPARE get (INT) AS SELECT v FROM t WHERE id = $1
+> SHOW PREPARED
+---
+'t.v', 'STRING', FALSE
+'Projection: t.v', 1
+'└─ KeyLookup: t (1)', 1
+'get', 'INTEGER', 'SELECT v FROM t WHERE id = $1', 0, 0
+'ins', 'INTEGER', 'INSERT INTO t VALUES ($1, \'z\')', 2, 1
+'pv', '', 'SELECT * FROM tv', 4, 2
+'pw', '', 'SELECT * FROM w', 3, 2
+
+# Arguments are identical if they have the same type and are equal, but 0.0
+# and -0.0 are different values; NaN is identical to NaN.
+> PREPARE z (FLOAT) AS SELECT $1, $1 * -1
+> EXECUTE z (-0.0)
+> EXECUTE z (0.0)
+> EXECUTE z (0.0 * -1)
+> EXECUTE z (-0.0)
+> EXECUTE z (NAN)
+> EXECUTE z (-NAN)
+> SHOW PREPARED
+---
+-0.0, 0.0
+0.0, -0.0
+-0.0, 0.0
+-0.0, 0.0
+NaN, NaN
+NaN, NaN
+'get', 'INTEGER', 'SELECT v FROM t WHERE id = $1', 0, 0
+'ins', 'INTEGER', 'INSERT INTO t VALUES ($1, \'z\')', 2, 1
+'pv', '', 'SELECT * FROM tv', 4, 2
+'pw', '', 'SELECT * FROM w', 3, 2
+'z', 'FLOAT', 'SELECT $1, $1 * -1', 6, 4

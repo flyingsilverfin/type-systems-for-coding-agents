@@ -1,0 +1,70 @@
+# EXPORT ... AS CSV: a header line with the column names, then one line per row
+# in primary key order. NULL is an empty field; a string is quoted only if it is
+# empty or contains a comma, a double quote or a line break.
+
+> CREATE TABLE v (id INT PRIMARY KEY, b BOOLEAN, i INT, f FLOAT, s STRING)
+> INSERT INTO v VALUES (5, FALSE, -9223372036854775807 - 1, INFINITY, 'say "hi"'), (1, TRUE, -7, 1.0, 'plain'), (2, FALSE, 0, -0.0, 'a,b'), (3, NULL, NULL, NULL, NULL), (4, TRUE, 9223372036854775807, NAN, ''), (6, NULL, 42, -INFINITY, 'it''s'), (7, TRUE, 1, 1e100, 'x y')
+---
+ok
+
+> EXPORT v AS CSV
+---
+id,b,i,f,s
+1,TRUE,-7,1.0,plain
+2,FALSE,0,0.0,"a,b"
+3,,,,
+4,TRUE,9223372036854775807,NaN,""
+5,FALSE,-9223372036854775808,inf,"say ""hi"""
+6,,42,-inf,it's
+7,TRUE,1,1e100,x y
+
+# The JSON result carries the same lines.
+[json]> EXPORT v AS CSV
+---
+{"result":"export","format":"csv","lines":["id,b,i,f,s","1,TRUE,-7,1.0,plain","2,FALSE,0,0.0,\"a,b\"","3,,,,","4,TRUE,9223372036854775807,NaN,\"\"","5,FALSE,-9223372036854775808,inf,\"say \"\"hi\"\"\"","6,,42,-inf,it's","7,TRUE,1,1e100,x y"]}
+
+# An empty table exports only its header. Header names are quoted by the same
+# rule as strings; names are never SQL-quoted.
+> CREATE TABLE "odd table" ("a,b" INT PRIMARY KEY, "x""y" STRING, "select" BOOLEAN)
+> EXPORT "odd table" AS CSV
+---
+"a,b","x""y",select
+
+> INSERT INTO "odd table" VALUES (1, 'one', TRUE)
+> EXPORT "odd table" AS CSV
+---
+"a,b","x""y",select
+1,one,TRUE
+
+# The export sees what the transaction sees.
+> BEGIN
+> INSERT INTO v VALUES (8, NULL, NULL, 2.5, 'eight')
+> DELETE FROM v WHERE id < 7
+> EXPORT v AS CSV
+> ROLLBACK
+---
+id,b,i,f,s
+7,TRUE,1,1e100,x y
+8,,,2.5,eight
+
+# EXPORT doesn't change the table.
+> SELECT COUNT(*) FROM v
+---
+7
+
+# Errors.
+!> EXPORT nosuch AS CSV
+!> EXPORT AS CSV
+!> EXPORT v
+!> EXPORT v CSV
+!> EXPORT v AS XML
+!> EXPORT v AS CSV, JSON
+!> EXPORT 1 AS CSV
+---
+Error: invalid input: table nosuch does not exist
+Error: invalid input: EXPORT without a table requires AS SQL
+Error: invalid input: unexpected end of input
+Error: invalid input: expected token AS, found CSV
+Error: invalid input: unexpected token xml
+Error: invalid input: unexpected token ,
+Error: invalid input: expected token AS, found 1

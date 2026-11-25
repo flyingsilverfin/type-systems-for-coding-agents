@@ -1,0 +1,77 @@
+# When constraints are evaluated: for every row a statement writes, after the
+# row is complete, before any of the statement's rows is written and so
+# before the existing checks of the rows.
+
+> CREATE TABLE t (id INT PRIMARY KEY, n INT NOT NULL DEFAULT 1, s STRING UNIQUE, CHECK (n > 0), CONSTRAINT small CHECK (n < 100))
+> INSERT INTO t VALUES (1, 5, 'a')
+---
+ok
+
+# Defaults are filled in first.
+> INSERT INTO t (id, s) VALUES (2, 'b')
+> SELECT * FROM t WHERE id = 2
+---
+2, 1, 'b'
+
+# A constraint violated by a later row is reported before the existing checks
+# of an earlier one (here: a duplicate primary key, a duplicate unique value, a
+# NULL, a wrong type).
+!> INSERT INTO t VALUES (1, 5, 'x'), (3, -1, 'c')
+!> INSERT INTO t VALUES (3, 5, 'a'), (4, 200, 'd')
+!> INSERT INTO t VALUES (3, NULL, 'c')
+!> INSERT INTO t VALUES (3, 'x', 'c')
+!> INSERT INTO t VALUES (3, 5, 'a')
+!> INSERT INTO t VALUES (3, 5, 'c'), (3, 6, 'd')
+> SELECT * FROM t
+---
+Error: invalid input: row 3 violates check constraint t_check1
+Error: invalid input: row 4 violates check constraint small
+Error: invalid input: NULL value not allowed for column n
+Error: invalid input: can't compare 'x' and 0
+Error: invalid input: value 'a' already in unique column s
+Error: invalid input: primary key 3 already exists
+1, 5, 'a'
+2, 1, 'b'
+
+# UPDATE evaluates the constraints for the new rows, in primary key order of
+# the old rows; a changed primary key is the row's key in the message.
+> INSERT INTO t VALUES (3, 50, 'c'), (4, 90, 'd')
+!> UPDATE t SET n = n * 2
+!> UPDATE t SET n = n - 50
+!> UPDATE t SET id = id + 10, n = 0 WHERE id = 4
+> UPDATE t SET n = n + 1 WHERE id < 3
+> SELECT * FROM t
+---
+Error: invalid input: row 3 violates check constraint small
+Error: invalid input: row 1 violates check constraint t_check1
+Error: invalid input: row 14 violates check constraint t_check1
+1, 6, 'a'
+2, 2, 'b'
+3, 50, 'c'
+4, 90, 'd'
+
+# IMPORT, and INSERT through a prepared statement, are checked like INSERT.
+!> IMPORT INTO t FROM CSV 'id,n', '5,7', '6,0'
+!> IMPORT INTO t FROM JSON '{"id":7,"n":100}'
+> PREPARE ins (INT, INT) AS INSERT INTO t (id, n) VALUES ($1, $2)
+> EXECUTE ins (8, 8)
+!> EXECUTE ins (9, -9)
+> SELECT id, n FROM t WHERE id > 4
+---
+Error: invalid input: row 6 violates check constraint t_check1
+Error: invalid input: row 7 violates check constraint small
+Error: invalid input: row 9 violates check constraint t_check1
+8, 8
+
+# Inside an explicit transaction, a failing statement writes nothing; the
+# rows of earlier statements stay.
+> BEGIN
+> INSERT INTO t (id, n) VALUES (10, 10)
+!> INSERT INTO t (id, n) VALUES (11, 11), (12, 0)
+!> UPDATE t SET n = 0 WHERE id = 10
+> COMMIT
+> SELECT id, n FROM t WHERE id >= 10
+---
+Error: invalid input: row 12 violates check constraint t_check1
+Error: invalid input: row 10 violates check constraint t_check1
+10, 10

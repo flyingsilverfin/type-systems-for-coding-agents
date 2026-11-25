@@ -1,0 +1,15 @@
+{
+ "run": "t5r_distinct_py_ohc",
+ "task": "distinct",
+ "suite": "toydb-t5",
+ "tier": "t5",
+ "lang": "python",
+ "model": "opus",
+ "effort": "high",
+ "ws": "/home/user/agentbench/runs/t5r_distinct_py_ohc",
+ "hint": true,
+ "readme_from": "t2",
+ "baseline": "6d2b2284f5690619e05988a7570d85bf8b4fd58e",
+ "created": 1795539876.0739157,
+ "warm_ok": true
+}

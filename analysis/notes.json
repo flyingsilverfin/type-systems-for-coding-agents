@@ -1,7 +1,8 @@
 {
- "updated": "2026-11-22",
- "phase": "tier 4 done (Haiku, Sonnet, Opus × 3, no README) · tier 5 only if needed",
+ "updated": "2026-11-25",
+ "phase": "tier 5 done (Haiku, Sonnet, Opus × 3, no README), post-run review clean",
  "findings": [
+  "<b>Tier 5 (19.2k lines of Rust, nine more extension layers, built so that a site's content follows mechanically from the docs once found): finding sites did not get hard again for strong models, and the compiler still rescues the weak one.</b> 22 of 108 runs pass: Haiku Rust 1/18 vs Python 0/18, Sonnet 4/18 vs 3/18, Opus 10/18 vs 4/18 (p ≈ 0.09; all models 15/54 vs 7/54, p ≈ 0.09). A per-site analysis of every run's diff splits the failures. <b>Sites the compiler flags</b> (outside between_in, where a parser rewrite meant no new node existed): Rust 0 misses in 45 runs. Python missed at least one in 6/15 Haiku runs, 2/15 Sonnet runs and 0/15 Opus runs; Haiku at tier 3 was 6/18. <b>Sites nothing flags</b> were missed in both languages, with Python missing more (Rust 41, Python 62). Those include lint through the simple-CASE expansion (18/18 missed), BETWEEN/IN and NOT LIKE rewritten in the parser, ALTER missing from the change log, and the DESCRIBE typing rules. <b>Tracing every cell where Rust and Python differ, the compiler's net contribution to passes is about zero.</b> It rescued one Haiku run and cost two Sonnet runs, where its forced JSON arms got wrong content that Python's fallback got right. The rest of the +8 gap comes from three sources. A test-suite asymmetry (+3): a Python-only unit test pins the list of change kinds, and Python agents cite it as their reason not to record ALTER in the change log. Possibly <code>Option</code> making the unknown case visible in DESCRIBE (+2, Opus date, unverified). Silent sites and content (+4), which looks like chance at n = 3. A post-run review found no test faults and four small base asymmetries that cut both ways.",
   "<b>Tier 4 (12.5k lines of Rust, 7 more extension layers, identical docs in both languages): the type system no longer decides anything for any model.</b> After a post-run audit of the hidden tests, 20 of 108 runs pass: Haiku Rust 2/18 vs Python 1/18, Sonnet 3/18 vs 2/18, Opus 8/18 vs 4/18 (p ≈ 0.29). Nearly every failure is at a site no type checks, and it fails in both languages: lint rules applied through BETWEEN/IN and simple-CASE expansions (0 of 36 runs), DESCRIBE typing of date arithmetic (1 of 18), the ALTER view-dependency check, BETWEEN/IN and NOT LIKE rewritten in the parser. Python agents reached the sites Rust's compiler names: only 1 of 54 Python runs crashed at an unhandled variant (Haiku at tier 3: 6 of 18). The codebase is consistent enough that grepping for a sibling variant finds the same list the compiler gives. Rust's forced arms again came with wrong content, e.g. DATE written as a plain JSON string: Rust right in 3 of 9 runs, Python 9 of 9, through its generic fallback. <b>Reading:</b> at scale, the bottleneck is the semantic rules, not finding the sites, and types only help with finding the sites.",
   "<b>Experiment 1 across three models: the compiler's advantage is a weak-model effect.</b> With the README's extension docs removed (code unchanged), 3 repeats × 6 tasks per cell: <b>Haiku</b> Rust 10/18 vs Python 5/18, and 6 of 18 Python runs missed a site Rust's compiler flags (Rust 0, p ≈ 0.02). <b>Sonnet</b> 11/18 vs 12/18, and <b>Opus</b> 18/18 vs 13/18: neither missed a single compiler-flagged site in Python (0 of 36). Sonnet and Opus found the JSON writers and the hand-written serialization on their own. Their Python failures are all at sites no type checks (BETWEEN/IN kept as a parser expansion, the optional COLUMN in ALTER digests). The ALTER one is partly a documentation confound: the Rust digest module states \"optional words are left out\" as a rule, while the Python docstring only implies it. Meanwhile exhaustive matching cut the other way for Rust: 5 Rust runs (Haiku 2, Sonnet 3) added the forced arm with the wrong content, e.g. a JSON import arm for DATE that reads a plain string, where Python's generic fallback handled the typed form automatically. <b>Reading:</b> types tell you where, not what. That matters for a weak agent that can't find the where on its own, and stops mattering once the agent can.",
   "<b>Tier 3: types tell you <i>where</i>, not <i>what</i>.</b> I added four extension layers to toydb (JSON output, statement digests, column statistics, export/import) that consume the core types, so each feature task has to reach code far from where the feature lives. <b>Transplant (tier-2 solutions dropped onto tier 3 unchanged):</b> in Rust, 10 of 12 feature solutions fail to compile, and every error names a missing extension site. In Python, 6 of 12 fail the agent's own visible script (a crash or wrong answers), but 4 (DATE, release) pass the visible script and the entire existing suite while failing every extension script. The remaining 2 per language (BETWEEN/IN) are silent in both. <b>Real agents on tier 3</b> didn't need the compiler for this: Python agents reached every site Rust's compiler would have flagged, in 12 of 12 feature runs (the README's Extensions section names them). Of the 7 failures (Rust 3, Python 4, all escaped with a green <code>check.sh</code>), every one is at a site no type system in either language checks: digest text, JSON member lists, statistics upkeep, and whether BETWEEN stays in the AST.",
@@ -30,8 +31,8 @@
   "<b>Validator signal</b>: how many check.sh runs, and how many failed at compile vs failed visible tests."
  ],
  "next": [
-  "<b>Where this leaves the talk.</b> Tier 3: the compiler rescued a weak model that couldn't find the consumers of a change. Tier 4: in a larger and more consistent codebase every model, in both languages, finds the consumers (by grep if not by compiler), and fails on rules no type expresses. <i>Types tell you where, not what,</i> and past a certain codebase quality the where is no longer the bottleneck. A tier 5 (20k+ lines) would test whether the where becomes hard again. Its candidates are an information schema and binary backup/restore, and it is only worth building if you want the size point for the talk.",
-  "<b>Possible cheap follow-ups:</b> a with-README tier-4 arm (does documentation fix the semantic misses?), and a pyright arm for Python."
+  "<b>Where this leaves the talk.</b> Tier 3: the compiler rescued a weak model that couldn't find the consumers of a change. Tier 4: in a larger, consistent codebase every model in both languages finds the consumers (by grep if not by compiler) and fails on rules no type expresses. Tier 5 (19k lines): the same split holds at nearly twice the size. The weak model misses compiler-flagged sites in Python (6/15 runs) and never in Rust, while strong models find them either way, and everyone fails on silent semantic rules. <i>Types tell you where, not what.</i> Past a certain codebase quality, the where is only the bottleneck for weak models.",
+  "<b>Possible cheap follow-ups:</b> a with-README tier-5 arm (does documentation fix the silent semantic misses?); a pyright arm for Python; more Opus repeats at tier 5 to test the 10/18 vs 4/18 gap."
  ],
  "scale_plan": [
   "<b>Reference codebase: <a href='https://github.com/erikgrinaker/toydb'>toydb</a></b> (Erik Grinaker, Apache-2.0). A distributed SQL database in Rust: lexer/parser, planner with 5 optimizers, executor, MVCC transactions, bitcask/memory storage, key encoding, Raft. It is about 7.9k lines of non-test code (+3.8k inline tests) and ships <b>107 golden test scripts</b> for SQL and storage, with about 10k lines of expected output in a language-neutral command → output format, including 428 exact error messages and printed plan trees.",
@@ -304,8 +305,102 @@
  "tier4_sites": [
   "<b>Sites the compiler names: reached in both languages.</b> Every Rust run compiled, so every forced arm exists. Python agents got there too: 1 of 54 Python runs crashed at an unhandled variant (Sonnet release c: the new functions missing in the tier-3 JSON expression writer). The forced arms are many (describe, lint, format, estimate, prepared, JSON), and the content in them is where the Rust runs failed: DATE as a JSON string (Rust right in 3/9, Python 9/9), <code>COLUMN</code> kept in FORMAT (Rust 2/9 right, Python 3/9).",
   "<b>Sites no type checks: missed in both languages.</b> Lint through expansions 0/36 runs; date DESCRIBE 1/18; the ALTER view check R 5/9, P 4/9; BETWEEN/IN kept in the AST 3/18.",
-  "<b>Two silent sites where Rust did better.</b> The ALTER change log (Rust 8/9, Python 0/9) and the NOT LIKE lint rule (Rust 4/9, Python 1/9). Nothing in the types requires either. A plausible but unverified reading is that Rust's change log is a data-carrying <code>enum Change</code>, so adding <code>AlterTable(Table)</code> next to <code>CreateTable(Table)</code> looks natural; Opus Python instead recorded the rewritten rows as updates, reasoning that “the change log has no schema changes other than CREATE and DROP”.",
+  "<b>Two silent sites where Rust did better.</b> The ALTER change log (Rust 8/9, Python 0/9) and the NOT LIKE lint rule (Rust 4/9, Python 1/9). Nothing in the types requires either. <i>Correction after tier 5:</i> the change log is mostly a test-suite asymmetry. Python's base has a unit test that pins the list of change kinds (<code>test_kind</code>), and Rust has none. Python runs cite it as their reason not to add an ALTER kind: 3 of 9 at tier 4 and 4 of 9 at tier 5.",
   "<b>Cost.</b> Per run, as at tier 3: Sonnet is cheapest (about 30k output tokens). Rust costs Haiku 33% more output tokens than Python, and costs Sonnet and Opus about the same."
  ],
- "lede": "The same codebase in Rust and Python: <a href='https://github.com/erikgrinaker/toydb'>toydb</a>, a distributed SQL database, at growing sizes (tiers 1–4). Agents of different strength get identical tasks; a compiler (or not) plus a few visible tests are their only validators; held-back tests decide correctness."
+ "lede": "The same codebase in Rust and Python: <a href='https://github.com/erikgrinaker/toydb'>toydb</a>, a distributed SQL database, at growing sizes (tiers 1–4). Agents of different strength get identical tasks; a compiler (or not) plus a few visible tests are their only validators; held-back tests decide correctness.",
+ "tokens": [
+  "<b>A separate data point from Kimi.</b> In a separate replication, Kimi K3.1 Pro got the same brief. It wrote its own small Rust and Python SQL engines rather than porting toydb, then ran 5 tier-2 feature tasks once per language. Its Rust runs used 4,315,253 tokens against 3,355,082 for Python: <b>+28.6%</b>. Rust cost more on 4 of the 5 tasks; CHECK constraints was the exception. That gap may come from the language's verbosity rather than its types: Kimi's Rust base was 4,041 lines against 2,226 lines of Python (1.8×), so there was more code to read.",
+  "<b>In this experiment the gap is small, and it doesn't always favour Python.</b> Across tiers 1–4 the Rust–Python difference in total tokens runs from −7% to +8%. Tier 5 runs the other way: Python used 25% more tokens than Rust (622M against 499M). Haiku and Sonnet took more turns in Python, while Opus came out even. So it isn't a fixed Rust tax. Here the Rust code is <i>shorter</i> than the Python port (tier 2: 8.5k vs 11.3k lines), the opposite of Kimi's ratio. That fits the idea that code size, rather than the type system, drives much of Kimi's gap.",
+  "The largest Rust premium was Haiku at tier 4 (+37%). Sonnet and Opus used a little <i>less</i> in Rust at tier 4.",
+  "Most tokens are cache reads: each turn resends the conversation so far. So totals track how many turns a run takes, more than how much the model writes. Output tokens alone are noisier but show the same pattern."
+ ],
+ "tier5": [
+  "<b>Codebase.</b> Tier 4 plus nine extension layers that consume the core types: users and privileges, an audit log, CHECK constraints, row-level security policies, a PostgreSQL wire protocol, backups, system tables, materialized views and query profiles. Rust application code is 19,233 lines (tier 4: 12,498); Python is 20,709. The layers were designed to be mechanical: once an agent finds a site, what goes there follows from the module's documented rule. That isolates <i>finding</i> sites from getting their content right.",
+  "<b>Tasks and setup.</b> The same 6 tasks, each with 9–22 new hidden tier-5 scripts (83 in all), plus the tier-2 to tier-4 hidden scripts. The condition is the experiment-1/tier-4 one: the tier-2 README, with code and doc comments unchanged. That gives 108 runs (6 tasks × 2 languages × Haiku-low, Sonnet-medium, Opus-high × 3). The runs went in two lanes, one Rust and one Python agent at a time, so wall times are not comparable with tier 4. Tokens and turns are.",
+  "<b>Test audits.</b> A pre-run audit re-derived every expected line from the agent-visible material and found 0 faults and 1 underdetermined line, which was removed. After the runs, four Opus reviewers checked the bases (users…pgwire; backup…profile) and the hidden tests (three tasks each). All 12 reference solutions pass every hidden script with byte-identical output across languages. Baselines, line counts, doc parity and about 1,000 cross-language probe statements check out. No test faults, no regrades, no reruns.",
+  "<b>Base asymmetries the review found</b> change effort, not expected output, and cut both ways. Favouring Python: in Python, adding a keyword turns three existing keyword tests red, which points at the keyword-category site; in Rust it stays silent. Also favouring Python: date's pgwire and backup-tag sites are automatic in Python. Favouring Rust: release's owner-kept rule sits in one Rust helper against three inline Python checks, and alter's constraint naming already exists in Rust. The per-site data shows the keyword hint made no measurable difference (Python missed the category 4 times in between_in, Rust 2).",
+  "<b>Isolation.</b> Clean: no run read hidden tests, references or other runs. The session scratchpad, which held old tier-2/3 working files, was found unlocked mid-run, because the harness tells every subagent about it and 36 runs used it as a temp directory. No run read a file that predates the runs; one Haiku run listed its file names and opened none of them. Seven Haiku runs wrote scratch files outside their workspace; all were cleaned up. One Haiku run (date, Python, a) ended while its own check was still running, and is graded as left."
+ ],
+ "tier5_models": [
+  [
+   "Haiku · low",
+   "1/18",
+   "0/18",
+   "0/15 · 6/15",
+   "73% · 70%",
+   "75k · 81k",
+   "71 · 90"
+  ],
+  [
+   "Sonnet · medium",
+   "4/18",
+   "3/18",
+   "0/15 · 2/15",
+   "83% · 84%",
+   "32k · 36k",
+   "43 · 53"
+  ],
+  [
+   "Opus · high",
+   "10/18",
+   "4/18",
+   "0/15 · 0/15",
+   "93% · 90%",
+   "50k · 49k",
+   "69 · 70"
+  ]
+ ],
+ "tier5_tasks": [
+  [
+   "between_in",
+   "0/0",
+   "0/0",
+   "1/0",
+   "BETWEEN/IN rewritten in the parser (Rust 8/9, Python 7/9): digests, FORMAT, lint and stored view/CHECK/policy text show the expansion. Neither language flags it. The 3 runs that kept the nodes reached every forced site."
+  ],
+  [
+   "case",
+   "0/0",
+   "0/0",
+   "0/0",
+   "Lint rules through the simple-CASE expansion missed by all 18. Rust: forced sites with wrong content (pg name <code>?column?</code> for <code>case</code>, DESCRIBE). Python Haiku/Sonnet: 8 loud-at-use sites (JSON, DESCRIBE) never exercised, so missed."
+  ],
+  [
+   "date",
+   "0/0",
+   "0/0",
+   "2/0",
+   "Backup stores the day count instead of the display string (Rust 6/9, Python 5/9; Opus 0). DESCRIBE with an unknown operand is DATE (only Rust Opus 3/3 right; Python 8/9 wrong). Rust Sonnet wrote DATE as a plain JSON string, a site automatic in Python."
+  ],
+  [
+   "distinct",
+   "1/0",
+   "1/3",
+   "3/2",
+   "Rust missed no site. Python Haiku missed 8 (digest printer, JSON aggregate writer, the formatter's SELECT DISTINCT). Content: extra JSON members, <code>count(DISTINCT _)</code> casing."
+  ],
+  [
+   "alter",
+   "0/0",
+   "2/0",
+   "1/0",
+   "ALTER missing from the change log (Python 9/9, Rust 5/9). Haiku: view, matview and CHECK/policy dependency checks. FORMAT/digests keep the optional COLUMN."
+  ],
+  [
+   "release",
+   "0/0",
+   "1/0",
+   "3/2",
+   "NOT LIKE rewritten to <code>NOT (a LIKE b)</code> (Rust 3/9, all Haiku; Python 5/9). DESCRIBE type of bool_and/bool_or wrong in 11/18 (Haiku 6/6, Sonnet 5/6, Opus 0/6), at a site every run reached."
+  ]
+ ],
+ "tier5_sites": [
+  "<b>Method.</b> Six Opus analysts classified every site of every run from the agent's diff against the baseline commit, checked against the failing scripts' diffs. Each site was marked reached correctly (by an edit, or automatically by the base), reached with wrong content, missed, or not applicable. That is 3,312 site-runs over 6 tasks; files in <code>reviews/t5/sites_*.{json,md}</code>.",
+  "<b>Sites the Rust compiler flags.</b> Leaving out between_in, where 15 of 18 runs rewrote the construct in the parser, so no new AST node existed for the compiler to flag: <b>Rust missed 0 in 45 runs. Python missed at least one in 6/15 Haiku runs (14 sites), 2/15 Sonnet runs (5) and 0/15 Opus runs.</b> Python's misses were sites that crash at first use but that the agents' own tests never exercised: the JSON writers, DESCRIBE, the digest printer, the formatter. In Rust, the forced sites then had wrong content 44 times (Haiku 23, Sonnet 21, Opus 0), against Python's 34 (23, 10, 1).",
+  "<b>Sites nothing flags.</b> Missed in both languages: Rust 41 (Haiku 24, Sonnet 8, Opus 9), Python 62 (35, 15, 12), between_in excluded. These are lint through the simple-CASE expansion (18/18), the change-log entry for ALTER (Rust 5/9, Python 9/9), the DESCRIBE typing rules, and the alter dependency checks. Rust also missed fewer of these sites, which no type checks. The biggest single source is the ALTER change-log entry. Python's base has a unit test (<code>test_kind</code>) that pins the list of change kinds, and Rust has no equivalent, since a Rust test can't enumerate enum variants. Python agents cite it as the reason they recorded nothing: 4 runs at tier 5 and 3 at tier 4.",
+  "<b>Answer to the tier-5 question.</b> At ~20k lines, finding sites did not get hard again for Sonnet and Opus. No Opus run in either language missed a site the compiler names; their failures are at silent semantic sites and wrong content. For Haiku it looks like tier 3 again: the compiler takes Rust Haiku to every flagged site, and Python Haiku misses them in 6 of 15 runs (Rust 0/15, p ≈ 0.02). It does not make Haiku pass, though: Rust Haiku filled those sites with wrong content and passed 1 of 18.",
+  "<b>Did the pass gap come from the type system?</b> Mostly not. Each cell where Rust and Python pass counts differ was traced to the sites that decided it (<code>reviews/t5/ATTRIBUTION.md</code>). <b>Compiler-checked types: +1 −2.</b> The +1 is a Haiku distinct run that failed only on two flagged sites. The −2 are Sonnet distinct, where Rust's forced JSON arms got wrong content and Python's fallback was right. <b>Change-kind pinning test: +3</b> (alter). <b>DESCRIBE with an unknown operand: +2</b> (Opus date). Rust Opus wrote <code>Some(Integer) | None</code> patterns, so the unknown case is a visible value; Python Opus matched <code>DataType</code> values only. This is not compiler-enforced, and n = 3. <b>Silent sites and content: +4.</b> So the compiler's help shows in which sites get reached, not in passes: the weak runs it guides fail elsewhere.",
+  "<b>Cost.</b> Output tokens per run are about the same in both languages (Haiku 75k vs 81k, Sonnet 32k vs 36k, Opus 50k vs 49k). Python runs took more turns: Haiku 90 vs 71, Sonnet 53 vs 43."
+ ]
 }

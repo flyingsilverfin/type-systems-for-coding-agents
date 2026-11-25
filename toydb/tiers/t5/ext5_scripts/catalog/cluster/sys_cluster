@@ -1,0 +1,41 @@
+# System tables in a cluster: the catalog tables show the replicated catalog
+# through every node; the language tables are the same everywhere.
+
+cluster nodes=3
+---
+ok
+
+c1:> CREATE TABLE t (id INT PRIMARY KEY, v STRING DEFAULT 'x', CHECK (id > 0))
+c1:> CREATE USER alice
+c1:> GRANT SELECT ON t TO alice
+c2:> SELECT * FROM toydb_tables
+c3:> SELECT name, type, default_value FROM toydb_columns
+c2:> SELECT * FROM toydb_grants
+c3:> SELECT * FROM toydb_checks
+---
+c2: 't', 'admin', 'id', 2, 1, 0
+c3: 'id', 'INTEGER', NULL
+c3: 'v', 'STRING', '\'x\''
+c2: 't', 'admin', 'OWNER'
+c2: 't', 'alice', 'SELECT'
+c3: 't', 't_check1', 'id > 0'
+
+# A transaction's own catalog changes show up in the system tables at once,
+# other clients' after commit.
+c1:> BEGIN
+c1:> CREATE TABLE u (k STRING PRIMARY KEY)
+c1:> SELECT name FROM toydb_tables
+c2:> SELECT name FROM toydb_tables
+c1:> COMMIT
+c3:> SELECT name, primary_key FROM toydb_tables
+c2:> SELECT count(*), min(word), max(word) FROM toydb_keywords
+c3:> SELECT kind, count(*) FROM toydb_functions GROUP BY kind ORDER BY kind
+---
+c1: 't'
+c1: 'u'
+c2: 't'
+c3: 't', 'id'
+c3: 'u', 'k'
+c2: 106, 'ANALYZE', 'WRITE'
+c3: 'aggregate', 5
+c3: 'scalar', 1

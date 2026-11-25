@@ -1,0 +1,77 @@
+# Values in the text format, the type of each result column (that of its
+# first non-NULL value), and the names of unnamed columns.
+
+> CREATE TABLE v (id INT PRIMARY KEY, b BOOLEAN, i INT, f FLOAT, s STRING)
+> INSERT INTO v VALUES (1, TRUE, -7, 1.5, 'it''s'), (2, FALSE, 0, -0.0, 'é'), (3, NULL, NULL, NULL, NULL)
+pg startup user=admin
+---
+AuthenticationOk
+ParameterStatus application_name= client_encoding=UTF8 DateStyle=ISO integer_datetimes=on is_superuser=on server_encoding=UTF8 server_version=14.0 session_authorization=admin standard_conforming_strings=on
+BackendKeyData
+ReadyForQuery idle
+
+pg query "SELECT * FROM v"
+pg query "SELECT 1.0, 1e100, 0.1 + 0.2, NAN, INFINITY, -INFINITY, -0.0, 9223372036854775807, -9223372036854775807 - 1, ''"
+---
+RowDescription id int8(20,8), b bool(16,1), i int8(20,8), f float8(701,8), s text(25,-1)
+DataRow '1', 't', '-7', '1.5', 'it\'s'
+DataRow '2', 'f', '0', '0.0', 'é'
+DataRow '3', NULL, NULL, NULL, NULL
+CommandComplete SELECT 3
+ReadyForQuery idle
+RowDescription ?column? float8(701,8), ?column? float8(701,8), ?column? float8(701,8), ?column? float8(701,8), ?column? float8(701,8), ?column? float8(701,8), ?column? float8(701,8), ?column? int8(20,8), ?column? int8(20,8), ?column? text(25,-1)
+DataRow '1.0', '1e100', '0.30000000000000004', 'NaN', 'Infinity', '-Infinity', '-0.0', '9223372036854775807', '-9223372036854775808', ''
+CommandComplete SELECT 1
+ReadyForQuery idle
+
+# Column names: a header without its table qualifier; an unnamed column as
+# PostgreSQL names it: a function or aggregate by its name, an expression atom
+# that begins with a keyword (other than a literal) by that keyword, every
+# other expression ?column?.
+pg query "SELECT id AS n, v.i, i + 1, count(*), sqrt(f), -i, NULL, 'x', TRUE, i IS NULL, (max(f)) FROM v GROUP BY id, v.i, i, f ORDER BY id"
+---
+RowDescription n int8(20,8), i int8(20,8), ?column? int8(20,8), count int8(20,8), sqrt float8(701,8), ?column? int8(20,8), ?column? text(25,-1), ?column? text(25,-1), ?column? bool(16,1), ?column? bool(16,1), max float8(701,8)
+DataRow '1', '-7', '-6', '1', '1.224744871391589', '7', NULL, 'x', 't', 'f', '1.5'
+DataRow '2', '0', '1', '1', '0.0', '0', NULL, 'x', 't', 'f', '0.0'
+DataRow '3', NULL, NULL, '1', NULL, NULL, NULL, 'x', 't', 't', NULL
+CommandComplete SELECT 3
+ReadyForQuery idle
+
+# A column's type is the data type of its first non-NULL value; a column
+# without one is text. Each value is written in the format of its own type.
+pg query "SELECT i FROM v ORDER BY id DESC"
+pg query "SELECT NULL FROM v WHERE id > 2"
+pg query "SELECT * FROM v WHERE FALSE"
+> ANALYZE v
+pg query "SHOW STATISTICS v"
+---
+RowDescription i int8(20,8)
+DataRow NULL
+DataRow '0'
+DataRow '-7'
+CommandComplete SELECT 3
+ReadyForQuery idle
+RowDescription ?column? text(25,-1)
+DataRow NULL
+CommandComplete SELECT 1
+ReadyForQuery idle
+RowDescription id text(25,-1), b text(25,-1), i text(25,-1), f text(25,-1), s text(25,-1)
+CommandComplete SELECT 0
+ReadyForQuery idle
+RowDescription column text(25,-1), rows int8(20,8), nulls int8(20,8), distinct int8(20,8), min int8(20,8), max int8(20,8), top int8(20,8), top_count int8(20,8), avg_length float8(701,8)
+DataRow 'id', '3', '0', '3', '1', '3', '1', '1', NULL
+DataRow 'b', '3', '1', '2', 'f', 't', 'f', '1', NULL
+DataRow 'i', '3', '1', '2', '-7', '0', '-7', '1', NULL
+DataRow 'f', '3', '1', '2', '0.0', '1.5', '0.0', '1', NULL
+DataRow 's', '3', '1', '2', 'it\'s', 'é', 'it\'s', '1', '2.5'
+CommandComplete SELECT 5
+ReadyForQuery idle
+
+# A prepared query's columns are named from its select list too.
+pg query "PREPARE q (INT) AS SELECT count(*), $1 + 1, sqrt($1) FROM v; EXECUTE q (8)"
+---
+CommandComplete PREPARE
+RowDescription count int8(20,8), ?column? int8(20,8), sqrt float8(701,8)
+DataRow '3', '9', '2.8284271247461903'
+CommandComplete SELECT 1
+ReadyForQuery idle

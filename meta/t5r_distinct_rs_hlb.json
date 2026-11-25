@@ -1,0 +1,15 @@
+{
+ "run": "t5r_distinct_rs_hlb",
+ "task": "distinct",
+ "suite": "toydb-t5",
+ "tier": "t5",
+ "lang": "rust",
+ "model": "haiku",
+ "effort": "low",
+ "ws": "/home/user/agentbench/runs/t5r_distinct_rs_hlb",
+ "hint": true,
+ "readme_from": "t2",
+ "baseline": "2914bd1f6d405421c592c766dafa534243f2f882",
+ "created": 1795538262.6255639,
+ "warm_ok": true
+}

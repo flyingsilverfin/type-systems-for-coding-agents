@@ -1,0 +1,71 @@
+# The objects of an entry are the statement's accesses, in the order of the
+# statement's text, each name and kind once.
+
+> CREATE TABLE a (id INT PRIMARY KEY)
+> CREATE TABLE b (id INT PRIMARY KEY, a_id INT)
+> CREATE VIEW v AS SELECT * FROM a
+> CREATE VIEW w AS SELECT v.id, b.a_id FROM v JOIN b ON v.id = b.a_id
+> SELECT * FROM b JOIN a ON b.a_id = a.id JOIN b AS b2 ON TRUE
+!> SELECT * FROM a, nosuch
+> SELECT * FROM a AS x CROSS JOIN a AS y
+> EXPORT AS SQL
+> ANALYZE
+> EXPLAIN INSERT INTO a VALUES (1)
+> DESCRIBE DELETE FROM b
+> ESTIMATE SELECT * FROM w
+> UPDATE b SET a_id = 1
+> DELETE FROM a WHERE id = 1
+> PREPARE ins (INT) AS INSERT INTO b VALUES ($1, NULL)
+> EXECUTE ins (5)
+> DESCRIBE EXECUTE ins (6)
+---
+Error: invalid input: table nosuch does not exist
+CREATE TABLE a (
+  id INTEGER PRIMARY KEY
+);
+CREATE TABLE b (
+  id INTEGER PRIMARY KEY,
+  a_id INTEGER DEFAULT NULL
+);
+CREATE VIEW v (id) AS SELECT * FROM a;
+CREATE VIEW w (id, a_id) AS SELECT v.id, b.a_id FROM v JOIN b ON v.id = b.a_id;
+'View: w', 0
+'└─ Projection: v.id, b.a_id', 0
+'   └─ HashJoin: inner on v.id = b.a_id', 0
+'      ├─ View: v', 0
+'      │  └─ Scan: a', 0
+'      └─ Scan: b', 0
+
+> SHOW AUDIT SINCE 4
+---
+5, 'admin', 'READ', 'select', 'b (read), a (read)', NULL
+6, 'admin', 'READ', 'select', 'a (read), nosuch (read)', 'invalid input: table nosuch does not exist'
+7, 'admin', 'READ', 'select', 'a (read)', NULL
+8, 'admin', 'READ', 'export', 'a (read), b (read), v (read), w (read)', NULL
+9, 'admin', 'MISC', 'analyze', 'a (analyze), b (analyze)', NULL
+10, 'admin', 'WRITE', 'explain', 'a (insert)', NULL
+11, 'admin', 'WRITE', 'describe', 'b (delete)', NULL
+12, 'admin', 'READ', 'estimate', 'w (read)', NULL
+13, 'admin', 'WRITE', 'update', 'b (update)', NULL
+14, 'admin', 'WRITE', 'delete', 'a (delete)', NULL
+15, 'admin', 'MISC', 'prepare', '', NULL
+16, 'admin', 'WRITE', 'execute', 'b (insert)', NULL
+17, 'admin', 'WRITE', 'describe', 'b (insert)', NULL
+
+> SHOW AUDIT SINCE 2
+---
+3, 'admin', 'DDL', 'create_view', 'v (create), a (read)', NULL
+4, 'admin', 'DDL', 'create_view', 'w (create), v (read), b (read)', NULL
+5, 'admin', 'READ', 'select', 'b (read), a (read)', NULL
+6, 'admin', 'READ', 'select', 'a (read), nosuch (read)', 'invalid input: table nosuch does not exist'
+7, 'admin', 'READ', 'select', 'a (read)', NULL
+8, 'admin', 'READ', 'export', 'a (read), b (read), v (read), w (read)', NULL
+9, 'admin', 'MISC', 'analyze', 'a (analyze), b (analyze)', NULL
+10, 'admin', 'WRITE', 'explain', 'a (insert)', NULL
+11, 'admin', 'WRITE', 'describe', 'b (delete)', NULL
+12, 'admin', 'READ', 'estimate', 'w (read)', NULL
+13, 'admin', 'WRITE', 'update', 'b (update)', NULL
+14, 'admin', 'WRITE', 'delete', 'a (delete)', NULL
+15, 'admin', 'MISC', 'prepare', '', NULL
+16, 'admin', 'WRITE', 'execute', 'b (insert)', NULL
+17, 'admin', 'WRITE', 'describe', 'b (insert)', NULL

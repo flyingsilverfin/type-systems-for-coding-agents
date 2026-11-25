@@ -1,0 +1,148 @@
+# Every planned statement can be prepared, and runs as if it had been issued
+# with the values in place of the parameters, also in transactions.
+
+> CREATE TABLE t (id INT PRIMARY KEY, v STRING)
+> INSERT INTO t VALUES (1, 'a'), (2, 'b')
+---
+ok
+
+# CREATE TABLE and DROP TABLE, with a parameter in a DEFAULT.
+> PREPARE mk (INT, STRING) AS CREATE TABLE x (id INT PRIMARY KEY, n INT DEFAULT $1, s STRING DEFAULT $2)
+> EXECUTE mk (7, 'it''s')
+!> EXECUTE mk (7, 'it''s')
+> PREPARE rm AS DROP TABLE x
+schema x
+> EXECUTE rm
+!> EXECUTE rm
+---
+Error: invalid input: table x already exists
+CREATE TABLE x (
+  id INTEGER PRIMARY KEY,
+  n INTEGER DEFAULT 7,
+  s STRING DEFAULT 'it\'s'
+)
+Error: invalid input: table x does not exist
+
+# Joins and aggregates.
+> CREATE TABLE u (id INT PRIMARY KEY, t_id INT, w INT)
+> INSERT INTO u VALUES (1, 1, 10), (2, 1, 20), (3, 2, 30)
+> PREPARE agg (INT) AS SELECT t.v, SUM(u.w) FROM t JOIN u ON u.t_id = t.id WHERE u.w > $1 GROUP BY t.v HAVING SUM(u.w) > $1 ORDER BY t.v
+> EXECUTE agg (10)
+> EXECUTE agg (25)
+---
+'a', 20
+'b', 30
+'b', 30
+
+# EXPLAIN, DESCRIBE and ESTIMATE work on EXECUTE, with the arguments bound and
+# checked.
+[json]> EXPLAIN EXECUTE agg (10)
+> DESCRIBE EXECUTE agg (10)
+!> DESCRIBE EXECUTE agg ('x')
+!> ESTIMATE EXECUTE agg
+!> EXPLAIN EXECUTE nosuch
+---
+{"result":"explain","plan":{"statement":"select","root":{"node":"order","key":[{"expr":{"column":0,"label":"t.v"},"direction":"asc"}],"source":{"node":"filter","predicate":{"op":"_ > _","args":[{"column":1,"label":null},{"constant":10}]},"source":{"node":"aggregate","group_by":[{"column":1,"label":"t.v"}],"aggregates":[{"op":"sum(_)","args":[{"column":4,"label":"u.w"}]}],"source":{"node":"hash_join","join":"inner","left_column":{"column":0,"label":"t.id"},"right_column":{"column":1,"label":"u.t_id"},"left":{"node":"scan","table":"t","alias":null,"filter":null},"right":{"node":"scan","table":"u","alias":null,"filter":{"op":"_ > _","args":[{"column":2,"label":"u.w"},{"constant":10}]}}}}}}}}
+'t.v', 'STRING', TRUE
+NULL, 'INTEGER', TRUE
+Error: invalid input: invalid datatype STRING for INTEGER parameter $1
+Error: invalid input: wrong number of arguments for prepared statement agg: expected 1, found 0
+Error: invalid input: prepared statement nosuch does not exist
+
+# EXECUTE runs the statement in the session's transaction, or in the implicit
+# transaction the statement would use; prepared statements are not undone by
+# ROLLBACK.
+> PREPARE ins (INT, STRING) AS INSERT INTO t VALUES ($1, $2)
+> PREPARE get (INT) AS SELECT v FROM t WHERE id = $1
+a:> BEGIN
+a:> PREPARE mine AS SELECT COUNT(*) FROM t
+a:> INSERT INTO t VALUES (3, 'c')
+a:> EXECUTE mine
+a:> ROLLBACK
+a:> EXECUTE mine
+> BEGIN
+> EXECUTE ins (4, 'd')
+> EXECUTE get (4)
+a:> EXECUTE mine
+> ROLLBACK
+> EXECUTE get (4)
+---
+a: 3
+a: 2
+'d'
+a: 2
+
+[json]> EXECUTE get (1)
+[json]> BEGIN
+> ROLLBACK
+[json]> EXECUTE ins (5, 'e')
+[json]> BEGIN
+> ROLLBACK
+---
+{"result":"select","columns":["t.v"],"rows":[["a"]]}
+{"result":"begin","version":11,"read_only":false}
+{"result":"insert","count":1}
+{"result":"begin","version":13,"read_only":false}
+
+# In a read-only transaction, prepared writes fail like the statements do.
+> BEGIN READ ONLY
+> PREPARE ro (INT) AS DELETE FROM t WHERE id = $1
+!> EXECUTE ro (1)
+> EXECUTE get (1)
+> COMMIT
+---
+Error: read-only transaction
+'a'
+
+# Concurrent prepared writes conflict like the statements.
+a:> BEGIN
+b:> BEGIN
+a:> PREPARE up (STRING) AS UPDATE t SET v = $1 WHERE id = 1
+b:> PREPARE up (STRING) AS UPDATE t SET v = $1 WHERE id = 1
+a:> EXECUTE up ('x')
+b:!> EXECUTE up ('y')
+a:> COMMIT
+b:> ROLLBACK
+> EXECUTE get (1)
+---
+b: Error: serialization failure, retry transaction
+'x'
+
+# Statements that have no plan can't be prepared.
+!> PREPARE p AS BEGIN
+!> PREPARE p AS COMMIT
+!> PREPARE p AS EXPLAIN SELECT 1
+!> PREPARE p AS SHOW STATEMENTS
+!> PREPARE p AS ANALYZE t
+!> PREPARE p AS EXPORT t AS CSV
+!> PREPARE p AS IMPORT INTO t FROM CSV 'id'
+!> PREPARE p AS FORMAT SELECT 1
+!> PREPARE p AS CREATE VIEW v AS SELECT 1 AS a
+!> PREPARE p AS DROP VIEW v
+!> PREPARE p AS DESCRIBE t
+!> PREPARE p AS ESTIMATE SELECT 1
+!> PREPARE p AS PREPARE q AS SELECT 1
+!> PREPARE p AS EXECUTE get (1)
+!> PREPARE p AS DEALLOCATE get
+!> PREPARE p AS SHOW PREPARED
+!> PREPARE p AS LINT SELECT 1
+!> PREPARE p AS SHOW CHANGES
+---
+Error: invalid input: PREPARE is not supported for BEGIN
+Error: invalid input: PREPARE is not supported for COMMIT
+Error: invalid input: PREPARE is not supported for EXPLAIN
+Error: invalid input: PREPARE is not supported for SHOW
+Error: invalid input: PREPARE is not supported for ANALYZE
+Error: invalid input: PREPARE is not supported for EXPORT
+Error: invalid input: PREPARE is not supported for IMPORT
+Error: invalid input: PREPARE is not supported for FORMAT
+Error: invalid input: PREPARE is not supported for CREATE VIEW
+Error: invalid input: PREPARE is not supported for DROP VIEW
+Error: invalid input: PREPARE is not supported for DESCRIBE
+Error: invalid input: PREPARE is not supported for ESTIMATE
+Error: invalid input: PREPARE is not supported for PREPARE
+Error: invalid input: PREPARE is not supported for EXECUTE
+Error: invalid input: PREPARE is not supported for DEALLOCATE
+Error: invalid input: PREPARE is not supported for SHOW
+Error: invalid input: PREPARE is not supported for LINT
+Error: invalid input: PREPARE is not supported for SHOW

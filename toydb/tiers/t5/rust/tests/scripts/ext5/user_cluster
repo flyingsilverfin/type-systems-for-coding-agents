@@ -1,0 +1,81 @@
+# Users, privileges and login in a cluster: the catalog is replicated, and a
+# client connection logs in with a user name and password.
+
+cluster nodes=3
+---
+ok
+
+c1:> CREATE TABLE t (id INT PRIMARY KEY, v STRING)
+c1:> INSERT INTO t VALUES (1, 'a')
+c1:> CREATE USER alice PASSWORD 'pw'
+c1:> CREATE USER bob
+c1:> GRANT SELECT ON t TO alice
+---
+ok
+
+# Logging in, through any node.
+c2:login alice password=pw
+c2:> SELECT * FROM t
+c2:!> INSERT INTO t VALUES (2, 'b')
+c3:login bob
+c3:!> SELECT * FROM t
+c3:[header]> SHOW USERS
+---
+c2: 1, 'a'
+c2: Error: permission denied: user alice has no INSERT privilege on t
+c3: Error: permission denied: user bob has no SELECT privilege on t
+c3: name, is_superuser, has_password, member_of
+c3: 'admin', TRUE, FALSE, ''
+c3: 'alice', FALSE, TRUE, ''
+c3: 'bob', FALSE, FALSE, ''
+
+# Login errors. A failed login can be retried; a session that has started
+# can't log in again.
+c4:!login alice
+c4:!login alice password=wrong
+c4:!login nosuch
+c4:!login bob password=x
+c4:login bob
+c4:!login bob
+c5:> SELECT 1
+c5:!login alice password=pw
+---
+c4: Error: permission denied: password authentication failed for user alice
+c4: Error: permission denied: password authentication failed for user alice
+c4: Error: invalid input: user nosuch does not exist
+c4: Error: permission denied: password authentication failed for user bob
+c4: Error: invalid input: session already started
+c5: 1
+c5: Error: invalid input: session already started
+
+# SET ROLE is allowed to the users the login user acts for; superusers may
+# set any role.
+c2:!> SET ROLE bob
+c1:> GRANT bob TO alice
+c2:[json]> SET ROLE bob
+c2:!> SELECT * FROM t
+c2:[json]> RESET ROLE
+c2:> SELECT * FROM t
+c5:[json]> SET ROLE alice
+c5:> SELECT * FROM t
+---
+c2: Error: permission denied: user alice can't set role bob
+c2: {"result":"set_role","user":"bob"}
+c2: Error: permission denied: user bob has no SELECT privilege on t
+c2: {"result":"reset_role","user":"alice"}
+c2: 1, 'a'
+c5: {"result":"set_role","user":"alice"}
+c5: 1, 'a'
+
+# Ownership and grants are replicated like table definitions.
+c2:> CREATE TABLE at (id INT PRIMARY KEY)
+c3:!> INSERT INTO at VALUES (1)
+c2:> GRANT INSERT ON at TO bob
+c3:> INSERT INTO at VALUES (1)
+c1:> SHOW GRANTS
+---
+c3: Error: permission denied: user bob has no INSERT privilege on at
+c1: 'at', 'alice', 'OWNER'
+c1: 'at', 'bob', 'INSERT'
+c1: 't', 'admin', 'OWNER'
+c1: 't', 'alice', 'SELECT'

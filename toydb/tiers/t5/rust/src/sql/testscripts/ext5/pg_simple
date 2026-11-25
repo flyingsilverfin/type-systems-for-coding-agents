@@ -1,0 +1,155 @@
+# Simple query: a Query message may hold several statements, each executed as
+# if sent alone; the first error ends it. Each result has its messages and
+# command tag.
+
+> CREATE TABLE t (id INT PRIMARY KEY, v STRING)
+pg startup
+---
+AuthenticationOk
+ParameterStatus application_name= client_encoding=UTF8 DateStyle=ISO integer_datetimes=on is_superuser=on server_encoding=UTF8 server_version=14.0 session_authorization=admin standard_conforming_strings=on
+BackendKeyData
+ReadyForQuery idle
+
+pg query "INSERT INTO t VALUES (1, 'a'), (2, 'b')"
+pg query "SELECT * FROM t"
+pg query "UPDATE t SET v = 'c' WHERE id = 2; DELETE FROM t WHERE id = 1; SELECT * FROM t"
+---
+CommandComplete INSERT 0 2
+ReadyForQuery idle
+RowDescription id int8(20,8), v text(25,-1)
+DataRow '1', 'a'
+DataRow '2', 'b'
+CommandComplete SELECT 2
+ReadyForQuery idle
+CommandComplete UPDATE 1
+CommandComplete DELETE 1
+RowDescription id int8(20,8), v text(25,-1)
+DataRow '2', 'c'
+CommandComplete SELECT 1
+ReadyForQuery idle
+
+# Empty statements are skipped; a query without statements gets
+# EmptyQueryResponse. A ; inside a string doesn't split.
+pg query ""
+pg query " ; ;"
+pg query "SELECT 1; ; SELECT 'it''s; one';"
+---
+EmptyQueryResponse
+ReadyForQuery idle
+EmptyQueryResponse
+ReadyForQuery idle
+RowDescription ?column? int8(20,8)
+DataRow '1'
+CommandComplete SELECT 1
+RowDescription ?column? text(25,-1)
+DataRow 'it\'s; one'
+CommandComplete SELECT 1
+ReadyForQuery idle
+
+# Errors: the statements after the first failing one are not executed. Text
+# that can't be tokenized executes nothing.
+pg query "INSERT INTO t VALUES (3, 'x'); SELECT nosuch FROM t; INSERT INTO t VALUES (4, 'y')"
+pg query "SELECT count(*) FROM t"
+pg query "INSERT INTO t VALUES (5, 'z'); SELECT 'unterminated"
+pg query "SELECT FROM t"
+pg query "SELECT count(*) FROM t"
+---
+CommandComplete INSERT 0 1
+ErrorResponse ERROR 42000 invalid input: unknown column nosuch
+ReadyForQuery idle
+RowDescription count int8(20,8)
+DataRow '2'
+CommandComplete SELECT 1
+ReadyForQuery idle
+ErrorResponse ERROR 42000 invalid input: unexpected end of string literal
+ReadyForQuery idle
+ErrorResponse ERROR 42000 invalid input: expected expression atom, found FROM
+ReadyForQuery idle
+RowDescription count int8(20,8)
+DataRow '2'
+CommandComplete SELECT 1
+ReadyForQuery idle
+
+# Transactions: ReadyForQuery shows the transaction status.
+pg query "BEGIN; INSERT INTO t VALUES (6, 'w')"
+pg query "SELECT count(*) FROM t"
+a:> SELECT count(*) FROM t
+pg query "ROLLBACK"
+pg query "BEGIN READ ONLY; INSERT INTO t VALUES (7, 'q')"
+pg query "COMMIT"
+---
+CommandComplete BEGIN
+CommandComplete INSERT 0 1
+ReadyForQuery transaction
+RowDescription count int8(20,8)
+DataRow '3'
+CommandComplete SELECT 1
+ReadyForQuery transaction
+a: 2
+CommandComplete ROLLBACK
+ReadyForQuery idle
+CommandComplete BEGIN
+ErrorResponse ERROR 25006 read-only transaction
+ReadyForQuery transaction
+CommandComplete COMMIT
+ReadyForQuery idle
+
+# Command tags of the other statements: their statement names.
+pg query "CREATE TABLE u (id INT PRIMARY KEY); CREATE VIEW tv AS SELECT v FROM t; DROP VIEW tv; DROP TABLE u; DROP TABLE IF EXISTS u"
+pg query "ANALYZE t; PREPARE p AS SELECT 1; EXECUTE p; DEALLOCATE p; CREATE USER x; GRANT SELECT ON t TO x; REVOKE SELECT ON t FROM x; DROP USER x"
+pg query "IMPORT INTO t FROM CSV 'id,v', '8,i'"
+---
+CommandComplete CREATE TABLE
+CommandComplete CREATE VIEW
+CommandComplete DROP VIEW
+CommandComplete DROP TABLE
+CommandComplete DROP TABLE
+ReadyForQuery idle
+CommandComplete ANALYZE
+CommandComplete PREPARE
+RowDescription ?column? int8(20,8)
+DataRow '1'
+CommandComplete SELECT 1
+CommandComplete DEALLOCATE
+CommandComplete CREATE USER
+CommandComplete GRANT
+CommandComplete REVOKE
+CommandComplete DROP USER
+ReadyForQuery idle
+CommandComplete INSERT 0 1
+ReadyForQuery idle
+
+# EXPLAIN, FORMAT and EXPORT return their lines as rows of one text column;
+# the other statements that return rows return them as query results.
+pg query "EXPLAIN SELECT v FROM t WHERE id = 2"
+pg query "FORMAT select 1 from t where id = 2"
+pg query "EXPORT t AS CSV"
+pg query "SHOW VIEWS"
+pg query "DESCRIBE t"
+---
+RowDescription QUERY PLAN text(25,-1)
+DataRow 'Projection: t.v'
+DataRow '└─ KeyLookup: t (2)'
+CommandComplete EXPLAIN
+ReadyForQuery idle
+RowDescription format text(25,-1)
+DataRow 'SELECT 1'
+DataRow 'FROM t'
+DataRow 'WHERE id = 2'
+CommandComplete FORMAT
+ReadyForQuery idle
+RowDescription export text(25,-1)
+DataRow 'id,v'
+DataRow '2,c'
+DataRow '3,x'
+DataRow '8,i'
+CommandComplete EXPORT
+ReadyForQuery idle
+RowDescription name text(25,-1), columns text(25,-1), query text(25,-1)
+CommandComplete SELECT 0
+ReadyForQuery idle
+RowDescription column text(25,-1), type text(25,-1), nullable bool(16,1)
+DataRow 'id', 'INTEGER', 'f'
+DataRow 'v', 'STRING', 't'
+CommandComplete SELECT 2
+ReadyForQuery idle

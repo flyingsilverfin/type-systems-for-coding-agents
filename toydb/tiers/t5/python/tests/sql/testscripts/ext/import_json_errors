@@ -1,0 +1,121 @@
+# IMPORT ... FROM JSON errors. Every line is read and checked first (its
+# members in the order written), then the rows are inserted; the first error
+# is reported and nothing is imported.
+
+> CREATE TABLE t (id INT PRIMARY KEY, name STRING NOT NULL, score FLOAT, ok BOOLEAN)
+> INSERT INTO t VALUES (1, 'ann', 1.0, TRUE)
+---
+ok
+
+# Lines that are not JSON objects. NaN and Infinity are not JSON.
+!> IMPORT INTO nosuch FROM JSON '{}'
+!> IMPORT INTO t FROM JSON '{"id":2,"name":"b"}', '{"id":3'
+!> IMPORT INTO t FROM JSON 'nope'
+!> IMPORT INTO t FROM JSON '{"id":2,"name":"b"} {}'
+!> IMPORT INTO t FROM JSON '{"id":2,"name":"b","score":NaN}'
+!> IMPORT INTO t FROM JSON ''
+!> IMPORT INTO t FROM JSON '[1, 2]'
+!> IMPORT INTO t FROM JSON '{"id":2,"name":"b"}', 'null'
+!> IMPORT INTO t FROM JSON '"text"'
+!> IMPORT INTO t FROM JSON '{"id":2,"name":"\ud800"}'
+---
+Error: invalid input: table nosuch does not exist
+Error: invalid input: invalid JSON on line 2
+Error: invalid input: invalid JSON on line 1
+Error: invalid input: invalid JSON on line 1
+Error: invalid input: invalid JSON on line 1
+Error: invalid input: invalid JSON on line 1
+Error: invalid input: line 1 is not a JSON object
+Error: invalid input: line 2 is not a JSON object
+Error: invalid input: line 1 is not a JSON object
+Error: invalid input: invalid JSON on line 1
+
+# Unknown members; names are matched exactly.
+!> IMPORT INTO t FROM JSON '{"id":2,"nope":1}'
+!> IMPORT INTO t FROM JSON '{"ID":2,"name":"b"}'
+---
+Error: invalid input: unknown column nope in table t
+Error: invalid input: unknown column ID in table t
+
+# Values of the wrong JSON type for the column.
+!> IMPORT INTO t FROM JSON '{"id":"2","name":"b"}'
+!> IMPORT INTO t FROM JSON '{"id":2.0,"name":"b"}'
+!> IMPORT INTO t FROM JSON '{"id":2e0,"name":"b"}'
+!> IMPORT INTO t FROM JSON '{"id":9223372036854775808,"name":"b"}'
+!> IMPORT INTO t FROM JSON '{"id":true,"name":"b"}'
+!> IMPORT INTO t FROM JSON '{"id":2,"name":5}'
+!> IMPORT INTO t FROM JSON '{"id":2,"name":["b"]}'
+!> IMPORT INTO t FROM JSON '{"id":2,"name":"b","ok":1}'
+!> IMPORT INTO t FROM JSON '{"id":2,"name":"b","ok":"true"}'
+!> IMPORT INTO t FROM JSON '{"id":2,"name":"b","score":"1.5"}'
+!> IMPORT INTO t FROM JSON '{"id":2,"name":"b","score":true}'
+---
+Error: invalid input: invalid value for INTEGER column id on line 1
+Error: invalid input: invalid value for INTEGER column id on line 1
+Error: invalid input: invalid value for INTEGER column id on line 1
+Error: invalid input: invalid value for INTEGER column id on line 1
+Error: invalid input: invalid value for INTEGER column id on line 1
+Error: invalid input: invalid value for STRING column name on line 1
+Error: invalid input: invalid value for STRING column name on line 1
+Error: invalid input: invalid value for BOOLEAN column ok on line 1
+Error: invalid input: invalid value for BOOLEAN column ok on line 1
+Error: invalid input: invalid value for FLOAT column score on line 1
+Error: invalid input: invalid value for FLOAT column score on line 1
+
+# Typed forms: only for values without a native JSON form, with exactly the
+# members type and value, both strings, and the column's type.
+!> IMPORT INTO t FROM JSON '{"id":2,"name":"b","score":{"type":"FLOAT","value":"1.5"}}'
+!> IMPORT INTO t FROM JSON '{"id":2,"name":"b","score":{"type":"FLOAT","value":"nan"}}'
+!> IMPORT INTO t FROM JSON '{"id":2,"name":"b","score":{"type":"INTEGER","value":"inf"}}'
+!> IMPORT INTO t FROM JSON '{"id":2,"name":"b","score":{"type":"FLOAT","value":"inf","x":1}}'
+!> IMPORT INTO t FROM JSON '{"id":2,"name":"b","score":{"value":"inf"}}'
+!> IMPORT INTO t FROM JSON '{"id":{"type":"INTEGER","value":"2"},"name":"b"}'
+!> IMPORT INTO t FROM JSON '{"id":2,"name":{"type":"STRING","value":"b"}}'
+---
+Error: invalid input: invalid value for FLOAT column score on line 1
+Error: invalid input: invalid value for FLOAT column score on line 1
+Error: invalid input: invalid value for FLOAT column score on line 1
+Error: invalid input: invalid value for FLOAT column score on line 1
+Error: invalid input: invalid value for FLOAT column score on line 1
+Error: invalid input: invalid value for INTEGER column id on line 1
+Error: invalid input: invalid value for STRING column name on line 1
+
+# Reading order: members in the order written, lines before inserting.
+!> IMPORT INTO t FROM JSON '{"name":5,"nope":1}'
+!> IMPORT INTO t FROM JSON '{"nope":1,"name":5}'
+!> IMPORT INTO t FROM JSON '{"id":1,"name":"dup"}', '{"id":"x"}'
+---
+Error: invalid input: invalid value for STRING column name on line 1
+Error: invalid input: unknown column nope in table t
+Error: invalid input: invalid value for INTEGER column id on line 2
+
+# Errors of the insert itself are those of INSERT.
+!> IMPORT INTO t FROM JSON '{"id":2,"name":null}'
+!> IMPORT INTO t FROM JSON '{"id":2,"name":"b"}', '{"id":1,"name":"dup"}'
+!> IMPORT INTO t FROM JSON '{"id":2}'
+!> IMPORT INTO t FROM JSON '{}'
+---
+Error: invalid input: NULL value not allowed for column name
+Error: invalid input: primary key 1 already exists
+Error: invalid input: no value given for column name with no default
+Error: invalid input: no value given for column id with no default
+
+# As in a multi-row INSERT, all rows get the defaults of the columns they don't
+# give before any row is inserted.
+!> IMPORT INTO t FROM JSON '{"id":1,"name":"dup"}', '{"id":2}'
+---
+Error: invalid input: no value given for column name with no default
+
+# Nothing was imported.
+> SELECT * FROM t
+---
+1, 'ann', 1.0, TRUE
+
+# Syntax errors.
+!> IMPORT INTO t FROM JSON
+!> IMPORT INTO t FROM JSON {"id":2}
+!> IMPORT INTO t FROM JSONL '{}'
+---
+Error: invalid input: unexpected end of input
+Error: invalid input: unexpected character {
+Error: invalid input: unexpected token jsonl

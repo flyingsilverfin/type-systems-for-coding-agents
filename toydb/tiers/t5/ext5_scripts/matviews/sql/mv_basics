@@ -1,0 +1,75 @@
+# Materialized views: the rows of a query, stored when the materialized view
+# is created and when it is refreshed.
+
+> CREATE TABLE t (id INT PRIMARY KEY, v INT, s STRING)
+> INSERT INTO t VALUES (1, 10, 'a'), (2, 20, 'b'), (3, 30, 'a')
+[json]> CREATE MATERIALIZED VIEW mv AS SELECT s, sum(v) AS total FROM t GROUP BY s ORDER BY s
+> SELECT * FROM mv
+> INSERT INTO t VALUES (4, 40, 'b')
+> SELECT * FROM mv
+[json]> REFRESH MATERIALIZED VIEW mv
+> SELECT * FROM mv
+[header]> SELECT m.s, m.total FROM mv AS m WHERE m.total > 40
+---
+{"result":"create_materialized_view","view":"mv","count":2}
+'a', 40
+'b', 20
+'a', 40
+'b', 20
+{"result":"refresh_materialized_view","view":"mv","count":2}
+'a', 40
+'b', 60
+m.s, m.total
+'b', 60
+
+# A column list names the columns; the rows keep the order of the query.
+> CREATE MATERIALIZED VIEW m2 ("key", n) AS SELECT id, v FROM t WHERE id < 4 ORDER BY v DESC
+[header]> SELECT * FROM m2
+> SELECT t.id, mv.total FROM t JOIN mv ON t.s = mv.s ORDER BY t.id
+> SELECT count(*), max(n) FROM m2
+---
+m2.key, m2.n
+3, 30
+2, 20
+1, 10
+1, 40
+2, 60
+3, 40
+4, 60
+3, 30
+
+# Plans read the stored rows through a MaterializedView node; conditions stay
+# above it.
+[plan]> SELECT total FROM mv WHERE s = 'a'
+[plan]> SELECT x."key" FROM m2 AS x JOIN t ON x."key" = t.id
+---
+Projection: mv.total
+└─ Filter: mv.s = 'a'
+   └─ MaterializedView: mv
+40
+Projection: x.key
+└─ HashJoin: inner on x.key = t.id
+   ├─ MaterializedView: m2 as x
+   └─ Scan: t
+3
+2
+1
+
+# Views and materialized views can use each other.
+> CREATE VIEW big AS SELECT s FROM mv WHERE total > 50
+> CREATE MATERIALIZED VIEW keys AS SELECT * FROM big
+> SELECT * FROM keys
+> CREATE MATERIALIZED VIEW none AS SELECT * FROM t WHERE FALSE
+> SELECT count(*) FROM none
+---
+'b'
+0
+
+# DROP MATERIALIZED VIEW.
+[json]> DROP MATERIALIZED VIEW m2
+[json]> DROP MATERIALIZED VIEW IF EXISTS m2
+!> SELECT * FROM m2
+---
+{"result":"drop_materialized_view","view":"m2","existed":true}
+{"result":"drop_materialized_view","view":"m2","existed":false}
+Error: invalid input: table m2 does not exist

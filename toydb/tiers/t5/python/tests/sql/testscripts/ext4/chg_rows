@@ -1,0 +1,79 @@
+# SHOW CHANGES lists the committed changes, oldest first: the version of the
+# transaction, the table, the kind of change, the row's primary key, and the
+# row as JSON.
+
+> CREATE TABLE t (id INT PRIMARY KEY, v STRING, n INT)
+> INSERT INTO t VALUES (1, 'a', 10), (2, 'b', 20), (3, NULL, NULL)
+[header]> SHOW CHANGES
+---
+version, table, op, key, data
+1, 't', 'create_table', NULL, 'CREATE TABLE t (id INTEGER PRIMARY KEY, v STRING DEFAULT NULL, n INTEGER DEFAULT NULL)'
+2, 't', 'insert', 1, '{\"id\":1,\"v\":\"a\",\"n\":10}'
+2, 't', 'insert', 2, '{\"id\":2,\"v\":\"b\",\"n\":20}'
+2, 't', 'insert', 3, '{\"id\":3,\"v\":null,\"n\":null}'
+
+# UPDATE records each row in primary key order, with its new values, also if
+# they didn't change.
+> UPDATE t SET n = n + 1 WHERE n IS NOT NULL
+> UPDATE t SET v = v WHERE id = 3
+> SHOW CHANGES SINCE 2
+---
+3, 't', 'update', 1, '{\"id\":1,\"v\":\"a\",\"n\":11}'
+3, 't', 'update', 2, '{\"id\":2,\"v\":\"b\",\"n\":21}'
+4, 't', 'update', 3, '{\"id\":3,\"v\":null,\"n\":null}'
+
+# DELETE records the rows in the order it found them: for a primary key lookup,
+# the order of its keys.
+> DELETE FROM t WHERE id = 3 OR id = 1
+> SHOW CHANGES SINCE 4
+---
+5, 't', 'delete', 3, NULL
+5, 't', 'delete', 1, NULL
+
+# A new primary key is a delete of the old row and an insert of the new one.
+> INSERT INTO t VALUES (4, 'd', 40), (6, 'f', 60)
+> UPDATE t SET id = id + 10 WHERE id > 3
+> SHOW CHANGES SINCE 5
+---
+6, 't', 'insert', 4, '{\"id\":4,\"v\":\"d\",\"n\":40}'
+6, 't', 'insert', 6, '{\"id\":6,\"v\":\"f\",\"n\":60}'
+7, 't', 'delete', 4, NULL
+7, 't', 'insert', 14, '{\"id\":14,\"v\":\"d\",\"n\":40}'
+7, 't', 'delete', 6, NULL
+7, 't', 'insert', 16, '{\"id\":16,\"v\":\"f\",\"n\":60}'
+
+# Statements that change nothing record nothing.
+> UPDATE t SET n = 0 WHERE id = 99
+> DELETE FROM t WHERE FALSE
+> SELECT * FROM t
+> SHOW CHANGES SINCE 7
+---
+2, 'b', 21
+14, 'd', 40
+16, 'f', 60
+
+# The key has the type of the table's primary key.
+> CREATE TABLE s (k STRING PRIMARY KEY, b BOOLEAN)
+> INSERT INTO s VALUES ('x', TRUE), ('it''s', NULL)
+> DELETE FROM s WHERE k = 'x'
+> SHOW CHANGES SINCE 9
+---
+10, 's', 'create_table', NULL, 'CREATE TABLE s (k STRING PRIMARY KEY, b BOOLEAN DEFAULT NULL)'
+11, 's', 'insert', 'x', '{\"k\":\"x\",\"b\":true}'
+11, 's', 'insert', 'it\'s', '{\"k\":\"it\'s\",\"b\":null}'
+12, 's', 'delete', 'x', NULL
+
+# Tables are named as stored; the schema display quotes names by its own
+# rules. Keys of other types.
+> CREATE TABLE "Odd t" ("Id" FLOAT PRIMARY KEY, "x""y" STRING, "order" BOOLEAN)
+> INSERT INTO "Odd t" ("Id", "x""y") VALUES (1.5, 'a'), (-INFINITY, NULL)
+> UPDATE "Odd t" SET "order" = TRUE
+> DELETE FROM "Odd t" WHERE "Id" < 0
+> SHOW CHANGES SINCE 12
+---
+13, 'Odd t', 'create_table', NULL, 'CREATE TABLE \"Odd t\" (Id FLOAT PRIMARY KEY, \"x\"\"y\" STRING DEFAULT NULL, \"order\" BOOLEAN DEFAULT NULL)'
+14, 'Odd t', 'insert', 1.5, '{\"Id\":1.5,\"x\\\"y\":\"a\",\"order\":null}'
+14, 'Odd t', 'insert', -inf, '{\"Id\":{\"type\":\"FLOAT\",\"value\":\"-inf\"},\"x\\\"y\":null,\"order\":null}'
+15, 'Odd t', 'update', -inf, '{\"Id\":{\"type\":\"FLOAT\",\"value\":\"-inf\"},\"x\\\"y\":null,\"order\":true}'
+15, 'Odd t', 'update', 1.5, '{\"Id\":1.5,\"x\\\"y\":\"a\",\"order\":true}'
+16, 'Odd t', 'delete', -inf, NULL

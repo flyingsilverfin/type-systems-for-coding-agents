@@ -1,0 +1,60 @@
+# Errors of EXPLAIN (ANALYZE): parsing, statements without a plan, the
+# statement's own errors, and errors that running every node to completion
+# reveals.
+
+!> EXPLAIN (VERBOSE) SELECT 1
+!> EXPLAIN (ANALYZE SELECT 1
+!> EXPLAIN (ANALYZE)
+!> EXPLAIN ()
+!> EXPLAIN (ANALYZE) (ANALYZE) SELECT 1
+---
+Error: invalid input: expected token ANALYZE, found verbose
+Error: invalid input: expected token ), found SELECT
+Error: invalid input: unexpected end of input
+Error: invalid input: expected token ANALYZE, found )
+Error: invalid input: unexpected token (
+
+!> EXPLAIN (ANALYZE) SHOW VIEWS
+!> EXPLAIN (ANALYZE) EXPLAIN SELECT 1
+!> EXPLAIN (ANALYZE) BEGIN
+!> EXPLAIN (ANALYZE) CREATE USER x
+!> EXPLAIN (ANALYZE) ANALYZE
+!> EXPLAIN (ANALYZE) SELECT $1
+!> EXPLAIN (ANALYZE) EXECUTE nosuch
+!> DESCRIBE EXPLAIN (ANALYZE) SELECT 1
+!> PREPARE p AS EXPLAIN (ANALYZE) SELECT 1
+---
+Error: invalid input: EXPLAIN is not supported for SHOW
+Error: invalid input: EXPLAIN is not supported for EXPLAIN
+Error: invalid input: EXPLAIN is not supported for BEGIN
+Error: invalid input: EXPLAIN is not supported for CREATE USER
+Error: invalid input: EXPLAIN is not supported for ANALYZE
+Error: invalid input: parameter $1 can only be used in a prepared statement
+Error: invalid input: prepared statement nosuch does not exist
+Error: invalid input: DESCRIBE is not supported for EXPLAIN
+Error: invalid input: PREPARE is not supported for EXPLAIN
+
+# The statement's errors, and a failing write changes nothing.
+> CREATE TABLE z (id INT PRIMARY KEY)
+> INSERT INTO z VALUES (1), (2), (3)
+!> EXPLAIN (ANALYZE) SELECT * FROM nosuch
+!> EXPLAIN (ANALYZE) SELECT 1 / 0
+!> EXPLAIN (ANALYZE) INSERT INTO z VALUES (4), (1)
+> SELECT count(*) FROM z
+---
+Error: invalid input: table nosuch does not exist
+Error: invalid input: can't divide by zero
+Error: invalid input: primary key 1 already exists
+3
+
+# Every node runs to completion, so a row that the statement itself would
+# never reach can fail.
+> SELECT 1 / (id - 2) FROM z LIMIT 1
+!> EXPLAIN (ANALYZE) SELECT 1 / (id - 2) FROM z LIMIT 1
+> EXPLAIN (ANALYZE) SELECT 1 / (id - 2) FROM z WHERE id != 2 LIMIT 1
+---
+-1
+Error: invalid input: can't divide by zero
+'Limit: 1', 1, 1
+'└─ Projection: 1 / (z.id - 2)', 900, 2
+'   └─ Scan: z (NOT z.id = 2)', 900, 2

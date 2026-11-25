@@ -1,0 +1,149 @@
+# Parameter types (OIDs), parameter values in text and binary format, binary
+# results, and their errors.
+
+> CREATE TABLE t (id INT PRIMARY KEY, b BOOLEAN, f FLOAT, s STRING)
+> INSERT INTO t VALUES (1, TRUE, 1.5, 'a'), (2, FALSE, NULL, 'hi')
+pg startup
+---
+AuthenticationOk
+ParameterStatus application_name= client_encoding=UTF8 DateStyle=ISO integer_datetimes=on is_superuser=on server_encoding=UTF8 server_version=14.0 session_authorization=admin standard_conforming_strings=on
+BackendKeyData
+ReadyForQuery idle
+
+# Every OID that maps to a toydb type, in text format.
+pg parse name=all "SELECT $1, $2, $3, $4, $5, $6, $7, $8, $9" types="16,21,23,20,700,701,25,1043"
+pg describe statement=all
+pg sync
+---
+ErrorResponse ERROR 42P18 could not determine data type of parameter $9
+ReadyForQuery idle
+
+pg parse name=all "SELECT $1, $2, $3, $4, $5, $6, $7, $8" types="16,21,23,20,700,701,25,1043"
+pg describe statement=all
+pg bind statement=all params="TRUE,-32768,+7,9223372036854775807,1e400,-inf,a b,"
+pg execute
+pg bind statement=all params="f,0,0,-0,NaN,infinity,NULL,x"
+pg execute
+pg sync
+---
+ParseComplete
+ParameterDescription bool(16), int2(21), int4(23), int8(20), float4(700), float8(701), text(25), varchar(1043)
+RowDescription ?column? text(25,-1), ?column? text(25,-1), ?column? text(25,-1), ?column? text(25,-1), ?column? text(25,-1), ?column? text(25,-1), ?column? text(25,-1), ?column? text(25,-1)
+BindComplete
+DataRow 't', '-32768', '7', '9223372036854775807', 'Infinity', '-Infinity', 'a b', ''
+CommandComplete SELECT 1
+BindComplete
+DataRow 'f', '0', '0', '0', 'NaN', 'Infinity', NULL, 'x'
+CommandComplete SELECT 1
+ReadyForQuery idle
+
+# Invalid text values; numbers out of the declared type's range.
+pg bind statement=all params="yes,0,0,0,0,0,a,a"
+pg sync
+pg bind statement=all params="t,32768,0,0,0,0,a,a"
+pg sync
+pg bind statement=all params="t,0,2147483648,0,0,0,a,a"
+pg sync
+pg bind statement=all params="t,0,0,1.0,0,0,a,a"
+pg sync
+pg bind statement=all params="t,0,0,0,.5,0,a,a"
+pg sync
+pg bind statement=all params="t,0,0,0,0,Infinite,a,a"
+pg sync
+---
+ErrorResponse ERROR 22P02 invalid input syntax for type bool: "yes"
+ReadyForQuery idle
+ErrorResponse ERROR 22003 value "32768" is out of range for type int2
+ReadyForQuery idle
+ErrorResponse ERROR 22003 value "2147483648" is out of range for type int4
+ReadyForQuery idle
+ErrorResponse ERROR 22P02 invalid input syntax for type int8: "1.0"
+ReadyForQuery idle
+ErrorResponse ERROR 22P02 invalid input syntax for type float4: ".5"
+ReadyForQuery idle
+ErrorResponse ERROR 22P02 invalid input syntax for type float8: "Infinite"
+ReadyForQuery idle
+
+# Parameters in binary format, and results in binary format.
+pg parse name=bin "SELECT id, b, f, s FROM t WHERE id = $1 OR b = $2 OR s = $3" types="20,16,25"
+pg bind portal=p statement=bin formats=1 params="0x0000000000000001,0x00,0x6869" results=1
+pg describe portal=p
+pg execute portal=p
+pg bind portal=q statement=bin formats="0,1,0" params="9,0x01,x" results="0,1,1,0"
+pg describe portal=q
+pg execute portal=q
+pg sync
+---
+ParseComplete
+BindComplete
+RowDescription id int8(20,8) binary, b bool(16,1) binary, f float8(701,8) binary, s text(25,-1) binary
+DataRow \x0000000000000001, \x01, \x3ff8000000000000, \x61
+DataRow \x0000000000000002, \x00, NULL, \x6869
+CommandComplete SELECT 2
+BindComplete
+RowDescription id int8(20,8), b bool(16,1) binary, f float8(701,8) binary, s text(25,-1)
+DataRow '1', \x01, \x3ff8000000000000, 'a'
+CommandComplete SELECT 1
+ReadyForQuery idle
+
+pg parse name=bin4 "SELECT $1 + 1, $2, $3" types="23,21,700"
+pg bind statement=bin4 formats=1 params="0xfffffffe,0x0102,0x3fc00000"
+pg execute
+pg sync
+pg bind statement=bin4 formats=1 params="0xfffffffe,0x01,0x3fc00000"
+pg sync
+pg bind statement=bin formats=1 params="0x01,0x00,0x6869"
+pg sync
+pg bind statement=bin formats=1 params="0x0000000000000001,0x00,0xff"
+pg sync
+---
+ParseComplete
+BindComplete
+DataRow '-1', '258', '1.5'
+CommandComplete SELECT 1
+ReadyForQuery idle
+ErrorResponse ERROR 22P03 incorrect binary data format in bind parameter 2
+ReadyForQuery idle
+ErrorResponse ERROR 22P03 incorrect binary data format in bind parameter 1
+ReadyForQuery idle
+ErrorResponse ERROR 22P03 incorrect binary data format in bind parameter 3
+ReadyForQuery idle
+
+# Counts of parameters and format codes; unsupported and unspecified types; a
+# statement with parameters must be a planned statement.
+pg bind statement=bin params="1,t"
+pg sync
+pg bind statement=bin formats="0,0" params="1,t,x"
+pg sync
+pg bind portal=p statement=bin params="1,t,x" results="0,1"
+pg describe portal=p
+pg sync
+pg parse "SELECT $1" types=114
+pg sync
+pg parse "SELECT $1"
+pg sync
+pg parse "SELECT $2" types=20
+pg sync
+pg parse "SELECT 1" types="20,0"
+pg describe statement=""
+pg sync
+pg parse "FORMAT SELECT $1" types=20
+pg sync
+---
+ErrorResponse ERROR 08P01 bind message supplies 2 parameters, but prepared statement requires 3
+ReadyForQuery idle
+ErrorResponse ERROR 08P01 bind message has 2 parameter formats but 3 parameters
+ReadyForQuery idle
+BindComplete
+ErrorResponse ERROR 08P01 bind message has 2 result formats but query has 4 columns
+ReadyForQuery idle
+ErrorResponse ERROR 0A000 unsupported parameter type 114
+ReadyForQuery idle
+ErrorResponse ERROR 42P18 could not determine data type of parameter $1
+ReadyForQuery idle
+ErrorResponse ERROR 42P18 could not determine data type of parameter $2
+ReadyForQuery idle
+ErrorResponse ERROR 42P18 could not determine data type of parameter $2
+ReadyForQuery idle
+ErrorResponse ERROR 42000 invalid input: PREPARE is not supported for FORMAT
+ReadyForQuery idle

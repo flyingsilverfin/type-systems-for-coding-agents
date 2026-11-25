@@ -1,0 +1,84 @@
+# Only committed changes are recorded, in commit order; SHOW CHANGES uses no
+# transaction.
+
+> CREATE TABLE t (id INT PRIMARY KEY, v STRING)
+---
+ok
+
+# The statements of a transaction share its version, in statement order.
+> BEGIN
+> INSERT INTO t VALUES (1, 'a')
+> UPDATE t SET v = 'b' WHERE id = 1
+> INSERT INTO t VALUES (2, 'c')
+> SHOW CHANGES SINCE 1
+> COMMIT
+> SHOW CHANGES SINCE 1
+---
+2, 't', 'insert', 1, '{\"id\":1,\"v\":\"a\"}'
+2, 't', 'update', 1, '{\"id\":1,\"v\":\"b\"}'
+2, 't', 'insert', 2, '{\"id\":2,\"v\":\"c\"}'
+
+# A rolled-back transaction records nothing.
+> BEGIN
+> DELETE FROM t WHERE id = 1
+> CREATE TABLE u (id INT PRIMARY KEY)
+> ROLLBACK
+> SHOW CHANGES SINCE 2
+---
+ok
+
+# A failed statement records nothing outside a transaction; inside one, the
+# rows it wrote before it failed stay written and are recorded at commit.
+!> INSERT INTO t VALUES (10, 'x'), (1, 'dup')
+> BEGIN
+!> INSERT INTO t VALUES (11, 'y'), (1, 'dup')
+> COMMIT
+> SELECT * FROM t
+> SHOW CHANGES SINCE 3
+---
+Error: invalid input: primary key 1 already exists
+Error: invalid input: primary key 1 already exists
+1, 'b'
+2, 'c'
+11, 'y'
+5, 't', 'insert', 11, '{\"id\":11,\"v\":\"y\"}'
+
+# Transactions are listed in commit order, which need not be version order.
+a:> BEGIN
+b:> BEGIN
+b:> INSERT INTO t VALUES (21, 'b')
+a:> INSERT INTO t VALUES (20, 'a')
+b:> COMMIT
+a:> SHOW CHANGES SINCE 5
+a:> COMMIT
+> SHOW CHANGES SINCE 5
+> SHOW CHANGES SINCE 6
+---
+a: 7, 't', 'insert', 21, '{\"id\":21,\"v\":\"b\"}'
+7, 't', 'insert', 21, '{\"id\":21,\"v\":\"b\"}'
+6, 't', 'insert', 20, '{\"id\":20,\"v\":\"a\"}'
+7, 't', 'insert', 21, '{\"id\":21,\"v\":\"b\"}'
+
+# Read-only transactions record nothing, and SHOW CHANGES allocates no
+# version.
+> BEGIN READ ONLY
+> SELECT COUNT(*) FROM t
+> COMMIT
+> SHOW CHANGES SINCE 7
+[json]> BEGIN
+> ROLLBACK
+---
+5
+{"result":"begin","version":8,"read_only":false}
+
+# A transaction that conflicts records nothing.
+a:> BEGIN
+b:> BEGIN
+a:> UPDATE t SET v = 'x' WHERE id = 1
+b:!> UPDATE t SET v = 'y' WHERE id = 1
+a:> COMMIT
+b:> ROLLBACK
+> SHOW CHANGES SINCE 8
+---
+b: Error: serialization failure, retry transaction
+9, 't', 'update', 1, '{\"id\":1,\"v\":\"x\"}'

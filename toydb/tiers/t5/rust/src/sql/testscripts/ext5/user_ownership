@@ -1,0 +1,99 @@
+# Ownership: a table or view belongs to the user that created it, who may do
+# everything with it. Objects of admin are owned by admin.
+
+> CREATE TABLE base (id INT PRIMARY KEY)
+> CREATE USER alice
+> CREATE USER bob
+> CREATE USER root SUPERUSER
+---
+ok
+
+a:> SET ROLE alice
+a:> CREATE TABLE at (id INT PRIMARY KEY, v STRING)
+a:> INSERT INTO at VALUES (1, 'a'), (2, 'b')
+a:> CREATE VIEW av AS SELECT v FROM at
+a:> SELECT * FROM av
+a:> UPDATE at SET v = 'c' WHERE id = 2
+a:> ANALYZE at
+a:!> SELECT * FROM base
+> SHOW GRANTS
+---
+a: 'a'
+a: 'b'
+a: Error: permission denied: user alice has no SELECT privilege on base
+'at', 'alice', 'OWNER'
+'av', 'alice', 'OWNER'
+'base', 'admin', 'OWNER'
+
+# Others need privileges, which the owner grants. Dropping, analyzing and
+# granting need ownership.
+b:> SET ROLE bob
+b:!> SELECT * FROM at
+a:> GRANT SELECT ON at TO bob
+b:> SELECT * FROM at
+b:!> DROP TABLE at
+b:!> DROP VIEW av
+b:!> ANALYZE at
+b:!> GRANT SELECT ON at TO bob
+b:!> SELECT * FROM av
+---
+b: Error: permission denied: user bob has no SELECT privilege on at
+b: 1, 'a'
+b: 2, 'c'
+b: Error: permission denied: user bob is not the owner of at
+b: Error: permission denied: user bob is not the owner of av
+b: Error: permission denied: user bob is not the owner of at
+b: Error: permission denied: user bob is not the owner of at
+b: Error: permission denied: user bob has no SELECT privilege on av
+
+# ANALYZE without a table and EXPORT AS SQL access every table (and view) by
+# name; the first one lacking the privilege is reported.
+c:> SET ROLE root
+c:> CREATE TABLE rt (id INT PRIMARY KEY)
+a:!> ANALYZE
+b:!> EXPORT AS SQL
+a:!> EXPORT AS SQL
+c:> SHOW GRANTS
+---
+a: Error: permission denied: user alice is not the owner of base
+b: Error: permission denied: user bob has no SELECT privilege on av
+a: Error: permission denied: user alice has no SELECT privilege on base
+c: 'at', 'alice', 'OWNER'
+c: 'at', 'bob', 'SELECT'
+c: 'av', 'alice', 'OWNER'
+c: 'base', 'admin', 'OWNER'
+c: 'rt', 'root', 'OWNER'
+
+# A superuser that isn't the owner may do everything as well.
+c:> GRANT SELECT ON av TO bob
+b:> SELECT * FROM av
+---
+b: 'a'
+b: 'c'
+
+# A user that owns an object can't be dropped. Dropping the object removes its
+# ownership and privileges.
+!> DROP USER alice
+!> DROP USER root
+a:!> DROP TABLE at
+a:> DROP VIEW av
+a:> DROP TABLE at
+> DROP USER alice
+c:> DROP TABLE rt
+> DROP USER root
+> SHOW GRANTS
+---
+Error: invalid input: user alice owns at
+Error: invalid input: user root owns rt
+a: Error: invalid input: table at is used by view av
+'base', 'admin', 'OWNER'
+
+# The session of a dropped user keeps it as its user, with no privileges
+# beyond those of a user nobody granted anything.
+a:!> CREATE VIEW x AS SELECT * FROM base
+a:> CREATE TABLE again (id INT PRIMARY KEY)
+> SHOW GRANTS
+---
+a: Error: permission denied: user alice has no SELECT privilege on base
+'again', 'alice', 'OWNER'
+'base', 'admin', 'OWNER'

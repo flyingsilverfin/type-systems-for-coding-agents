@@ -1,0 +1,78 @@
+# Joins: the product of the inputs' estimates and the selectivity of the join
+# condition; an outer join has at least as many rows as its outer input.
+
+> CREATE TABLE item (id INT PRIMARY KEY, name STRING INDEX, price FLOAT, qty INT, cat STRING)
+> INSERT INTO item VALUES (1, 'a', 1.0, 10, 'x'), (2, 'b', 2.0, 20, 'x'), (3, 'c', 3.0, NULL, 'y'), (4, 'd', 4.0, 20, 'y'), (5, 'e', 5.0, 30, 'y'), (6, 'f', 6.0, 40, 'z'), (7, 'g', 7.0, NULL, NULL), (8, 'h', 8.0, 10, 'z'), (9, 'i', 9.0, 20, 'x'), (10, 'j', 10.0, 50, NULL)
+> CREATE TABLE shop (id INT PRIMARY KEY, item_id INT INDEX, city STRING)
+> INSERT INTO shop VALUES (1, 1, 'oslo'), (2, 1, 'rome'), (3, 2, 'oslo'), (4, 5, 'rome'), (5, NULL, 'paris')
+> ANALYZE
+---
+ok
+
+# A hash join on two columns: 1 / the larger number of distinct values.
+> ESTIMATE SELECT * FROM item i JOIN shop s ON s.item_id = i.id
+> ESTIMATE SELECT i.name, s.city FROM item i LEFT JOIN shop s ON s.item_id = i.id
+> ESTIMATE SELECT i.name, s.city FROM shop s RIGHT JOIN item i ON s.item_id = i.id
+---
+'HashJoin: inner on i.id = s.item_id', 5
+'├─ Scan: item as i', 10
+'└─ Scan: shop as s', 5
+'Projection: i.name, s.city', 10
+'└─ HashJoin: outer on i.id = s.item_id', 10
+'   ├─ Scan: item as i', 10
+'   └─ Scan: shop as s', 5
+'Projection: i.name, s.city', 10
+'└─ Remap: s.id, s.item_id, s.city, i.id, i.name, i.price, i.qty, i.cat', 10
+'   └─ HashJoin: outer on i.id = s.item_id', 10
+'      ├─ Scan: item as i', 10
+'      └─ Scan: shop as s', 5
+
+# Nested loop joins: other conditions (0.25; 12.5 rows rounded up to 13), no
+# condition, and an equality combined with another condition.
+> ESTIMATE SELECT i.name, s.city FROM item i JOIN shop s ON i.price > s.id
+> ESTIMATE SELECT i.name, s.city FROM item i, shop s
+> ESTIMATE SELECT * FROM item i JOIN shop s ON s.item_id = i.id AND i.price > s.id
+> ESTIMATE SELECT * FROM item i LEFT JOIN shop s ON i.price > s.id
+---
+'Projection: i.name, s.city', 13
+'└─ NestedLoopJoin: inner on i.price > s.id', 13
+'   ├─ Scan: item as i', 10
+'   └─ Scan: shop as s', 5
+'Projection: i.name, s.city', 50
+'└─ NestedLoopJoin: inner', 50
+'   ├─ Scan: item as i', 10
+'   └─ Scan: shop as s', 5
+'NestedLoopJoin: inner on s.item_id = i.id AND i.price > s.id', 1
+'├─ Scan: item as i', 10
+'└─ Scan: shop as s', 5
+'NestedLoopJoin: outer on i.price > s.id', 13
+'├─ Scan: item as i', 10
+'└─ Scan: shop as s', 5
+
+# Filters and lookups below a join; the columns keep their statistics.
+> ESTIMATE SELECT i.name FROM item i JOIN shop s ON s.item_id = i.id WHERE s.city = 'oslo'
+> ESTIMATE SELECT * FROM item i JOIN shop s ON s.item_id = i.id AND s.city = 'oslo' AND i.id = 1
+---
+'Projection: i.name', 2
+'└─ HashJoin: inner on i.id = s.item_id', 2
+'   ├─ Scan: item as i', 10
+'   └─ Scan: shop as s (s.city = \'oslo\')', 2
+'HashJoin: inner on i.id = s.item_id', 0
+'├─ KeyLookup: item as i (1)', 1
+'└─ Filter: s.city = \'oslo\'', 0
+'   └─ IndexLookup: shop.item_id as s.item_id (1)', 1
+
+# An aggregate over a join; the GROUP BY column is traced to shop.city.
+> ESTIMATE SELECT s.city, COUNT(*) FROM shop s JOIN item i ON i.id = s.item_id WHERE i.qty > 20 GROUP BY s.city
+---
+'Aggregate: s.city, count(TRUE)', 3
+'└─ HashJoin: inner on s.item_id = i.id', 3
+'   ├─ Scan: shop as s', 5
+'   └─ Scan: item as i (i.qty > 20)', 6
+
+# The estimates are only estimates: the query returns other numbers of rows.
+> SELECT COUNT(*) FROM item i JOIN shop s ON s.item_id = i.id
+> SELECT COUNT(*) FROM item i JOIN shop s ON i.price > s.id
+---
+4
+35

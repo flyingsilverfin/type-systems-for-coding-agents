@@ -1,0 +1,80 @@
+# DESCRIBE <name> describes the columns of a table or view: name, data type and
+# whether the column can be NULL.
+
+> CREATE TABLE emp (id INT PRIMARY KEY, name STRING NOT NULL, dept_id INT INDEX, salary FLOAT DEFAULT 1.0, active BOOLEAN NOT NULL DEFAULT TRUE)
+[header]> DESCRIBE emp
+---
+column, type, nullable
+'id', 'INTEGER', FALSE
+'name', 'STRING', FALSE
+'dept_id', 'INTEGER', TRUE
+'salary', 'FLOAT', TRUE
+'active', 'BOOLEAN', FALSE
+
+# A view's columns are described from its query.
+!> CREATE VIEW v AS SELECT id, salary * 2 AS pay, name = 'x' AS is_x, NULL AS nothing, dept_id + 1 FROM emp
+!> CREATE VIEW v2 AS SELECT id, dept_id + 1 FROM emp
+> CREATE VIEW v2 (a, b) AS SELECT id, dept_id + 1 FROM emp
+[header]> DESCRIBE v2
+---
+Error: invalid input: column 5 of view v has no name
+Error: invalid input: column 2 of view v2 has no name
+column, type, nullable
+'a', 'INTEGER', FALSE
+'b', 'INTEGER', TRUE
+
+> CREATE VIEW v AS SELECT id, salary * 2 AS pay, name = 'x' AS is_x, NULL AS nothing FROM emp
+> DESCRIBE v
+---
+'id', 'INTEGER', FALSE
+'pay', 'FLOAT', TRUE
+'is_x', 'BOOLEAN', FALSE
+'nothing', NULL, TRUE
+
+# Quoted names, and names that are keywords.
+> CREATE TABLE "Item" ("Id" INT PRIMARY KEY, "select" TEXT)
+> DESCRIBE "Item"
+---
+'Id', 'INTEGER', FALSE
+'select', 'STRING', TRUE
+
+# Unknown names, and parse errors.
+!> DESCRIBE nosuch
+!> DESCRIBE item
+!> DESCRIBE
+!> DESCRIBE emp x
+!> DESCRIBE 1
+---
+Error: invalid input: table nosuch does not exist
+Error: invalid input: table item does not exist
+Error: invalid input: unexpected end of input
+Error: invalid input: unexpected token x
+Error: invalid input: unexpected token 1
+
+# DESCRIBE is a reserved keyword.
+!> CREATE TABLE describe (id INT PRIMARY KEY)
+> CREATE TABLE "describe" (id INT PRIMARY KEY)
+> DESCRIBE "describe"
+---
+Error: invalid input: expected identifier, got DESCRIBE
+'id', 'INTEGER', FALSE
+
+# DESCRIBE sees what its transaction sees, and uses an implicit read-only
+# transaction otherwise.
+a:> BEGIN
+a:> CREATE TABLE tmp (k STRING PRIMARY KEY, n INT NOT NULL)
+a:> DESCRIBE tmp
+b:!> DESCRIBE tmp
+a:> ROLLBACK
+[json]> BEGIN
+> COMMIT
+---
+a: 'k', 'STRING', FALSE
+a: 'n', 'INTEGER', FALSE
+b: Error: invalid input: table tmp does not exist
+{"result":"begin","version":9,"read_only":false}
+
+# The JSON form is a select result.
+[json]> DESCRIBE v2
+---
+{"result":"select","columns":["column","type","nullable"],"rows":[["a","INTEGER",false],["b","INTEGER",true]]}

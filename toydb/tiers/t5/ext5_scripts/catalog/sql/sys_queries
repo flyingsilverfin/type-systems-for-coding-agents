@@ -1,0 +1,88 @@
+# System tables in queries and views, and name resolution: a table or view of
+# the same name comes first. Only queries can read them.
+
+> CREATE TABLE emp (id INT PRIMARY KEY, name STRING, dept STRING)
+> CREATE TABLE dept (id STRING PRIMARY KEY)
+> CREATE VIEW wide AS SELECT table_name, count(*) AS n FROM toydb_columns GROUP BY table_name
+> SELECT * FROM wide ORDER BY n DESC
+> SELECT c.name FROM emp AS e JOIN toydb_columns AS c ON c.table_name = 'emp' AND c.name = e.name
+> SHOW VIEWS
+---
+'emp', 3
+'dept', 1
+'wide', 'table_name, n', 'SELECT table_name, count(*) AS n FROM toydb_columns GROUP BY table_name'
+
+# A view over a system table sees the catalog of the reading transaction.
+> CREATE TABLE more (a INT PRIMARY KEY, b INT, c INT, d INT)
+> SELECT * FROM wide WHERE n > 2 ORDER BY table_name
+[plan]> SELECT n FROM wide WHERE table_name = 'more'
+---
+'emp', 3
+'more', 4
+Projection: wide.n
+└─ Filter: wide.table_name = 'more'
+   └─ View: wide
+      └─ Projection: toydb_columns.table_name, #1 as n
+         └─ Aggregate: toydb_columns.table_name, count(TRUE)
+            └─ SystemTable: toydb_columns
+4
+
+# A table or view named like a system table hides it.
+> CREATE VIEW toydb_keywords AS SELECT 'none' AS word
+> SELECT * FROM toydb_keywords
+> DROP VIEW toydb_keywords
+> SELECT count(*) FROM toydb_keywords
+---
+'none'
+106
+
+# Statements other than queries fail as for a name that is not a table.
+!> INSERT INTO toydb_tables VALUES ('x', 'admin', 'id', 1, 0, 0)
+!> UPDATE toydb_users SET is_superuser = TRUE
+!> DELETE FROM toydb_grants
+!> DROP TABLE toydb_tables
+!> SHOW STATISTICS toydb_columns
+!> EXPORT toydb_types AS CSV
+!> ANALYZE toydb_tables
+!> DESCRIBE toydb_nosuch
+!> SELECT * FROM toydb_nosuch
+---
+Error: invalid input: table toydb_tables does not exist
+Error: invalid input: table toydb_users does not exist
+Error: invalid input: table toydb_grants does not exist
+Error: invalid input: table toydb_tables does not exist
+Error: invalid input: table toydb_columns does not exist
+Error: invalid input: table toydb_types does not exist
+Error: invalid input: table toydb_tables does not exist
+Error: invalid input: table toydb_nosuch does not exist
+Error: invalid input: table toydb_nosuch does not exist
+
+# They are not exported, and not listed by schema; DESCRIBE of a name
+# describes a system table too.
+> EXPORT AS SQL
+[header]> DESCRIBE toydb_members
+---
+CREATE TABLE dept (
+  id STRING PRIMARY KEY
+);
+CREATE TABLE emp (
+  id INTEGER PRIMARY KEY,
+  name STRING DEFAULT NULL,
+  dept STRING DEFAULT NULL
+);
+CREATE TABLE more (
+  a INTEGER PRIMARY KEY,
+  b INTEGER DEFAULT NULL,
+  c INTEGER DEFAULT NULL,
+  d INTEGER DEFAULT NULL
+);
+CREATE VIEW wide (table_name, n) AS SELECT table_name, count(*) AS n FROM toydb_columns GROUP BY table_name;
+column, type, nullable
+'member', 'STRING', FALSE
+'member_of', 'STRING', FALSE
+
+# LINT doesn't resolve system tables; JSON results are select results.
+> LINT SELECT * FROM toydb_tables WHERE columns = 'x'
+[json]> SELECT word FROM toydb_keywords WHERE word = 'USING'
+---
+{"result":"select","columns":["toydb_keywords.word"],"rows":[["USING"]]}

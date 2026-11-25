@@ -1,0 +1,91 @@
+# Row-level security policies: a table with policies is protected, and a
+# user that is neither a superuser nor acts for its owner reads only the rows
+# for which an applicable policy is TRUE.
+
+> CREATE TABLE doc (id INT PRIMARY KEY, owner_name STRING, level INT, body STRING)
+> INSERT INTO doc VALUES (1, 'alice', 1, 'a1'), (2, 'bob', 2, 'b1'), (3, 'alice', 3, 'a2'), (4, NULL, 1, 'p')
+> CREATE USER alice
+> CREATE USER bob
+> GRANT SELECT ON doc TO alice
+> GRANT SELECT ON doc TO bob
+a:> SET ROLE alice
+b:> SET ROLE bob
+a:> SELECT id FROM doc
+---
+a: 1
+a: 2
+a: 3
+a: 4
+
+# A policy for alice: alice reads her rows; bob, without an applicable
+# policy, reads none.
+[json]> CREATE POLICY own ON doc TO alice USING (owner_name = 'alice')
+a:> SELECT id, body FROM doc
+b:> SELECT id, body FROM doc
+> SELECT id FROM doc
+---
+{"result":"create_policy","table":"doc","policy":"own"}
+a: 1, 'a1'
+a: 3, 'a2'
+1
+2
+3
+4
+
+# A policy without TO applies to every user. A row is read if any applicable
+# policy is TRUE for it; NULL is not TRUE.
+> CREATE POLICY public ON doc USING (level = 1)
+> CREATE POLICY mine ON doc TO bob USING (owner_name = 'bob' OR owner_name IS NULL AND level > 1)
+a:> SELECT id FROM doc
+b:> SELECT id FROM doc
+---
+a: 1
+a: 3
+a: 4
+b: 1
+b: 2
+b: 4
+
+# Superusers and the owner, and users that act for the owner, read every row.
+> CREATE USER root SUPERUSER
+c:> SET ROLE root
+c:> SELECT count(*) FROM doc
+a:> CREATE TABLE notes (id INT PRIMARY KEY, author STRING)
+a:> INSERT INTO notes VALUES (1, 'alice'), (2, 'bob')
+a:> CREATE POLICY nobody ON notes USING (FALSE)
+a:> SELECT * FROM notes
+a:> GRANT SELECT ON notes TO bob
+b:> SELECT * FROM notes
+> GRANT alice TO bob
+b:> SELECT * FROM notes
+---
+c: 4
+a: 1, 'alice'
+a: 2, 'bob'
+b: 1, 'alice'
+b: 2, 'bob'
+
+# Dropping a policy; IF EXISTS.
+[json]> DROP POLICY public ON doc
+[json]> DROP POLICY IF EXISTS public ON doc
+a:> SELECT id FROM doc
+a:> DROP POLICY nobody ON notes
+> REVOKE alice FROM bob
+b:> SELECT * FROM notes
+---
+{"result":"drop_policy","table":"doc","policy":"public","existed":true}
+{"result":"drop_policy","table":"doc","policy":"public","existed":false}
+a: 1
+a: 3
+b: 1, 'alice'
+b: 2, 'bob'
+
+# Dropping the last policy makes the table unprotected again.
+> DROP POLICY own ON doc
+> DROP POLICY mine ON doc
+a:> SELECT id FROM doc
+---
+a: 1
+a: 2
+a: 3
+a: 4

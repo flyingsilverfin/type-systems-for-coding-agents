@@ -1,0 +1,15 @@
+{
+ "run": "t5r_date_rs_oha",
+ "task": "date",
+ "suite": "toydb-t5",
+ "tier": "t5",
+ "lang": "rust",
+ "model": "opus",
+ "effort": "high",
+ "ws": "/home/user/agentbench/runs/t5r_date_rs_oha",
+ "hint": true,
+ "readme_from": "t2",
+ "baseline": "69ea041c59646b33f5828a4b246c082107c57ebe",
+ "created": 1795536664.103745,
+ "warm_ok": true
+}

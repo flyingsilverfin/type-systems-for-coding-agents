@@ -1,0 +1,76 @@
+# Estimates of the plan nodes other than scans and joins.
+
+> CREATE TABLE item (id INT PRIMARY KEY, name STRING INDEX, price FLOAT, qty INT, cat STRING)
+> INSERT INTO item VALUES (1, 'a', 1.0, 10, 'x'), (2, 'b', 2.0, 20, 'x'), (3, 'c', 3.0, NULL, 'y'), (4, 'd', 4.0, 20, 'y'), (5, 'e', 5.0, 30, 'y'), (6, 'f', 6.0, 40, 'z'), (7, 'g', 7.0, NULL, NULL), (8, 'h', 8.0, 10, 'z'), (9, 'i', 9.0, 20, 'x'), (10, 'j', 10.0, 50, NULL)
+---
+ok
+
+# Key and index lookups, before and after ANALYZE.
+> ESTIMATE SELECT * FROM item WHERE id = 3 OR id = 5 OR id = 99
+> ESTIMATE SELECT * FROM item WHERE name = 'c' OR name IS NULL
+> ANALYZE item
+> ESTIMATE SELECT * FROM item WHERE id = 3 OR id = 5 OR id = 99
+> ESTIMATE SELECT * FROM item WHERE name = 'c' OR name IS NULL
+---
+'KeyLookup: item (3, 5, 99)', 3
+'IndexLookup: item.name (\'c\', NULL)', 200
+'KeyLookup: item (3, 5, 99)', 3
+'IndexLookup: item.name (\'c\', NULL)', 1
+
+# Projection, Order and Remap pass on the estimate of their input; Limit and
+# Offset count.
+> ESTIMATE SELECT name FROM item ORDER BY price DESC
+> ESTIMATE SELECT id FROM item LIMIT 5 OFFSET 7
+> ESTIMATE SELECT id FROM item LIMIT 3
+> ESTIMATE SELECT id FROM item OFFSET 20
+---
+'Remap: item.name (dropped: item.price)', 10
+'└─ Order: item.price desc', 10
+'   └─ Projection: item.name, item.price', 10
+'      └─ Scan: item', 10
+'Limit: 5', 3
+'└─ Offset: 7', 3
+'   └─ Projection: item.id', 10
+'      └─ Scan: item', 10
+'Limit: 3', 3
+'└─ Projection: item.id', 10
+'   └─ Scan: item', 10
+'Offset: 20', 0
+'└─ Projection: item.id', 10
+'   └─ Scan: item', 10
+
+# Values and Nothing.
+> ESTIMATE SELECT 1, 2
+> ESTIMATE SELECT * FROM item WHERE FALSE
+---
+'Projection: 1, 2', 1
+'└─ Values: blank row', 1
+'Nothing', 0
+
+# Aggregates: one row without GROUP BY; otherwise at most the number of
+# combinations of distinct values (NULL counting as a value), 10 for a group
+# expression without statistics.
+> ESTIMATE SELECT COUNT(*), MAX(price) FROM item WHERE cat = 'y'
+> ESTIMATE SELECT cat, COUNT(*) FROM item GROUP BY cat
+> ESTIMATE SELECT cat, qty, COUNT(*) FROM item GROUP BY cat, qty
+> ESTIMATE SELECT qty % 3, COUNT(*) FROM item GROUP BY qty % 3
+> ESTIMATE SELECT cat, COUNT(*) FROM item WHERE price < 3.5 GROUP BY cat
+---
+'Aggregate: count(TRUE), max(item.price)', 1
+'└─ Scan: item (item.cat = \'y\')', 3
+'Aggregate: item.cat, count(TRUE)', 4
+'└─ Scan: item', 10
+'Aggregate: item.cat, item.qty, count(TRUE)', 10
+'└─ Scan: item', 10
+'Aggregate: item.qty % 3, count(TRUE)', 10
+'└─ Scan: item', 10
+'Aggregate: item.cat, count(TRUE)', 3
+'└─ Scan: item (item.price < 3.5)', 3
+
+# HAVING is a Filter over the aggregate's results, which have no statistics.
+> ESTIMATE SELECT cat, COUNT(*) AS n FROM item GROUP BY cat HAVING COUNT(*) > 1
+---
+'Filter: n > 1', 1
+'└─ Projection: item.cat, #1 as n', 4
+'   └─ Aggregate: item.cat, count(TRUE)', 4
+'      └─ Scan: item', 10

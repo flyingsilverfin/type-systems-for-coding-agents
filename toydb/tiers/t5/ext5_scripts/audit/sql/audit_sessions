@@ -1,0 +1,43 @@
+# SHOW SESSIONS: the server's open sessions, numbered in the order the server
+# created them. The SQL runner creates a prefix's session when the prefix is
+# first used.
+
+[header]> SHOW SESSIONS
+---
+session, username, login, txn, executed
+1, 'admin', 'admin', NULL, 0
+
+> CREATE USER alice
+a:> BEGIN
+a:> SET ROLE alice
+b:> SELECT 1
+b:!> SELECT * FROM nosuch
+b:!> SELECT FROM nosuch
+> SHOW SESSIONS
+---
+b: 1
+b: Error: invalid input: table nosuch does not exist
+b: Error: invalid input: expected expression atom, found FROM
+1, 'admin', 'admin', NULL, 2
+2, 'alice', 'admin', 2, 2
+3, 'admin', 'admin', NULL, 2
+
+# The current user and the transaction change; SHOW AUDIT isn't counted.
+a:> COMMIT
+a:!> SHOW AUDIT
+b:> BEGIN READ ONLY
+c:schema
+c:[json]> SHOW SESSIONS
+---
+a: Error: permission denied: user alice is not a superuser
+c: {"result":"select","columns":["session","username","login","txn","executed"],"rows":[[1,"admin","admin",null,3],[2,"alice","admin",null,3],[3,"admin","admin",3,3],[4,"admin","admin",null,0]]}
+
+# SHOW SESSIONS works inside transactions and requires nothing.
+a:> BEGIN
+a:> SHOW SESSIONS
+a:> ROLLBACK
+---
+a: 1, 'admin', 'admin', NULL, 3
+a: 2, 'alice', 'admin', 3, 4
+a: 3, 'admin', 'admin', 3, 3
+a: 4, 'admin', 'admin', NULL, 1

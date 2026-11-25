@@ -1,0 +1,138 @@
+# Table privileges: GRANT and REVOKE, and the privilege check of every
+# statement against the session's current user.
+
+> CREATE TABLE t (id INT PRIMARY KEY, v STRING)
+> INSERT INTO t VALUES (1, 'a'), (2, 'b')
+> CREATE VIEW tv AS SELECT v FROM t WHERE id = 1
+> CREATE USER alice
+> CREATE USER bob
+---
+ok
+
+# Without privileges, alice can do nothing with t or tv.
+a:> SET ROLE alice
+a:!> SELECT * FROM t
+a:!> SELECT * FROM tv
+a:!> INSERT INTO t VALUES (3, 'c')
+a:!> UPDATE t SET v = 'x'
+a:!> DELETE FROM t WHERE id = 1
+---
+a: Error: permission denied: user alice has no SELECT privilege on t
+a: Error: permission denied: user alice has no SELECT privilege on tv
+a: Error: permission denied: user alice has no INSERT privilege on t
+a: Error: permission denied: user alice has no UPDATE privilege on t
+a: Error: permission denied: user alice has no DELETE privilege on t
+
+# Reading a view requires the SELECT privilege on the view only. Each kind of
+# write requires its own privilege.
+> GRANT SELECT ON tv TO alice
+[json]> GRANT INSERT, UPDATE ON t TO alice
+a:> SELECT * FROM tv
+a:> INSERT INTO t VALUES (3, 'c')
+a:> UPDATE t SET v = 'x' WHERE id = 3
+a:!> SELECT * FROM t
+a:!> DELETE FROM t WHERE id = 3
+[header]> SHOW GRANTS
+---
+{"result":"grant","table":"t"}
+a: 'a'
+a: Error: permission denied: user alice has no SELECT privilege on t
+a: Error: permission denied: user alice has no DELETE privilege on t
+object, grantee, privilege
+'t', 'admin', 'OWNER'
+'t', 'alice', 'INSERT'
+'t', 'alice', 'UPDATE'
+'tv', 'admin', 'OWNER'
+'tv', 'alice', 'SELECT'
+
+# A privilege may be listed twice; granting a privilege that is held, or
+# revoking one that isn't, does nothing.
+> GRANT SELECT, SELECT, DELETE ON t TO alice
+> GRANT SELECT ON t TO alice
+[json]> REVOKE UPDATE, DELETE ON t FROM alice
+> REVOKE DELETE ON t FROM alice
+> REVOKE SELECT ON tv FROM bob
+> SHOW GRANTS
+a:> SELECT * FROM t
+a:!> UPDATE t SET v = 'y' WHERE id = 3
+---
+{"result":"revoke","table":"t"}
+'t', 'admin', 'OWNER'
+'t', 'alice', 'SELECT'
+'t', 'alice', 'INSERT'
+'tv', 'admin', 'OWNER'
+'tv', 'alice', 'SELECT'
+a: 1, 'a'
+a: 2, 'b'
+a: 3, 'x'
+a: Error: permission denied: user alice has no UPDATE privilege on t
+
+# Errors of GRANT and REVOKE, in the order of their checks.
+!> GRANT SELECT ON nosuch TO alice
+!> GRANT INSERT ON tv TO alice
+!> GRANT SELECT, DELETE ON tv TO alice
+!> REVOKE UPDATE ON tv FROM alice
+!> GRANT SELECT ON t TO nosuch
+!> GRANT INSERT ON tv TO nosuch
+a:!> GRANT SELECT ON t TO bob
+a:!> REVOKE SELECT ON tv FROM alice
+a:!> GRANT SELECT ON nosuch TO bob
+---
+Error: invalid input: table nosuch does not exist
+Error: invalid input: only SELECT can be granted on view tv
+Error: invalid input: only SELECT can be granted on view tv
+Error: invalid input: only SELECT can be granted on view tv
+Error: invalid input: user nosuch does not exist
+Error: invalid input: only SELECT can be granted on view tv
+a: Error: permission denied: user alice is not the owner of t
+a: Error: permission denied: user alice is not the owner of tv
+a: Error: invalid input: table nosuch does not exist
+
+> BEGIN READ ONLY
+!> GRANT SELECT ON t TO bob
+!> REVOKE SELECT ON t FROM nosuch
+> COMMIT
+---
+Error: read-only transaction
+Error: invalid input: user nosuch does not exist
+
+# Grants are transactional, and a privilege check reads the grants that the
+# statement's transaction sees.
+b:> SET ROLE bob
+b:> BEGIN
+> GRANT SELECT ON t TO bob
+b:!> SELECT * FROM t
+b:> COMMIT
+b:> SELECT v FROM t WHERE id = 2
+> BEGIN
+> REVOKE SELECT ON t FROM bob
+> ROLLBACK
+b:> SELECT v FROM t WHERE id = 1
+---
+b: Error: permission denied: user bob has no SELECT privilege on t
+b: 'b'
+b: 'a'
+
+# Dropping a table or view removes the privileges granted on it; an object
+# created again with the same name has none.
+> DROP VIEW tv
+> CREATE VIEW tv AS SELECT id FROM t
+a:!> SELECT * FROM tv
+> SHOW GRANTS
+---
+a: Error: permission denied: user alice has no SELECT privilege on tv
+'t', 'admin', 'OWNER'
+'t', 'alice', 'SELECT'
+'t', 'bob', 'SELECT'
+'t', 'alice', 'INSERT'
+'tv', 'admin', 'OWNER'
+
+# A superuser has every privilege.
+> CREATE USER root SUPERUSER
+c:> SET ROLE root
+c:> DELETE FROM t WHERE id = 3
+c:> SELECT * FROM tv
+c:> DROP VIEW tv
+---
+c: 1
+c: 2

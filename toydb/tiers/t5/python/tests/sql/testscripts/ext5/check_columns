@@ -1,0 +1,56 @@
+# Column constraints: a CHECK in a column definition is a constraint of the
+# table, unnamed, at the position where it is written, and may use any column.
+
+> CREATE TABLE t (id INT PRIMARY KEY CHECK (id != 5), n INT DEFAULT 1 CHECK (n > 0) CHECK (n < id * 10) NOT NULL, CHECK (id > 0), CONSTRAINT c CHECK (id < 9))
+> EXPORT t AS SQL
+!> INSERT INTO t VALUES (5, 1)
+!> INSERT INTO t VALUES (6, 0)
+!> INSERT INTO t VALUES (2, 20)
+!> INSERT INTO t VALUES (9, 1)
+> INSERT INTO t (id) VALUES (3)
+> SELECT * FROM t
+---
+CREATE TABLE t (
+  id INTEGER PRIMARY KEY,
+  n INTEGER NOT NULL DEFAULT 1,
+  CONSTRAINT t_check1 CHECK (id != 5),
+  CONSTRAINT t_check2 CHECK (n > 0),
+  CONSTRAINT t_check3 CHECK (n < id * 10),
+  CONSTRAINT t_check4 CHECK (id > 0),
+  CONSTRAINT c CHECK (id < 9)
+);
+Error: invalid input: row 5 violates check constraint t_check1
+Error: invalid input: row 6 violates check constraint t_check2
+Error: invalid input: row 2 violates check constraint t_check3
+Error: invalid input: row 9 violates check constraint c
+3, 1
+
+# A column constraint may use columns defined after its column. Names are
+# unique among all of the table's constraints.
+> CREATE TABLE w (a INT CHECK (a < b), b INT PRIMARY KEY)
+!> INSERT INTO w VALUES (2, 1)
+!> CREATE TABLE d (id INT PRIMARY KEY CHECK (id > 0), CONSTRAINT d_check1 CHECK (TRUE))
+!> CREATE TABLE d (id INT PRIMARY KEY CHECK (nosuch > 0))
+!> CREATE TABLE d (id INT PRIMARY KEY CHECK (id > 0) CHECK id < 9)
+---
+Error: invalid input: row 1 violates check constraint w_check1
+Error: invalid input: duplicate check constraint d_check1 in table d
+Error: invalid input: unknown column nosuch
+Error: invalid input: expected token (, found id
+
+# FORMAT and digests write a column's CHECK constraints after its other
+# constraints, in the order written.
+> FORMAT create table u (id int primary key check (id > 0), v string check (v != '') unique check (v != 'x'), check (true))
+> CREATE TABLE u (id INT PRIMARY KEY CHECK (id > 0), v STRING CHECK (v != '') UNIQUE, CHECK (TRUE))
+!> INSERT INTO u VALUES (1, '')
+s:> CREATE TABLE s (k STRING PRIMARY KEY CHECK (k LIKE 'k%') DEFAULT 'k')
+s:[header]> SHOW STATEMENTS
+---
+CREATE TABLE u (
+  id INTEGER PRIMARY KEY CHECK (id > 0),
+  v STRING UNIQUE CHECK (v != '') CHECK (v != 'x'),
+  CHECK (TRUE)
+)
+Error: invalid input: row 1 violates check constraint u_check2
+s: digest, calls, errors, rows
+s: 'CREATE TABLE s (k STRING PRIMARY KEY DEFAULT ? CHECK (k LIKE ?))', 1, 0, 0

@@ -1,0 +1,94 @@
+# Parse errors, names, and the errors of the materialized view statements.
+
+> CREATE TABLE t (id INT PRIMARY KEY)
+> CREATE VIEW tv AS SELECT id FROM t
+> CREATE MATERIALIZED VIEW mv AS SELECT id FROM t
+---
+ok
+
+!> CREATE MATERIALIZED mv2 AS SELECT 1 AS a
+!> CREATE MATERIALIZED VIEW
+!> CREATE MATERIALIZED VIEW m AS INSERT INTO t VALUES (1)
+!> CREATE MATERIALIZED VIEW m SELECT 1 AS a
+!> REFRESH mv
+!> REFRESH MATERIALIZED mv
+!> REFRESH MATERIALIZED VIEW
+!> REFRESH MATERIALIZED VIEW mv x
+!> DROP MATERIALIZED mv
+!> DROP MATERIALIZED VIEW
+!> CREATE TABLE refresh (id INT PRIMARY KEY)
+!> SELECT 1 AS materialized
+---
+Error: invalid input: expected token VIEW, found mv2
+Error: invalid input: unexpected end of input
+Error: invalid input: expected token SELECT, found INSERT
+Error: invalid input: expected token AS, found SELECT
+Error: invalid input: expected token MATERIALIZED, found mv
+Error: invalid input: expected token VIEW, found mv
+Error: invalid input: unexpected end of input
+Error: invalid input: unexpected token x
+Error: invalid input: expected token VIEW, found mv
+Error: invalid input: unexpected end of input
+Error: invalid input: expected identifier, got REFRESH
+Error: invalid input: expected identifier, got MATERIALIZED
+
+# Tables, views and materialized views share one namespace.
+!> CREATE MATERIALIZED VIEW t AS SELECT 1 AS a
+!> CREATE MATERIALIZED VIEW tv AS SELECT 1 AS a
+!> CREATE MATERIALIZED VIEW mv AS SELECT 1 AS a
+!> CREATE TABLE mv (id INT PRIMARY KEY)
+!> CREATE VIEW mv AS SELECT 1 AS a
+!> CREATE MATERIALIZED VIEW "" AS SELECT 1 AS a
+---
+Error: invalid input: table t already exists
+Error: invalid input: view tv already exists
+Error: invalid input: materialized view mv already exists
+Error: invalid input: materialized view mv already exists
+Error: invalid input: materialized view mv already exists
+Error: invalid input: view name can't be empty
+
+# Only queries read materialized views; the other statements fail as for a
+# name that is not a table, a view or a materialized view.
+!> INSERT INTO mv VALUES (1)
+!> DELETE FROM mv
+!> DROP TABLE mv
+!> DROP VIEW mv
+!> DROP MATERIALIZED VIEW tv
+!> REFRESH MATERIALIZED VIEW tv
+!> REFRESH MATERIALIZED VIEW nosuch
+!> EXPORT mv AS CSV
+!> ANALYZE mv
+---
+Error: invalid input: table mv does not exist
+Error: invalid input: table mv does not exist
+Error: invalid input: table mv does not exist
+Error: invalid input: view mv does not exist
+Error: invalid input: materialized view tv does not exist
+Error: invalid input: materialized view tv does not exist
+Error: invalid input: materialized view nosuch does not exist
+Error: invalid input: table mv does not exist
+Error: invalid input: table mv does not exist
+
+# Errors of the query, which is executed; the "not supported" checks; a
+# read-only transaction.
+!> CREATE MATERIALIZED VIEW m AS SELECT nosuch FROM t
+!> CREATE MATERIALIZED VIEW m AS SELECT 1 / 0 AS x
+!> EXPLAIN CREATE MATERIALIZED VIEW m AS SELECT 1 AS a
+!> PREPARE p AS REFRESH MATERIALIZED VIEW mv
+!> DESCRIBE DROP MATERIALIZED VIEW mv
+> BEGIN READ ONLY
+!> CREATE MATERIALIZED VIEW m AS SELECT 1 AS a
+!> REFRESH MATERIALIZED VIEW mv
+!> DROP MATERIALIZED VIEW mv
+!> DROP MATERIALIZED VIEW nosuch
+> COMMIT
+---
+Error: invalid input: unknown column nosuch
+Error: invalid input: can't divide by zero
+Error: invalid input: EXPLAIN is not supported for CREATE MATERIALIZED
+Error: invalid input: PREPARE is not supported for REFRESH
+Error: invalid input: DESCRIBE is not supported for DROP MATERIALIZED
+Error: read-only transaction
+Error: read-only transaction
+Error: read-only transaction
+Error: invalid input: materialized view nosuch does not exist

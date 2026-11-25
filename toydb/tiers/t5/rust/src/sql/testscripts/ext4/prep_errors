@@ -1,0 +1,173 @@
+# Parameters outside prepared statements, parse errors, PREPARE checks,
+# keywords, digests and JSON.
+
+> CREATE TABLE t (id INT PRIMARY KEY, v STRING)
+> INSERT INTO t VALUES (1, 'a')
+---
+ok
+
+# A statement with a parameter can only be prepared; the smallest parameter
+# number is reported. FORMAT and LINT accept parameters.
+!> SELECT $1
+!> INSERT INTO t VALUES ($2, $1)
+!> SELECT * FROM t WHERE id = $01
+!> EXPLAIN SELECT $3
+!> DESCRIBE SELECT $1
+!> ESTIMATE SELECT $1
+!> CREATE VIEW v AS SELECT $1 AS a
+!> DESCRIBE BEGIN READ ONLY
+> FORMAT SELECT $1
+---
+Error: invalid input: parameter $1 can only be used in a prepared statement
+Error: invalid input: parameter $1 can only be used in a prepared statement
+Error: invalid input: parameter $1 can only be used in a prepared statement
+Error: invalid input: parameter $3 can only be used in a prepared statement
+Error: invalid input: parameter $1 can only be used in a prepared statement
+Error: invalid input: parameter $1 can only be used in a prepared statement
+Error: invalid input: parameter $1 can only be used in a prepared statement
+Error: invalid input: DESCRIBE is not supported for BEGIN
+SELECT $1
+
+# Lexing of parameters.
+!> SELECT $
+!> SELECT $x
+!> SELECT $0
+!> SELECT $00
+!> SELECT $99999999999999999999
+!> SELECT 1 $1
+!> SELECT $1$2
+---
+Error: invalid input: unexpected character $
+Error: invalid input: unexpected character $
+Error: invalid input: invalid parameter $0
+Error: invalid input: invalid parameter $00
+Error: invalid input: invalid parameter $99999999999999999999
+Error: invalid input: unexpected token $1
+Error: invalid input: unexpected token $2
+
+# PREPARE checks, in order.
+> PREPARE p (INT) AS SELECT $1
+!> PREPARE p (INT) AS SELECT $1
+!> PREPARE p AS BEGIN
+!> PREPARE q AS BEGIN
+!> PREPARE q (INT) AS SELECT $1, $3, $2
+!> PREPARE q AS SELECT * FROM t WHERE id = $1
+> PREPARE q (INT, INT, INT) AS SELECT $3
+!> EXECUTE p ($1)
+---
+Error: invalid input: prepared statement p already exists
+Error: invalid input: prepared statement p already exists
+Error: invalid input: PREPARE is not supported for BEGIN
+Error: invalid input: no type given for parameter $2
+Error: invalid input: no type given for parameter $1
+Error: invalid input: parameter $1 can only be used in a prepared statement
+
+# PREPARE doesn't check the statement against the database; EXECUTE does.
+> PREPARE bad AS SELECT nosuch FROM nowhere
+!> EXECUTE bad
+> DEALLOCATE bad
+!> DEALLOCATE bad
+---
+Error: invalid input: table nowhere does not exist
+Error: invalid input: prepared statement bad does not exist
+
+# Parse errors.
+!> PREPARE
+!> PREPARE p AS
+!> PREPARE 1 AS SELECT 1
+!> PREPARE p SELECT 1
+!> PREPARE p (INT) SELECT 1
+!> PREPARE p (BLOB) AS SELECT 1
+!> PREPARE p () AS SELECT 1
+!> PREPARE p (INT,) AS SELECT 1
+!> EXECUTE
+!> EXECUTE 1
+!> EXECUTE p (
+!> EXECUTE p (1,
+!> EXECUTE p ()
+!> EXECUTE p (1) 2
+!> DEALLOCATE
+!> DEALLOCATE 1
+!> DEALLOCATE p q
+!> SHOW PREPARE
+!> SHOW PREPARED p
+---
+Error: invalid input: unexpected end of input
+Error: invalid input: unexpected end of input
+Error: invalid input: expected identifier, got 1
+Error: invalid input: expected token AS, found SELECT
+Error: invalid input: expected token AS, found SELECT
+Error: invalid input: unexpected token blob
+Error: invalid input: unexpected token )
+Error: invalid input: unexpected token )
+Error: invalid input: unexpected end of input
+Error: invalid input: expected identifier, got 1
+Error: invalid input: unexpected end of input
+Error: invalid input: unexpected end of input
+Error: invalid input: expected expression atom, found )
+Error: invalid input: unexpected token 2
+Error: invalid input: unexpected end of input
+Error: invalid input: expected identifier, got 1
+Error: invalid input: unexpected token q
+Error: invalid input: unexpected token PREPARE
+Error: invalid input: unexpected token p
+
+# The keywords are reserved.
+!> CREATE TABLE prepare (id INT PRIMARY KEY)
+!> CREATE TABLE execute (id INT PRIMARY KEY)
+!> CREATE TABLE deallocate (id INT PRIMARY KEY)
+!> SELECT 1 AS prepared
+> PREPARE "prepare" AS SELECT 1
+> EXECUTE "prepare"
+---
+Error: invalid input: expected identifier, got PREPARE
+Error: invalid input: expected identifier, got EXECUTE
+Error: invalid input: expected identifier, got DEALLOCATE
+Error: invalid input: expected identifier, got PREPARED
+1
+
+# The prepared statements can't be explained, except EXECUTE.
+!> EXPLAIN PREPARE x AS SELECT 1
+!> EXPLAIN DEALLOCATE p
+!> EXPLAIN SHOW PREPARED
+---
+Error: invalid input: EXPLAIN is not supported for PREPARE
+Error: invalid input: EXPLAIN is not supported for DEALLOCATE
+Error: invalid input: EXPLAIN is not supported for SHOW
+
+# Digests write parameters as themselves. An EXECUTE is recorded with the rows
+# of the statement it executed.
+> EXECUTE p (5)
+> EXECUTE q (1, 2, 3)
+> SHOW STATEMENTS
+---
+5
+3
+'CREATE TABLE t (id INTEGER PRIMARY KEY, v STRING)', 1, 0, 0
+'INSERT INTO t VALUES (?, ?)', 1, 0, 1
+'SELECT $1', 1, 1, 0
+'INSERT INTO t VALUES ($2, $1)', 1, 1, 0
+'SELECT * FROM t WHERE id = $1', 1, 1, 0
+'EXPLAIN SELECT $3', 1, 1, 0
+'DESCRIBE SELECT $1', 1, 1, 0
+'ESTIMATE SELECT $1', 1, 1, 0
+'CREATE VIEW v AS SELECT $1 AS a', 1, 1, 0
+'DESCRIBE BEGIN READ ONLY', 1, 1, 0
+'FORMAT SELECT $1', 1, 0, 0
+'PREPARE p (INTEGER) AS SELECT $1', 2, 1, 0
+'PREPARE p AS BEGIN', 1, 1, 0
+'PREPARE q AS BEGIN', 1, 1, 0
+'PREPARE q (INTEGER) AS SELECT $1, $3, $2', 1, 1, 0
+'PREPARE q AS SELECT * FROM t WHERE id = $1', 1, 1, 0
+'PREPARE q (INTEGER, INTEGER, INTEGER) AS SELECT $3', 1, 0, 0
+'EXECUTE p ($1)', 1, 1, 0
+'PREPARE bad AS SELECT nosuch FROM nowhere', 1, 0, 0
+'EXECUTE bad', 1, 1, 0
+'DEALLOCATE bad', 2, 1, 0
+'PREPARE \"prepare\" AS SELECT ?', 1, 0, 0
+'EXECUTE \"prepare\"', 1, 0, 1
+'EXPLAIN PREPARE x AS SELECT ?', 1, 1, 0
+'EXPLAIN DEALLOCATE p', 1, 1, 0
+'EXPLAIN SHOW PREPARED', 1, 1, 0
+'EXECUTE p (?)', 1, 0, 1
+'EXECUTE q (?, ?, ?)', 1, 0, 1

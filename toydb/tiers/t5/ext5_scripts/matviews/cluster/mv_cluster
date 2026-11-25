@@ -1,0 +1,24 @@
+# Materialized views in a cluster: their definitions and rows are replicated
+# like the rest of the catalog.
+
+cluster nodes=3
+---
+ok
+
+c1:> CREATE TABLE t (id INT PRIMARY KEY, v INT)
+c1:> INSERT INTO t VALUES (1, 10), (2, 20)
+c2:> CREATE MATERIALIZED VIEW mv AS SELECT sum(v) AS total FROM t
+c3:> SELECT * FROM mv
+c1:> INSERT INTO t VALUES (3, 30)
+c3:> SELECT * FROM mv
+c1:[json]> REFRESH MATERIALIZED VIEW mv
+c2:> SELECT * FROM mv
+c3:!> DROP TABLE t
+c3:> SELECT name, rows FROM toydb_matviews
+---
+c3: 30
+c3: 30
+c1: {"result":"refresh_materialized_view","view":"mv","count":1}
+c2: 60
+c3: Error: invalid input: table t is used by materialized view mv
+c3: 'mv', 1

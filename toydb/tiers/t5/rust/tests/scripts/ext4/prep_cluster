@@ -1,0 +1,47 @@
+# Prepared statements belong to the client connection; their effects are
+# replicated like those of any statement.
+
+cluster nodes=3
+---
+ok
+
+c1:> CREATE TABLE t (id INT PRIMARY KEY, v STRING)
+c1:> PREPARE ins (INT, STRING) AS INSERT INTO t VALUES ($1, $2)
+c1:[json]> EXECUTE ins (1, 'a')
+c1:> EXECUTE ins (2, 'b')
+c2:> SELECT * FROM t
+c2:!> EXECUTE ins (3, 'c')
+---
+c1: {"result":"insert","count":1}
+c2: 1, 'a'
+c2: 2, 'b'
+c2: Error: invalid input: prepared statement ins does not exist
+
+c2:> PREPARE ins (STRING) AS SELECT id FROM t WHERE v = $1
+c2:> EXECUTE ins ('b')
+c1:> SHOW PREPARED
+c2:> SHOW PREPARED
+---
+c2: 2
+c1: 'ins', 'INTEGER, STRING', 'INSERT INTO t VALUES ($1, $2)', 2, 2
+c2: 'ins', 'STRING', 'SELECT id FROM t WHERE v = $1', 1, 1
+
+# The cache is checked against the table definitions seen through the cluster.
+c2:> EXECUTE ins ('b')
+c3:> DROP TABLE t
+c3:> CREATE TABLE t (id INT PRIMARY KEY, v STRING, w INT)
+c3:> INSERT INTO t VALUES (7, 'b', 0)
+c2:> EXECUTE ins ('b')
+c2:> SHOW PREPARED
+c2:[json]> EXPLAIN EXECUTE ins ('b')
+---
+c2: 2
+c2: 7
+c2: 'ins', 'STRING', 'SELECT id FROM t WHERE v = $1', 3, 2
+c2: {"result":"explain","plan":{"statement":"select","root":{"node":"projection","expressions":[{"expr":{"column":0,"label":"t.id"},"alias":null}],"source":{"node":"scan","table":"t","alias":null,"filter":{"op":"_ = _","args":[{"column":1,"label":"t.v"},{"constant":"b"}]}}}}}
+
+# A closed connection takes its prepared statements with it.
+c2:close
+c2:!> EXECUTE ins ('b')
+---
+c2: Error: invalid input: prepared statement ins does not exist

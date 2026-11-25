@@ -1,0 +1,15 @@
+{
+ "run": "t5r_distinct_py_hla",
+ "task": "distinct",
+ "suite": "toydb-t5",
+ "tier": "t5",
+ "lang": "python",
+ "model": "haiku",
+ "effort": "low",
+ "ws": "/home/user/agentbench/runs/t5r_distinct_py_hla",
+ "hint": true,
+ "readme_from": "t2",
+ "baseline": "0d947a662d7d2fc8ecd5fb13f1aca1d65f6479c4",
+ "created": 1795537063.5968604,
+ "warm_ok": true
+}

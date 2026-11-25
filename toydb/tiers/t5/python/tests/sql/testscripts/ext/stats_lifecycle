@@ -1,0 +1,68 @@
+# Column statistics: ANALYZE of all tables, and statistics of dropped and
+# re-created tables.
+
+# With no tables, ANALYZE analyzes nothing.
+[json]> ANALYZE
+---
+{"result":"analyze","tables":[]}
+
+> CREATE TABLE t (id INT PRIMARY KEY, v STRING)
+> INSERT INTO t VALUES (1, 'x'), (2, 'y')
+> CREATE TABLE "B" (k STRING PRIMARY KEY, ref INT REFERENCES t)
+> INSERT INTO "B" VALUES ('a', NULL), ('b', 1)
+> CREATE TABLE a (id INT PRIMARY KEY)
+---
+ok
+
+# Without a table name, every table is analyzed, in the order of their names
+# (by code points, so "B" comes before a and t).
+[json]> ANALYZE
+---
+{"result":"analyze","tables":["B","a","t"]}
+
+> SHOW STATISTICS t
+> SHOW STATISTICS "B"
+> SHOW STATISTICS a
+---
+'id', 2, 0, 2, 1, 2, 1, 1, NULL
+'v', 2, 0, 2, 'x', 'y', 'x', 1, 1.0
+'k', 2, 0, 2, 'a', 'b', 'a', 1, 1.0
+'ref', 2, 1, 1, 1, 1, 1, 1, NULL
+'id', 0, 0, 0, NULL, NULL, NULL, NULL, NULL
+
+# Analyzing one table leaves the others' statistics alone.
+> INSERT INTO "B" VALUES ('c', 1)
+> INSERT INTO t VALUES (3, 'z')
+> ANALYZE "B"
+> SHOW STATISTICS "B"
+> SHOW STATISTICS t
+---
+'k', 3, 0, 3, 'a', 'c', 'a', 1, 1.0
+'ref', 3, 1, 1, 1, 1, 1, 2, NULL
+'id', 2, 0, 2, 1, 2, 1, 1, NULL
+'v', 2, 0, 2, 'x', 'y', 'x', 1, 1.0
+
+# DROP TABLE removes a table's statistics; a new table of the same name has
+# none until it is analyzed.
+> DROP TABLE "B"
+> DROP TABLE t
+> CREATE TABLE t (id INT PRIMARY KEY, v STRING)
+> INSERT INTO t VALUES (1, 'new')
+> SHOW STATISTICS t
+---
+'id', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL
+'v', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL
+
+> ANALYZE t
+> SHOW STATISTICS t
+---
+'id', 1, 0, 1, 1, 1, 1, 1, NULL
+'v', 1, 0, 1, 'new', 'new', 'new', 1, 3.0
+
+!> SHOW STATISTICS "B"
+---
+Error: invalid input: table B does not exist
+
+[json]> ANALYZE
+---
+{"result":"analyze","tables":["a","t"]}

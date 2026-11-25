@@ -1,0 +1,104 @@
+# Constraints belong to their table: DROP TABLE drops them, they are
+# transactional like table definitions, and they are exported with the table.
+
+> CREATE TABLE t (id INT PRIMARY KEY, n INT, CHECK (n > 0))
+!> INSERT INTO t VALUES (1, 0)
+> DROP TABLE t
+> CREATE TABLE t (id INT PRIMARY KEY, n INT)
+> INSERT INTO t VALUES (1, 0)
+> EXPORT AS SQL
+---
+Error: invalid input: row 1 violates check constraint t_check1
+CREATE TABLE t (
+  id INTEGER PRIMARY KEY,
+  n INTEGER DEFAULT NULL
+);
+INSERT INTO t VALUES (1, 0);
+
+# A table created in a transaction has its constraints in it at once; other
+# transactions see the table, and its constraints, after the commit. ROLLBACK
+# undoes both.
+a:> BEGIN
+a:> CREATE TABLE u (id INT PRIMARY KEY, n INT, CHECK (n != 13))
+a:!> INSERT INTO u VALUES (1, 13)
+b:!> INSERT INTO u VALUES (1, 13)
+a:> ROLLBACK
+a:> BEGIN
+a:> CREATE TABLE u (id INT PRIMARY KEY, n INT, CONSTRAINT lucky CHECK (n != 7))
+a:> COMMIT
+b:!> INSERT INTO u VALUES (1, 7)
+b:> INSERT INTO u VALUES (1, 13)
+---
+a: Error: invalid input: row 1 violates check constraint u_check1
+b: Error: invalid input: table u does not exist
+b: Error: invalid input: row 1 violates check constraint lucky
+
+# EXPORT AS SQL writes the constraints of every table, after its columns, and
+# the conditions as stored: in canonical text, with literals as written.
+> CREATE TABLE "Item" (id INT PRIMARY KEY, name STRING, price FLOAT, CHECK (name != 'it''s' AND NOT name LIKE '%"%'), CONSTRAINT "positive price" CHECK (price > 0 OR price IS NULL), CHECK (id + -1 < 1e3 AND price != INFINITY))
+> INSERT INTO "Item" VALUES (1, 'a', 2.5)
+> EXPORT "Item" AS SQL
+---
+CREATE TABLE Item (
+  id INTEGER PRIMARY KEY,
+  name STRING DEFAULT NULL,
+  price FLOAT DEFAULT NULL,
+  CONSTRAINT Item_check1 CHECK (name != 'it''s' AND NOT name LIKE '%"%'),
+  CONSTRAINT "positive price" CHECK (price > 0 OR price IS NULL),
+  CONSTRAINT Item_check3 CHECK (id + -1 < 1000.0 AND price != INFINITY)
+);
+INSERT INTO Item VALUES (1, 'a', 2.5);
+
+# Tables with constraints referencing others are exported in reference order,
+# each with its constraints.
+> CREATE TABLE p (id INT PRIMARY KEY, CHECK (id >= 10))
+> CREATE TABLE c (id INT PRIMARY KEY, p_id INT REFERENCES p, CHECK (p_id IS NOT NULL))
+> INSERT INTO p VALUES (10)
+> INSERT INTO c VALUES (1, 10)
+!> INSERT INTO c VALUES (2, NULL)
+> EXPORT AS SQL
+---
+Error: invalid input: row 2 violates check constraint c_check1
+CREATE TABLE Item (
+  id INTEGER PRIMARY KEY,
+  name STRING DEFAULT NULL,
+  price FLOAT DEFAULT NULL,
+  CONSTRAINT Item_check1 CHECK (name != 'it''s' AND NOT name LIKE '%"%'),
+  CONSTRAINT "positive price" CHECK (price > 0 OR price IS NULL),
+  CONSTRAINT Item_check3 CHECK (id + -1 < 1000.0 AND price != INFINITY)
+);
+INSERT INTO Item VALUES (1, 'a', 2.5);
+CREATE TABLE p (
+  id INTEGER PRIMARY KEY,
+  CONSTRAINT p_check1 CHECK (id >= 10)
+);
+INSERT INTO p VALUES (10);
+CREATE TABLE c (
+  id INTEGER PRIMARY KEY,
+  p_id INTEGER DEFAULT NULL INDEX REFERENCES p,
+  CONSTRAINT c_check1 CHECK (p_id IS NOT NULL)
+);
+INSERT INTO c VALUES (1, 10);
+CREATE TABLE t (
+  id INTEGER PRIMARY KEY,
+  n INTEGER DEFAULT NULL
+);
+INSERT INTO t VALUES (1, 0);
+CREATE TABLE u (
+  id INTEGER PRIMARY KEY,
+  n INTEGER DEFAULT NULL,
+  CONSTRAINT lucky CHECK (n != 7)
+);
+INSERT INTO u VALUES (1, 13);
+
+# Views and prepared statements: rows written through EXECUTE are checked;
+# reading is unaffected.
+> CREATE VIEW pv AS SELECT id FROM p
+> PREPARE ins (INT) AS INSERT INTO p VALUES ($1)
+!> EXECUTE ins (9)
+> EXECUTE ins (11)
+> SELECT * FROM pv
+---
+Error: invalid input: row 9 violates check constraint p_check1
+10
+11

@@ -1,0 +1,97 @@
+# The class of a statement follows from its accesses: ROLE for users and
+# privileges, DDL for creating, dropping and changing tables, views and
+# policies, WRITE for writing rows, READ for reading them, MISC otherwise.
+
+> CREATE TABLE t (id INT PRIMARY KEY, v STRING)
+> CREATE VIEW tv AS SELECT v FROM t
+> CREATE USER alice
+> GRANT SELECT ON tv TO alice
+> GRANT alice TO admin
+> INSERT INTO t VALUES (1, 'a'), (2, 'b')
+> SELECT * FROM tv
+> SELECT 1
+> EXPLAIN SELECT * FROM t
+> DESCRIBE t
+> ANALYZE t
+> SHOW STATISTICS t
+> FORMAT DELETE FROM t
+> LINT DELETE FROM t
+> PREPARE del (INT) AS DELETE FROM t WHERE id = $1
+> EXECUTE del (1)
+!> EXECUTE del ('x')
+!> EXECUTE nosuch
+> BEGIN
+> IMPORT INTO t FROM CSV 'id,v', '3,c'
+> ROLLBACK
+> EXPORT AS SQL
+> SHOW VIEWS
+> DROP VIEW tv
+> REVOKE alice FROM admin
+> DROP USER alice
+> DROP TABLE t
+---
+'a'
+'b'
+1
+'id', 'INTEGER', FALSE
+'v', 'STRING', TRUE
+'id', 2, 0, 2, 1, 2, 1, 1, NULL
+'v', 2, 0, 2, 'a', 'b', 'a', 1, 1.0
+DELETE FROM t
+'unfiltered_write', 'DELETE without WHERE deletes every row of t'
+Error: invalid input: invalid datatype STRING for INTEGER parameter $1
+Error: invalid input: prepared statement nosuch does not exist
+CREATE TABLE t (
+  id INTEGER PRIMARY KEY,
+  v STRING DEFAULT NULL
+);
+INSERT INTO t VALUES (2, 'b');
+CREATE VIEW tv (v) AS SELECT v FROM t;
+'tv', 'v', 'SELECT v FROM t'
+
+[header]> SHOW AUDIT
+---
+seq, username, class, statement, objects, error
+1, 'admin', 'DDL', 'create_table', 't (create)', NULL
+2, 'admin', 'DDL', 'create_view', 'tv (create), t (read)', NULL
+3, 'admin', 'ROLE', 'create_user', '', NULL
+4, 'admin', 'ROLE', 'grant', 'tv (grant)', NULL
+5, 'admin', 'ROLE', 'grant', '', NULL
+6, 'admin', 'WRITE', 'insert', 't (insert)', NULL
+7, 'admin', 'READ', 'select', 'tv (read)', NULL
+8, 'admin', 'MISC', 'select', '', NULL
+9, 'admin', 'READ', 'explain', 't (read)', NULL
+10, 'admin', 'MISC', 'describe', '', NULL
+11, 'admin', 'MISC', 'analyze', 't (analyze)', NULL
+12, 'admin', 'READ', 'show_statistics', 't (read)', NULL
+13, 'admin', 'MISC', 'format', '', NULL
+14, 'admin', 'MISC', 'lint', '', NULL
+15, 'admin', 'MISC', 'prepare', '', NULL
+16, 'admin', 'WRITE', 'execute', 't (delete)', NULL
+17, 'admin', 'MISC', 'execute', '', 'invalid input: invalid datatype STRING for INTEGER parameter $1'
+18, 'admin', 'MISC', 'execute', '', 'invalid input: prepared statement nosuch does not exist'
+19, 'admin', 'MISC', 'begin', '', NULL
+20, 'admin', 'WRITE', 'import', 't (insert)', NULL
+21, 'admin', 'MISC', 'rollback', '', NULL
+22, 'admin', 'READ', 'export', 't (read), tv (read)', NULL
+23, 'admin', 'MISC', 'show_views', '', NULL
+24, 'admin', 'DDL', 'drop_view', 'tv (drop)', NULL
+25, 'admin', 'ROLE', 'revoke', '', NULL
+26, 'admin', 'ROLE', 'drop_user', '', NULL
+27, 'admin', 'DDL', 'drop_table', 't (drop)', NULL
+
+# A failing statement is recorded with the accesses of the statement as
+# parsed, also for names that don't exist; it has its error.
+!> DROP TABLE nosuch
+> DROP TABLE IF EXISTS nosuch
+!> GRANT SELECT ON nosuch TO admin
+!> INSERT INTO nosuch VALUES (1)
+> SHOW AUDIT SINCE 27
+---
+Error: invalid input: table nosuch does not exist
+Error: invalid input: table nosuch does not exist
+Error: invalid input: table nosuch does not exist
+28, 'admin', 'DDL', 'drop_table', 'nosuch (drop)', 'invalid input: table nosuch does not exist'
+29, 'admin', 'DDL', 'drop_table', 'nosuch (drop)', NULL
+30, 'admin', 'ROLE', 'grant', 'nosuch (grant)', 'invalid input: table nosuch does not exist'
+31, 'admin', 'WRITE', 'insert', 'nosuch (insert)', 'invalid input: table nosuch does not exist'

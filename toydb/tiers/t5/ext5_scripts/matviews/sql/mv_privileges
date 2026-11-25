@@ -1,0 +1,65 @@
+# Ownership and privileges: the creator owns a materialized view; reading it
+# requires SELECT on it, refreshing and dropping it ownership. Its rows are
+# computed by the refreshing user, with that user's policies.
+
+> CREATE TABLE t (id INT PRIMARY KEY, owner_name STRING)
+> INSERT INTO t VALUES (1, 'alice'), (2, 'bob')
+> CREATE USER alice
+> CREATE USER bob
+> GRANT SELECT ON t TO alice
+> CREATE POLICY own ON t TO alice USING (owner_name = 'alice')
+a:> SET ROLE alice
+b:> SET ROLE bob
+a:> CREATE MATERIALIZED VIEW am AS SELECT id FROM t
+a:> SELECT * FROM am
+b:!> SELECT * FROM am
+a:> GRANT SELECT ON am TO bob
+b:> SELECT * FROM am
+b:!> REFRESH MATERIALIZED VIEW am
+b:!> DROP MATERIALIZED VIEW am
+b:!> CREATE MATERIALIZED VIEW bm AS SELECT id FROM t
+---
+a: 1
+b: Error: permission denied: user bob has no SELECT privilege on am
+b: 1
+b: Error: permission denied: user bob is not the owner of am
+b: Error: permission denied: user bob is not the owner of am
+b: Error: permission denied: user bob has no SELECT privilege on t
+
+# A superuser's refresh reads every row.
+> REFRESH MATERIALIZED VIEW am
+b:> SELECT * FROM am
+a:> REFRESH MATERIALIZED VIEW am
+b:> SELECT * FROM am
+> SHOW GRANTS
+!> DROP USER alice
+---
+b: 1
+b: 2
+b: 1
+'am', 'alice', 'OWNER'
+'am', 'bob', 'SELECT'
+'t', 'admin', 'OWNER'
+'t', 'alice', 'SELECT'
+Error: invalid input: user alice owns am
+
+# The audit log: CREATE and DROP are DDL, REFRESH is a write of the
+# materialized view.
+a:> DROP MATERIALIZED VIEW am
+> SHOW AUDIT SINCE 8
+---
+9, 'alice', 'DDL', 'create_materialized_view', 'am (create), t (read)', NULL
+10, 'alice', 'READ', 'select', 'am (read)', NULL
+11, 'bob', 'READ', 'select', 'am (read)', 'permission denied: user bob has no SELECT privilege on am'
+12, 'alice', 'ROLE', 'grant', 'am (grant)', NULL
+13, 'bob', 'READ', 'select', 'am (read)', NULL
+14, 'bob', 'WRITE', 'refresh_materialized_view', 'am (refresh)', 'permission denied: user bob is not the owner of am'
+15, 'bob', 'DDL', 'drop_materialized_view', 'am (drop)', 'permission denied: user bob is not the owner of am'
+16, 'bob', 'DDL', 'create_materialized_view', 'bm (create), t (read)', 'permission denied: user bob has no SELECT privilege on t'
+17, 'admin', 'WRITE', 'refresh_materialized_view', 'am (refresh)', NULL
+18, 'bob', 'READ', 'select', 'am (read)', NULL
+19, 'alice', 'WRITE', 'refresh_materialized_view', 'am (refresh)', NULL
+20, 'bob', 'READ', 'select', 'am (read)', NULL
+21, 'admin', 'MISC', 'show_grants', '', NULL
+22, 'admin', 'ROLE', 'drop_user', '', 'invalid input: user alice owns am'
+23, 'alice', 'DDL', 'drop_materialized_view', 'am (drop)', NULL

@@ -1,0 +1,67 @@
+# Parse and planning errors of CHECK constraints.
+
+!> CREATE TABLE t (id INT PRIMARY KEY, CHECK id > 0)
+!> CREATE TABLE t (id INT PRIMARY KEY, CONSTRAINT c UNIQUE)
+!> CREATE TABLE t (id INT PRIMARY KEY, CONSTRAINT CHECK (id > 0))
+!> CREATE TABLE t (id INT PRIMARY KEY, CHECK (id > 0)
+!> CREATE TABLE t (id INT PRIMARY KEY, CHECK (
+!> CREATE TABLE t (id INT PRIMARY KEY, CHECK ())
+!> CREATE TABLE t (id INT PRIMARY KEY, CHECK (id > 0) NOT NULL)
+!> CREATE TABLE t (id INT PRIMARY KEY, n INT CHECK n > 0)
+!> CREATE TABLE t (id INT PRIMARY KEY, CHECK (id > 0), )
+!> CREATE TABLE t (CHECK (TRUE))
+!> CREATE TABLE check (id INT PRIMARY KEY)
+!> CREATE TABLE t (id INT PRIMARY KEY, constraint INT)
+---
+Error: invalid input: expected token (, found id
+Error: invalid input: expected token CHECK, found UNIQUE
+Error: invalid input: expected identifier, got CHECK
+Error: invalid input: unexpected end of input
+Error: invalid input: unexpected end of input
+Error: invalid input: expected expression atom, found )
+Error: invalid input: expected token ), found NOT
+Error: invalid input: expected token (, found n
+Error: invalid input: expected identifier, got )
+Error: invalid input: no primary key for table t
+Error: invalid input: expected identifier, got CHECK
+Error: invalid input: expected identifier, got INT
+
+# The condition is planned like the WHERE condition of SELECT * FROM <table>,
+# with that table's columns only.
+> CREATE TABLE other (id INT PRIMARY KEY)
+!> CREATE TABLE t (id INT PRIMARY KEY, CHECK (nosuch > 0))
+!> CREATE TABLE t (id INT PRIMARY KEY, CHECK (other.id > 0))
+!> CREATE TABLE t (id INT PRIMARY KEY, CHECK (count(*) > 0))
+!> CREATE TABLE t (id INT PRIMARY KEY, CHECK (max(id) > 0))
+!> CREATE TABLE t (id INT PRIMARY KEY, CHECK (frob(id)))
+!> CREATE TABLE t (id INT PRIMARY KEY, CHECK (id > $1))
+!> SELECT * FROM t
+---
+Error: invalid input: unknown column nosuch
+Error: invalid input: unknown table other
+Error: invalid input: unknown function count with 1 arguments
+Error: invalid input: unknown function max with 1 arguments
+Error: invalid input: unknown function frob with 1 arguments
+Error: invalid input: parameter $1 can only be used in a prepared statement
+Error: invalid input: table t does not exist
+
+# Conditions are not evaluated when the table is created, so a constant
+# condition that fails, or is false, only fails writes.
+> CREATE TABLE t (id INT PRIMARY KEY, CHECK (1 / 0 = 1))
+> CREATE TABLE u (id INT PRIMARY KEY, CHECK (FALSE))
+!> INSERT INTO t VALUES (1)
+!> INSERT INTO u VALUES (1)
+> DELETE FROM u
+---
+Error: invalid input: can't divide by zero
+Error: invalid input: row 1 violates check constraint u_check1
+
+# A read-only transaction reports its error after the constraints' checks,
+# like the other checks of CREATE TABLE.
+> BEGIN READ ONLY
+!> CREATE TABLE v (id INT PRIMARY KEY, CHECK (nosuch))
+!> CREATE TABLE v (id INT PRIMARY KEY, CHECK (id > 0))
+> ROLLBACK
+---
+Error: invalid input: unknown column nosuch
+Error: read-only transaction

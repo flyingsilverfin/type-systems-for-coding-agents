@@ -1,0 +1,15 @@
+{
+ "run": "t5r_release_py_smc",
+ "task": "release",
+ "suite": "toydb-t5",
+ "tier": "t5",
+ "lang": "python",
+ "model": "sonnet",
+ "effort": "medium",
+ "ws": "/home/user/agentbench/runs/t5r_release_py_smc",
+ "hint": true,
+ "readme_from": "t2",
+ "baseline": "c8c8b1af1dd3543ed25693412b54e5d331e2229b",
+ "created": 1795539543.033917,
+ "warm_ok": true
+}

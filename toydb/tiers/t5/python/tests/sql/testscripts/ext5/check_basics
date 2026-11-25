@@ -1,0 +1,73 @@
+# CHECK constraints: table conditions that every written row must satisfy.
+# NULL satisfies a condition; only FALSE violates it.
+
+> CREATE TABLE acct (id INT PRIMARY KEY, bal INT, lim INT DEFAULT 100, CHECK (bal >= 0), CONSTRAINT under CHECK (bal <= lim))
+> INSERT INTO acct (id, bal) VALUES (1, 50), (2, NULL)
+!> INSERT INTO acct (id, bal) VALUES (3, 10), (4, -1)
+!> UPDATE acct SET bal = bal + 60 WHERE id = 1
+> UPDATE acct SET bal = 100 WHERE id = 1
+> INSERT INTO acct VALUES (3, 150, NULL)
+!> UPDATE acct SET lim = 50
+> SELECT * FROM acct
+---
+Error: invalid input: row 4 violates check constraint acct_check1
+Error: invalid input: row 1 violates check constraint under
+Error: invalid input: row 1 violates check constraint under
+1, 100, 100
+2, NULL, 100
+3, 150, NULL
+
+# The schema display doesn't show constraints; EXPORT AS SQL does, always
+# named.
+schema acct
+> EXPORT acct AS SQL
+---
+CREATE TABLE acct (
+  id INTEGER PRIMARY KEY,
+  bal INTEGER DEFAULT NULL,
+  lim INTEGER DEFAULT 100
+)
+CREATE TABLE acct (
+  id INTEGER PRIMARY KEY,
+  bal INTEGER DEFAULT NULL,
+  lim INTEGER DEFAULT 100,
+  CONSTRAINT acct_check1 CHECK (bal >= 0),
+  CONSTRAINT under CHECK (bal <= lim)
+);
+INSERT INTO acct VALUES (1, 100, 100);
+INSERT INTO acct VALUES (2, NULL, 100);
+INSERT INTO acct VALUES (3, 150, NULL);
+
+# A condition that returns another value than a boolean or NULL is an error;
+# so is an error while evaluating it. Neither is detected when the table is
+# created.
+> CREATE TABLE nb (id INT PRIMARY KEY, n INT, s STRING, CHECK (n + 1), CHECK (s > 'a' OR n > 0))
+!> INSERT INTO nb VALUES (1, 5, 'b')
+> INSERT INTO nb VALUES (2, NULL, 'b')
+> INSERT INTO nb (id) VALUES (3)
+> CREATE TABLE ev (id INT PRIMARY KEY, s STRING, CHECK (s > 0))
+!> INSERT INTO ev VALUES (1, 'x')
+> INSERT INTO ev VALUES (2, NULL)
+> SELECT * FROM nb
+---
+Error: invalid input: check constraint nb_check1 returned 6, expected boolean
+Error: invalid input: can't compare 'x' and 0
+2, NULL, 'b'
+3, NULL, NULL
+
+# Conditions can use every kind of expression, and refer to the columns
+# qualified by the table name.
+> CREATE TABLE item (id INT PRIMARY KEY, name STRING NOT NULL, price FLOAT, CHECK (item.price IS NULL OR price > 0.0 AND price < 1e6), CHECK (NOT name LIKE '% %'), CHECK (sqrt(id) < 10))
+> INSERT INTO item VALUES (1, 'apple', 1.5), (2, 'pear', NULL)
+!> INSERT INTO item VALUES (3, 'fig tree', 2.0)
+!> INSERT INTO item VALUES (4, 'kiwi', 0.0)
+!> INSERT INTO item VALUES (100, 'plum', 3.0)
+!> UPDATE item SET price = -price WHERE id = 1
+> SELECT * FROM item
+---
+Error: invalid input: row 3 violates check constraint item_check2
+Error: invalid input: row 4 violates check constraint item_check1
+Error: invalid input: row 100 violates check constraint item_check3
+Error: invalid input: row 1 violates check constraint item_check1
+1, 'apple', 1.5
+2, 'pear', NULL

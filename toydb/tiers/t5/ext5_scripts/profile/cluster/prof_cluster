@@ -1,0 +1,32 @@
+# EXPLAIN (ANALYZE) through a cluster: the statement is executed by the
+# client's node, and its writes are replicated.
+
+cluster nodes=3
+---
+ok
+
+c1:> CREATE TABLE t (id INT PRIMARY KEY, v INT)
+c1:> INSERT INTO t VALUES (1, 10), (2, 20), (3, 30)
+c2:> EXPLAIN (ANALYZE) SELECT v FROM t WHERE v > 15
+c3:> EXPLAIN (ANALYZE) UPDATE t SET v = v * 2 WHERE id = 1
+c1:> SELECT * FROM t WHERE id = 1
+c2:[json]> EXPLAIN (ANALYZE) SELECT count(*) FROM t
+---
+c2: 'Projection: t.v', 333, 2
+c2: '└─ Scan: t (t.v > 15)', 333, 2
+c3: 'Update: t (v=t.v * 2)', 1, 1
+c3: '└─ KeyLookup: t (1)', 1, 1
+c1: 1, 20
+c2: {"result":"select","columns":["node","estimate","rows"],"rows":[["Aggregate: count(TRUE)",1,1],["└─ Scan: t",1000,3]]}
+
+# In a transaction, the effects are seen by other clients after the commit.
+c1:> BEGIN
+c1:> EXPLAIN (ANALYZE) DELETE FROM t WHERE v >= 20
+c2:> SELECT count(*) FROM t
+c1:> COMMIT
+c2:> SELECT count(*) FROM t
+---
+c1: 'Delete: t', 400, 3
+c1: '└─ Scan: t (t.v > 20 OR t.v = 20)', 400, 3
+c2: 3
+c2: 0

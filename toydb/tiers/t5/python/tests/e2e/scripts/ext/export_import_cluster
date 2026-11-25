@@ -1,0 +1,98 @@
+# Export and import through the client of a cluster: imported rows are written
+# through Raft, exports read the data that the client's transaction sees.
+
+cluster nodes=3
+---
+ok
+
+c1:> CREATE TABLE p (id INT PRIMARY KEY, name STRING NOT NULL, score FLOAT DEFAULT 0.5)
+c1:> CREATE TABLE c (id INT PRIMARY KEY, p_id INT REFERENCES p, tag STRING UNIQUE)
+---
+ok
+
+c2:[json]> IMPORT INTO p FROM CSV 'id,name,score', '1,ann,1.5', '2,"b, c",', '3,cy,NaN'
+c3:[json]> IMPORT INTO c FROM JSON '{"id":10,"p_id":1,"tag":"x"}', '{"id":11,"p_id":3,"tag":"y"}', '{"id":12}'
+---
+c2: {"result":"insert","count":3}
+c3: {"result":"insert","count":3}
+
+c1:> SELECT * FROM p
+c1:> SELECT c.id, p.name FROM c JOIN p ON c.p_id = p.id
+c2:> SELECT id FROM c WHERE tag = 'y'
+---
+c1: 1, 'ann', 1.5
+c1: 2, 'b, c', NULL
+c1: 3, 'cy', NaN
+c1: 10, 'ann'
+c1: 11, 'cy'
+c2: 11
+
+# Exports on another client.
+c3:> EXPORT p AS CSV
+c1:> EXPORT c AS JSON
+c2:[json]> EXPORT p AS JSON
+---
+c3: id,name,score
+c3: 1,ann,1.5
+c3: 2,"b, c",
+c3: 3,cy,NaN
+c1: {"id":10,"p_id":1,"tag":"x"}
+c1: {"id":11,"p_id":3,"tag":"y"}
+c1: {"id":12,"p_id":null,"tag":null}
+c2: {"result":"export","format":"json","lines":["{\"id\":1,\"name\":\"ann\",\"score\":1.5}","{\"id\":2,\"name\":\"b, c\",\"score\":null}","{\"id\":3,\"name\":\"cy\",\"score\":{\"type\":\"FLOAT\",\"value\":\"NaN\"}}"]}
+
+c2:> EXPORT AS SQL
+---
+c2: CREATE TABLE p (
+c2:   id INTEGER PRIMARY KEY,
+c2:   name STRING NOT NULL,
+c2:   score FLOAT DEFAULT 0.5
+c2: );
+c2: INSERT INTO p VALUES (1, 'ann', 1.5);
+c2: INSERT INTO p VALUES (2, 'b, c', NULL);
+c2: INSERT INTO p VALUES (3, 'cy', NAN);
+c2: CREATE TABLE c (
+c2:   id INTEGER PRIMARY KEY,
+c2:   p_id INTEGER DEFAULT NULL INDEX REFERENCES p,
+c2:   tag STRING DEFAULT NULL UNIQUE INDEX
+c2: );
+c2: INSERT INTO c VALUES (10, 1, 'x');
+c2: INSERT INTO c VALUES (11, 3, 'y');
+c2: INSERT INTO c VALUES (12, NULL, NULL);
+
+# Import errors are reported by the server and import nothing: a missing
+# reference, a duplicate unique value, a value of the wrong type.
+c1:!> IMPORT INTO c FROM CSV 'id,p_id', '13,1', '14,9'
+c2:!> IMPORT INTO c FROM JSON '{"id":15,"tag":"x"}'
+c3:!> IMPORT INTO p FROM CSV 'id,name', '4,d', '5,e', 'x,f'
+c1:> SELECT COUNT(*) FROM c
+c1:> SELECT COUNT(*) FROM p
+---
+c1: Error: invalid input: reference 9 not in table p
+c2: Error: invalid input: value 'x' already in unique column tag
+c3: Error: invalid input: invalid value for INTEGER column id on line 4
+c1: 3
+c1: 3
+
+# Imports in transactions: invisible to others until committed, conflicting
+# with concurrent writes of the same keys, undone by ROLLBACK.
+c1:> BEGIN
+c1:> IMPORT INTO p FROM CSV 'id,name', '4,dee'
+c2:> EXPORT p AS CSV
+c3:!> IMPORT INTO p FROM CSV 'id,name', '4,dan'
+c1:> COMMIT
+c2:> BEGIN
+c2:> IMPORT INTO p FROM JSON '{"id":5,"name":"eve"}'
+c2:> ROLLBACK
+c3:> EXPORT p AS CSV
+---
+c2: id,name,score
+c2: 1,ann,1.5
+c2: 2,"b, c",
+c2: 3,cy,NaN
+c3: Error: serialization failure, retry transaction
+c3: id,name,score
+c3: 1,ann,1.5
+c3: 2,"b, c",
+c3: 3,cy,NaN
+c3: 4,dee,0.5

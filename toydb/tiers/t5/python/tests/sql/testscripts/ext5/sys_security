@@ -1,0 +1,76 @@
+# System tables of users and security: users, memberships, grants, check
+# constraints, policies, and the audit log.
+
+> CREATE USER alice PASSWORD 'pw'
+> CREATE USER bob SUPERUSER
+> CREATE USER staff
+> GRANT staff TO alice
+> GRANT alice TO bob
+> CREATE TABLE t (id INT PRIMARY KEY, n INT, CHECK (n > 0), CONSTRAINT small CHECK (n < 10 AND n != 5))
+> CREATE TABLE u (id INT PRIMARY KEY, CHECK (id != 0))
+> GRANT SELECT, DELETE ON t TO staff
+> GRANT SELECT ON u TO bob
+> CREATE POLICY pu ON t TO staff USING (n > 1) WITH CHECK (n < 5)
+> CREATE POLICY pa ON t USING (id = 1)
+> SELECT * FROM toydb_users
+> SELECT * FROM toydb_members
+> SELECT * FROM toydb_grants
+---
+'admin', TRUE, FALSE
+'alice', FALSE, TRUE
+'bob', TRUE, FALSE
+'staff', FALSE, FALSE
+'alice', 'staff'
+'bob', 'alice'
+'t', 'admin', 'OWNER'
+'t', 'staff', 'SELECT'
+'t', 'staff', 'DELETE'
+'u', 'admin', 'OWNER'
+'u', 'bob', 'SELECT'
+
+[header]> SELECT * FROM toydb_checks
+[header]> SELECT * FROM toydb_policies
+---
+toydb_checks.table_name, toydb_checks.name, toydb_checks.condition
+'t', 't_check1', 'n > 0'
+'t', 'small', 'n < 10 AND n != 5'
+'u', 'u_check1', 'id != 0'
+toydb_policies.table_name, toydb_policies.name, toydb_policies.grantee, toydb_policies.condition, toydb_policies.check_condition
+'t', 'pa', NULL, 'id = 1', NULL
+'t', 'pu', 'staff', 'n > 1', 'n < 5'
+
+# Queries over several system tables, and over system tables and tables.
+> SELECT g.object, g.privilege, m.member FROM toydb_grants AS g JOIN toydb_members AS m ON g.grantee = m.member_of ORDER BY m.member, g.privilege
+> SELECT p.name, count(c.name) FROM toydb_policies AS p LEFT JOIN toydb_checks AS c ON c.table_name = p.table_name GROUP BY p.name ORDER BY p.name
+---
+'t', 'DELETE', 'alice'
+'t', 'SELECT', 'alice'
+'pa', 2
+'pu', 2
+
+# Reading a system table requires nothing, except toydb_audit, which requires
+# a superuser. The rows don't depend on the user's privileges.
+a:> SET ROLE alice
+a:> SELECT name FROM toydb_tables
+a:> SELECT count(*) FROM toydb_grants
+a:!> SELECT * FROM toydb_audit
+a:!> SELECT count(*) FROM toydb_tables AS x JOIN toydb_audit AS y ON TRUE
+> SELECT seq, username, class, statement FROM toydb_audit WHERE seq > 11 ORDER BY seq
+---
+a: 't'
+a: 'u'
+a: 5
+a: Error: permission denied: user alice is not a superuser
+a: Error: permission denied: user alice is not a superuser
+12, 'admin', 'MISC', 'select'
+13, 'admin', 'MISC', 'select'
+14, 'admin', 'MISC', 'select'
+15, 'admin', 'MISC', 'select'
+16, 'admin', 'MISC', 'select'
+17, 'admin', 'MISC', 'select'
+18, 'admin', 'MISC', 'select'
+19, 'admin', 'MISC', 'set_role'
+20, 'alice', 'MISC', 'select'
+21, 'alice', 'MISC', 'select'
+22, 'alice', 'MISC', 'select'
+23, 'alice', 'MISC', 'select'

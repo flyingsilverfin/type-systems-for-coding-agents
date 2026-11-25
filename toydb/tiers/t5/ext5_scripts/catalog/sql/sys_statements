@@ -1,0 +1,61 @@
+# System tables and the statements of the other extensions: privileges,
+# policies, the audit log and backups, as seen through the system tables.
+
+> CREATE TABLE t (id INT PRIMARY KEY)
+> CREATE USER alice
+> CREATE POLICY p ON t TO alice USING (id > 1)
+> SELECT * FROM toydb_tables
+---
+'t', 'admin', 'id', 1, 0, 1
+
+# Dropping the table removes its policies, grants and checks from the system
+# tables too.
+> GRANT SELECT ON t TO alice
+> SELECT count(*) FROM toydb_grants WHERE object = 't'
+> DROP TABLE t
+> SELECT count(*) FROM toydb_grants
+> SELECT count(*) FROM toydb_policies
+---
+2
+0
+0
+
+# A backup restores what the system tables show.
+> CREATE TABLE t (id INT PRIMARY KEY, CHECK (id < 100))
+> GRANT SELECT ON t TO alice
+> CREATE POLICY p ON t TO alice USING (id > 1)
+backup b
+> DROP TABLE t
+> DROP USER alice
+restore b
+> SELECT * FROM toydb_tables
+> SELECT * FROM toydb_checks
+> SELECT * FROM toydb_policies
+> SELECT * FROM toydb_grants
+---
+'t', 'admin', 'id', 1, 1, 1
+'t', 't_check1', 'id < 100'
+'t', 'p', 'alice', 'id > 1', NULL
+'t', 'admin', 'OWNER'
+'t', 'alice', 'SELECT'
+
+# The audit log as a table: statements that read only system tables have no
+# accesses.
+> SELECT class, statement, objects FROM toydb_audit WHERE seq > 14
+---
+'MISC', 'select', ''
+'MISC', 'select', ''
+'MISC', 'select', ''
+'MISC', 'select', ''
+
+# Digests and FORMAT treat system tables as names like any other.
+a:> SELECT name FROM toydb_tables WHERE owner = 'admin'
+a:> FORMAT select Name from TOYDB_TABLES as X
+a:[header]> SHOW STATEMENTS
+---
+a: 't'
+a: SELECT name
+a: FROM toydb_tables AS x
+a: digest, calls, errors, rows
+a: 'SELECT name FROM toydb_tables WHERE owner = ?', 1, 0, 1
+a: 'FORMAT SELECT name FROM toydb_tables AS x', 1, 0, 0

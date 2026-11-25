@@ -1,0 +1,114 @@
+# The PostgreSQL protocol: startup, authentication and the session's user.
+# Each prefix has its own PostgreSQL connection.
+
+> CREATE TABLE t (id INT PRIMARY KEY)
+> INSERT INTO t VALUES (1)
+> CREATE USER alice PASSWORD 'secret'
+> CREATE USER bob
+> GRANT SELECT ON t TO bob
+---
+ok
+
+pg startup
+---
+AuthenticationOk
+ParameterStatus application_name= client_encoding=UTF8 DateStyle=ISO integer_datetimes=on is_superuser=on server_encoding=UTF8 server_version=14.0 session_authorization=admin standard_conforming_strings=on
+BackendKeyData
+ReadyForQuery idle
+
+# A user with a password is asked for it.
+a:pg startup user=alice password=secret application_name=psql
+a:pg query "SELECT * FROM t"
+---
+a: AuthenticationMD5Password
+a: AuthenticationOk
+a: ParameterStatus application_name=psql client_encoding=UTF8 DateStyle=ISO integer_datetimes=on is_superuser=off server_encoding=UTF8 server_version=14.0 session_authorization=alice standard_conforming_strings=on
+a: BackendKeyData
+a: ReadyForQuery idle
+a: ErrorResponse ERROR 42501 permission denied: user alice has no SELECT privilege on t
+a: ReadyForQuery idle
+
+# A user without a password is not asked for one.
+b:pg startup user=bob password=ignored
+b:pg query "SELECT * FROM t"
+---
+b: AuthenticationOk
+b: ParameterStatus application_name= client_encoding=UTF8 DateStyle=ISO integer_datetimes=on is_superuser=off server_encoding=UTF8 server_version=14.0 session_authorization=bob standard_conforming_strings=on
+b: BackendKeyData
+b: ReadyForQuery idle
+b: RowDescription id int8(20,8)
+b: DataRow '1'
+b: CommandComplete SELECT 1
+b: ReadyForQuery idle
+
+# Failed startups close the connection; the prefix can then start again.
+c:pg startup user=alice password=wrong
+c:pg startup user=alice
+c:pg startup user=nosuch
+c:pg startup protocol=2.0
+c:pg startup protocol=3.1
+c:pg startup user=""
+---
+c: AuthenticationMD5Password
+c: ErrorResponse FATAL 28P01 password authentication failed for user alice
+c: Closed
+c: AuthenticationMD5Password
+c: Closed
+c: ErrorResponse FATAL 28000 user nosuch does not exist
+c: Closed
+c: ErrorResponse FATAL 0A000 unsupported frontend protocol 2.0
+c: Closed
+c: ErrorResponse FATAL 0A000 unsupported frontend protocol 3.1
+c: Closed
+c: ErrorResponse FATAL 28000 no user name given
+c: Closed
+
+# An SSL request is refused with N; the startup then proceeds.
+d:pg startup ssl user=bob
+---
+d: SSLResponse N
+d: AuthenticationOk
+d: ParameterStatus application_name= client_encoding=UTF8 DateStyle=ISO integer_datetimes=on is_superuser=off server_encoding=UTF8 server_version=14.0 session_authorization=bob standard_conforming_strings=on
+d: BackendKeyData
+d: ReadyForQuery idle
+
+# SET ROLE and RESET ROLE work as for a client: the startup user is the login
+# user.
+a:pg query "SET ROLE bob"
+> GRANT bob TO alice
+a:pg query "SET ROLE bob; SELECT * FROM t; RESET ROLE; SELECT * FROM t"
+---
+a: ErrorResponse ERROR 42501 permission denied: user alice can't set role bob
+a: ReadyForQuery idle
+a: CommandComplete SET ROLE
+a: RowDescription id int8(20,8)
+a: DataRow '1'
+a: CommandComplete SELECT 1
+a: CommandComplete RESET ROLE
+a: RowDescription id int8(20,8)
+a: DataRow '1'
+a: CommandComplete SELECT 1
+a: ReadyForQuery idle
+
+# Terminate closes the connection silently.
+d:pg terminate
+d:pg startup user=bob
+---
+d: AuthenticationOk
+d: ParameterStatus application_name= client_encoding=UTF8 DateStyle=ISO integer_datetimes=on is_superuser=off server_encoding=UTF8 server_version=14.0 session_authorization=bob standard_conforming_strings=on
+d: BackendKeyData
+d: ReadyForQuery idle
+
+# A connection whose startup fails has no session: the sessions are those of
+# the prefixes and of the PostgreSQL connections that started.
+> SHOW SESSIONS
+---
+1, 'admin', 'admin', NULL, 6
+2, 'admin', 'admin', NULL, 0
+3, 'admin', 'admin', NULL, 0
+4, 'alice', 'alice', NULL, 6
+5, 'admin', 'admin', NULL, 0
+6, 'bob', 'bob', NULL, 1
+7, 'admin', 'admin', NULL, 0
+8, 'admin', 'admin', NULL, 0
+10, 'bob', 'bob', NULL, 0

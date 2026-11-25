@@ -1,0 +1,542 @@
+[
+ {
+  "run": "t5r_date_rs_hla",
+  "model": "haiku",
+  "effort": "low"
+ },
+ {
+  "run": "t5r_date_py_hla",
+  "model": "haiku",
+  "effort": "low"
+ },
+ {
+  "run": "t5r_date_rs_sma",
+  "model": "sonnet",
+  "effort": "medium"
+ },
+ {
+  "run": "t5r_date_py_sma",
+  "model": "sonnet",
+  "effort": "medium"
+ },
+ {
+  "run": "t5r_date_rs_oha",
+  "model": "opus",
+  "effort": "high"
+ },
+ {
+  "run": "t5r_date_py_oha",
+  "model": "opus",
+  "effort": "high"
+ },
+ {
+  "run": "t5r_release_rs_hla",
+  "model": "haiku",
+  "effort": "low"
+ },
+ {
+  "run": "t5r_release_py_hla",
+  "model": "haiku",
+  "effort": "low"
+ },
+ {
+  "run": "t5r_release_rs_sma",
+  "model": "sonnet",
+  "effort": "medium"
+ },
+ {
+  "run": "t5r_release_py_sma",
+  "model": "sonnet",
+  "effort": "medium"
+ },
+ {
+  "run": "t5r_release_rs_oha",
+  "model": "opus",
+  "effort": "high"
+ },
+ {
+  "run": "t5r_release_py_oha",
+  "model": "opus",
+  "effort": "high"
+ },
+ {
+  "run": "t5r_distinct_rs_hla",
+  "model": "haiku",
+  "effort": "low"
+ },
+ {
+  "run": "t5r_distinct_py_hla",
+  "model": "haiku",
+  "effort": "low"
+ },
+ {
+  "run": "t5r_distinct_rs_sma",
+  "model": "sonnet",
+  "effort": "medium"
+ },
+ {
+  "run": "t5r_distinct_py_sma",
+  "model": "sonnet",
+  "effort": "medium"
+ },
+ {
+  "run": "t5r_distinct_rs_oha",
+  "model": "opus",
+  "effort": "high"
+ },
+ {
+  "run": "t5r_distinct_py_oha",
+  "model": "opus",
+  "effort": "high"
+ },
+ {
+  "run": "t5r_case_rs_hla",
+  "model": "haiku",
+  "effort": "low"
+ },
+ {
+  "run": "t5r_case_py_hla",
+  "model": "haiku",
+  "effort": "low"
+ },
+ {
+  "run": "t5r_case_rs_sma",
+  "model": "sonnet",
+  "effort": "medium"
+ },
+ {
+  "run": "t5r_case_py_sma",
+  "model": "sonnet",
+  "effort": "medium"
+ },
+ {
+  "run": "t5r_case_rs_oha",
+  "model": "opus",
+  "effort": "high"
+ },
+ {
+  "run": "t5r_case_py_oha",
+  "model": "opus",
+  "effort": "high"
+ },
+ {
+  "run": "t5r_alter_rs_hla",
+  "model": "haiku",
+  "effort": "low"
+ },
+ {
+  "run": "t5r_alter_py_hla",
+  "model": "haiku",
+  "effort": "low"
+ },
+ {
+  "run": "t5r_alter_rs_sma",
+  "model": "sonnet",
+  "effort": "medium"
+ },
+ {
+  "run": "t5r_alter_py_sma",
+  "model": "sonnet",
+  "effort": "medium"
+ },
+ {
+  "run": "t5r_alter_rs_oha",
+  "model": "opus",
+  "effort": "high"
+ },
+ {
+  "run": "t5r_alter_py_oha",
+  "model": "opus",
+  "effort": "high"
+ },
+ {
+  "run": "t5r_between_in_rs_hla",
+  "model": "haiku",
+  "effort": "low"
+ },
+ {
+  "run": "t5r_between_in_py_hla",
+  "model": "haiku",
+  "effort": "low"
+ },
+ {
+  "run": "t5r_between_in_rs_sma",
+  "model": "sonnet",
+  "effort": "medium"
+ },
+ {
+  "run": "t5r_between_in_py_sma",
+  "model": "sonnet",
+  "effort": "medium"
+ },
+ {
+  "run": "t5r_between_in_rs_oha",
+  "model": "opus",
+  "effort": "high"
+ },
+ {
+  "run": "t5r_between_in_py_oha",
+  "model": "opus",
+  "effort": "high"
+ },
+ {
+  "run": "t5r_date_rs_hlb",
+  "model": "haiku",
+  "effort": "low"
+ },
+ {
+  "run": "t5r_date_py_hlb",
+  "model": "haiku",
+  "effort": "low"
+ },
+ {
+  "run": "t5r_date_rs_smb",
+  "model": "sonnet",
+  "effort": "medium"
+ },
+ {
+  "run": "t5r_date_py_smb",
+  "model": "sonnet",
+  "effort": "medium"
+ },
+ {
+  "run": "t5r_date_rs_ohb",
+  "model": "opus",
+  "effort": "high"
+ },
+ {
+  "run": "t5r_date_py_ohb",
+  "model": "opus",
+  "effort": "high"
+ },
+ {
+  "run": "t5r_release_rs_hlb",
+  "model": "haiku",
+  "effort": "low"
+ },
+ {
+  "run": "t5r_release_py_hlb",
+  "model": "haiku",
+  "effort": "low"
+ },
+ {
+  "run": "t5r_release_rs_smb",
+  "model": "sonnet",
+  "effort": "medium"
+ },
+ {
+  "run": "t5r_release_py_smb",
+  "model": "sonnet",
+  "effort": "medium"
+ },
+ {
+  "run": "t5r_release_rs_ohb",
+  "model": "opus",
+  "effort": "high"
+ },
+ {
+  "run": "t5r_release_py_ohb",
+  "model": "opus",
+  "effort": "high"
+ },
+ {
+  "run": "t5r_distinct_rs_hlb",
+  "model": "haiku",
+  "effort": "low"
+ },
+ {
+  "run": "t5r_distinct_py_hlb",
+  "model": "haiku",
+  "effort": "low"
+ },
+ {
+  "run": "t5r_distinct_rs_smb",
+  "model": "sonnet",
+  "effort": "medium"
+ },
+ {
+  "run": "t5r_distinct_py_smb",
+  "model": "sonnet",
+  "effort": "medium"
+ },
+ {
+  "run": "t5r_distinct_rs_ohb",
+  "model": "opus",
+  "effort": "high"
+ },
+ {
+  "run": "t5r_distinct_py_ohb",
+  "model": "opus",
+  "effort": "high"
+ },
+ {
+  "run": "t5r_case_rs_hlb",
+  "model": "haiku",
+  "effort": "low"
+ },
+ {
+  "run": "t5r_case_py_hlb",
+  "model": "haiku",
+  "effort": "low"
+ },
+ {
+  "run": "t5r_case_rs_smb",
+  "model": "sonnet",
+  "effort": "medium"
+ },
+ {
+  "run": "t5r_case_py_smb",
+  "model": "sonnet",
+  "effort": "medium"
+ },
+ {
+  "run": "t5r_case_rs_ohb",
+  "model": "opus",
+  "effort": "high"
+ },
+ {
+  "run": "t5r_case_py_ohb",
+  "model": "opus",
+  "effort": "high"
+ },
+ {
+  "run": "t5r_alter_rs_hlb",
+  "model": "haiku",
+  "effort": "low"
+ },
+ {
+  "run": "t5r_alter_py_hlb",
+  "model": "haiku",
+  "effort": "low"
+ },
+ {
+  "run": "t5r_alter_rs_smb",
+  "model": "sonnet",
+  "effort": "medium"
+ },
+ {
+  "run": "t5r_alter_py_smb",
+  "model": "sonnet",
+  "effort": "medium"
+ },
+ {
+  "run": "t5r_alter_rs_ohb",
+  "model": "opus",
+  "effort": "high"
+ },
+ {
+  "run": "t5r_alter_py_ohb",
+  "model": "opus",
+  "effort": "high"
+ },
+ {
+  "run": "t5r_between_in_rs_hlb",
+  "model": "haiku",
+  "effort": "low"
+ },
+ {
+  "run": "t5r_between_in_py_hlb",
+  "model": "haiku",
+  "effort": "low"
+ },
+ {
+  "run": "t5r_between_in_rs_smb",
+  "model": "sonnet",
+  "effort": "medium"
+ },
+ {
+  "run": "t5r_between_in_py_smb",
+  "model": "sonnet",
+  "effort": "medium"
+ },
+ {
+  "run": "t5r_between_in_rs_ohb",
+  "model": "opus",
+  "effort": "high"
+ },
+ {
+  "run": "t5r_between_in_py_ohb",
+  "model": "opus",
+  "effort": "high"
+ },
+ {
+  "run": "t5r_date_rs_hlc",
+  "model": "haiku",
+  "effort": "low"
+ },
+ {
+  "run": "t5r_date_py_hlc",
+  "model": "haiku",
+  "effort": "low"
+ },
+ {
+  "run": "t5r_date_rs_smc",
+  "model": "sonnet",
+  "effort": "medium"
+ },
+ {
+  "run": "t5r_date_py_smc",
+  "model": "sonnet",
+  "effort": "medium"
+ },
+ {
+  "run": "t5r_date_rs_ohc",
+  "model": "opus",
+  "effort": "high"
+ },
+ {
+  "run": "t5r_date_py_ohc",
+  "model": "opus",
+  "effort": "high"
+ },
+ {
+  "run": "t5r_release_rs_hlc",
+  "model": "haiku",
+  "effort": "low"
+ },
+ {
+  "run": "t5r_release_py_hlc",
+  "model": "haiku",
+  "effort": "low"
+ },
+ {
+  "run": "t5r_release_rs_smc",
+  "model": "sonnet",
+  "effort": "medium"
+ },
+ {
+  "run": "t5r_release_py_smc",
+  "model": "sonnet",
+  "effort": "medium"
+ },
+ {
+  "run": "t5r_release_rs_ohc",
+  "model": "opus",
+  "effort": "high"
+ },
+ {
+  "run": "t5r_release_py_ohc",
+  "model": "opus",
+  "effort": "high"
+ },
+ {
+  "run": "t5r_distinct_rs_hlc",
+  "model": "haiku",
+  "effort": "low"
+ },
+ {
+  "run": "t5r_distinct_py_hlc",
+  "model": "haiku",
+  "effort": "low"
+ },
+ {
+  "run": "t5r_distinct_rs_smc",
+  "model": "sonnet",
+  "effort": "medium"
+ },
+ {
+  "run": "t5r_distinct_py_smc",
+  "model": "sonnet",
+  "effort": "medium"
+ },
+ {
+  "run": "t5r_distinct_rs_ohc",
+  "model": "opus",
+  "effort": "high"
+ },
+ {
+  "run": "t5r_distinct_py_ohc",
+  "model": "opus",
+  "effort": "high"
+ },
+ {
+  "run": "t5r_case_rs_hlc",
+  "model": "haiku",
+  "effort": "low"
+ },
+ {
+  "run": "t5r_case_py_hlc",
+  "model": "haiku",
+  "effort": "low"
+ },
+ {
+  "run": "t5r_case_rs_smc",
+  "model": "sonnet",
+  "effort": "medium"
+ },
+ {
+  "run": "t5r_case_py_smc",
+  "model": "sonnet",
+  "effort": "medium"
+ },
+ {
+  "run": "t5r_case_rs_ohc",
+  "model": "opus",
+  "effort": "high"
+ },
+ {
+  "run": "t5r_case_py_ohc",
+  "model": "opus",
+  "effort": "high"
+ },
+ {
+  "run": "t5r_alter_rs_hlc",
+  "model": "haiku",
+  "effort": "low"
+ },
+ {
+  "run": "t5r_alter_py_hlc",
+  "model": "haiku",
+  "effort": "low"
+ },
+ {
+  "run": "t5r_alter_rs_smc",
+  "model": "sonnet",
+  "effort": "medium"
+ },
+ {
+  "run": "t5r_alter_py_smc",
+  "model": "sonnet",
+  "effort": "medium"
+ },
+ {
+  "run": "t5r_alter_rs_ohc",
+  "model": "opus",
+  "effort": "high"
+ },
+ {
+  "run": "t5r_alter_py_ohc",
+  "model": "opus",
+  "effort": "high"
+ },
+ {
+  "run": "t5r_between_in_rs_hlc",
+  "model": "haiku",
+  "effort": "low"
+ },
+ {
+  "run": "t5r_between_in_py_hlc",
+  "model": "haiku",
+  "effort": "low"
+ },
+ {
+  "run": "t5r_between_in_rs_smc",
+  "model": "sonnet",
+  "effort": "medium"
+ },
+ {
+  "run": "t5r_between_in_py_smc",
+  "model": "sonnet",
+  "effort": "medium"
+ },
+ {
+  "run": "t5r_between_in_rs_ohc",
+  "model": "opus",
+  "effort": "high"
+ },
+ {
+  "run": "t5r_between_in_py_ohc",
+  "model": "opus",
+  "effort": "high"
+ }
+]

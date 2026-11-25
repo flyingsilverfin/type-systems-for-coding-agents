@@ -1,0 +1,43 @@
+# Policies in a cluster: replicated with the catalog, applied by every node
+# to the current user of the session.
+
+cluster nodes=3
+---
+ok
+
+c1:> CREATE TABLE doc (id INT PRIMARY KEY, owner_name STRING)
+c1:> INSERT INTO doc VALUES (1, 'alice'), (2, 'bob'), (3, 'alice')
+c1:> CREATE USER alice PASSWORD 'a'
+c1:> CREATE USER bob PASSWORD 'b'
+c1:> GRANT SELECT, DELETE ON doc TO alice
+c1:> GRANT SELECT, DELETE ON doc TO bob
+c1:> CREATE POLICY own_a ON doc TO alice USING (owner_name = 'alice')
+c1:> CREATE POLICY own_b ON doc TO bob USING (owner_name = 'bob')
+---
+ok
+
+c2:login alice password=a
+c3:login bob password=b
+c2:> SELECT * FROM doc
+c3:> SELECT * FROM doc
+c3:> DELETE FROM doc
+c2:> SELECT count(*) FROM doc
+c1:> SELECT * FROM doc
+---
+c2: 1, 'alice'
+c2: 3, 'alice'
+c3: 2, 'bob'
+c2: 2
+c1: 1, 'alice'
+c1: 3, 'alice'
+
+# A policy dropped through one node no longer applies on the others.
+c1:> DROP POLICY own_a ON doc
+c1:> CREATE POLICY none_a ON doc TO alice USING (FALSE)
+c2:> SELECT * FROM doc
+c1:> DROP POLICY none_a ON doc
+c1:> DROP POLICY own_b ON doc
+c2:> SELECT * FROM doc
+---
+c2: 1, 'alice'
+c2: 3, 'alice'

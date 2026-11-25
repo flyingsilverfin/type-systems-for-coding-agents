@@ -1,0 +1,52 @@
+# Joins, views and system tables: each node's rows are counted once, the right
+# input of a nested loop join included.
+
+> CREATE TABLE emp (id INT PRIMARY KEY, name STRING, dept_id INT)
+> CREATE TABLE dept (id INT PRIMARY KEY, name STRING)
+> INSERT INTO emp VALUES (1, 'a', 10), (2, 'b', 20), (3, 'c', 10), (4, 'd', 40)
+> INSERT INTO dept VALUES (10, 'x'), (20, 'y'), (30, 'z')
+> EXPLAIN (ANALYZE) SELECT e.name, d.name FROM emp e JOIN dept d ON e.dept_id = d.id
+> EXPLAIN (ANALYZE) SELECT e.name, d.name FROM emp e LEFT JOIN dept d ON e.dept_id = d.id
+> EXPLAIN (ANALYZE) SELECT e.name, d.name FROM emp e JOIN dept d ON e.dept_id < d.id
+> EXPLAIN (ANALYZE) SELECT e.id, d.id FROM emp e CROSS JOIN dept d WHERE e.id = 1
+> EXPLAIN (ANALYZE) SELECT d.name, count(*) FROM dept d RIGHT JOIN emp e ON e.dept_id = d.id GROUP BY d.name
+---
+'Projection: e.name, d.name', 100000, 3
+'└─ HashJoin: inner on e.dept_id = d.id', 100000, 3
+'   ├─ Scan: emp as e', 1000, 4
+'   └─ Scan: dept as d', 1000, 3
+'Projection: e.name, d.name', 100000, 4
+'└─ HashJoin: outer on e.dept_id = d.id', 100000, 4
+'   ├─ Scan: emp as e', 1000, 4
+'   └─ Scan: dept as d', 1000, 3
+'Projection: e.name, d.name', 250000, 5
+'└─ NestedLoopJoin: inner on e.dept_id < d.id', 250000, 5
+'   ├─ Scan: emp as e', 1000, 4
+'   └─ Scan: dept as d', 1000, 3
+'Projection: e.id, d.id', 1000, 3
+'└─ NestedLoopJoin: inner', 1000, 3
+'   ├─ KeyLookup: emp as e (1)', 1, 1
+'   └─ Scan: dept as d', 1000, 3
+'Aggregate: d.name, count(TRUE)', 10, 3
+'└─ Remap: d.id, d.name, e.id, e.name, e.dept_id', 100000, 4
+'   └─ HashJoin: outer on e.dept_id = d.id', 100000, 4
+'      ├─ Scan: emp as e', 1000, 4
+'      └─ Scan: dept as d', 1000, 3
+
+# Views and system tables.
+> CREATE VIEW ev AS SELECT name FROM emp WHERE dept_id = 10
+> EXPLAIN (ANALYZE) SELECT * FROM ev
+> EXPLAIN (ANALYZE) SELECT v.name FROM ev AS v JOIN emp AS e ON v.name = e.name WHERE e.id > 1
+> EXPLAIN (ANALYZE) SELECT name FROM toydb_tables
+---
+'View: ev', 100, 2
+'└─ Projection: emp.name', 100, 2
+'   └─ Scan: emp (emp.dept_id = 10)', 100, 2
+'Projection: v.name', 3333, 1
+'└─ HashJoin: inner on v.name = e.name', 3333, 1
+'   ├─ View: ev as v', 100, 2
+'   │  └─ Projection: emp.name', 100, 2
+'   │     └─ Scan: emp (emp.dept_id = 10)', 100, 2
+'   └─ Scan: emp as e (e.id > 1)', 333, 3
+'Projection: toydb_tables.name', 0, 2
+'└─ SystemTable: toydb_tables', 0, 2

@@ -1,0 +1,85 @@
+# The encodings of data types and values: a type tag, then for a value its
+# payload (BOOLEAN one byte, INTEGER and FLOAT eight bytes, STRING a length
+# and UTF-8). NULL is the tag 0.
+
+> CREATE TABLE v (id INT PRIMARY KEY, b BOOLEAN NOT NULL DEFAULT TRUE, i INT DEFAULT -1, f FLOAT DEFAULT NAN, s STRING DEFAULT 'it''s' UNIQUE)
+> INSERT INTO v VALUES (-9223372036854775807 - 1, FALSE, 9223372036854775807, -INFINITY, ''), (0, TRUE, NULL, 1.5, 'é☃'), (7, TRUE, 0, NAN, NULL)
+backup v
+backup-list v
+backup-hex v
+---
+toydb backup version 1
+table v owner admin: CREATE TABLE v (id INTEGER PRIMARY KEY, b BOOLEAN NOT NULL DEFAULT TRUE, i INTEGER DEFAULT -1, f FLOAT DEFAULT NaN, s STRING DEFAULT 'it\'s' UNIQUE INDEX)
+row v: -9223372036854775808, FALSE, 9223372036854775807, -inf, ''
+row v: 0, TRUE, NULL, 1.5, 'é☃'
+row v: 7, TRUE, 0, NaN, NULL
+end 4 records, checksum 9ae51c57
+54 4f 59 44 42 42 41 4b 00 01 03 00 00 00 6b 00
+00 00 01 76 00 00 00 05 61 64 6d 69 6e 00 00 00
+00 00 00 00 05 00 00 00 02 69 64 02 00 00 01 00
+00 00 00 00 01 62 01 00 01 01 01 00 00 00 00 00
+00 01 69 02 01 01 02 ff ff ff ff ff ff ff ff 00
+00 00 00 00 00 01 66 03 01 01 03 7f f8 00 00 00
+00 00 00 00 00 00 00 00 00 01 73 04 01 01 04 00
+00 00 04 69 74 27 73 01 01 00 05 00 00 00 2b 00
+00 00 01 76 00 00 00 05 02 80 00 00 00 00 00 00
+00 01 00 02 7f ff ff ff ff ff ff ff 03 ff f0 00
+00 00 00 00 00 04 00 00 00 00 05 00 00 00 28 00
+00 00 01 76 00 00 00 05 02 00 00 00 00 00 00 00
+00 01 01 00 03 3f f8 00 00 00 00 00 00 04 00 00
+00 05 c3 a9 e2 98 83 05 00 00 00 27 00 00 00 01
+76 00 00 00 05 02 00 00 00 00 00 00 00 07 01 01
+02 00 00 00 00 00 00 00 00 03 7f f8 00 00 00 00
+00 00 00 ff 00 00 00 04 00 00 00 04 9a e5 1c 57
+
+# Restoring gives back the same definition, values and index entries.
+> DROP TABLE v
+restore v
+schema v
+> SELECT * FROM v
+> SELECT id FROM v WHERE s = 'é☃'
+!> INSERT INTO v (id, s) VALUES (8, '')
+> INSERT INTO v (id) VALUES (9)
+> SELECT * FROM v WHERE id = 9
+---
+CREATE TABLE v (
+  id INTEGER PRIMARY KEY,
+  b BOOLEAN NOT NULL DEFAULT TRUE,
+  i INTEGER DEFAULT -1,
+  f FLOAT DEFAULT NaN,
+  s STRING DEFAULT 'it\'s' UNIQUE INDEX
+)
+-9223372036854775808, FALSE, 9223372036854775807, -inf, ''
+0, TRUE, NULL, 1.5, 'é☃'
+7, TRUE, 0, NaN, NULL
+0
+Error: invalid input: value '' already in unique column s
+9, TRUE, -1, NaN, 'it\'s'
+
+# References: a table comes after the tables it references; a reference is
+# an optional string.
+> CREATE TABLE r (id STRING PRIMARY KEY, parent STRING REFERENCES r, n INT REFERENCES v)
+> INSERT INTO r VALUES ('a', NULL, 0), ('b', 'a', NULL)
+backup all
+backup-list all
+---
+toydb backup version 1
+table v owner admin: CREATE TABLE v (id INTEGER PRIMARY KEY, b BOOLEAN NOT NULL DEFAULT TRUE, i INTEGER DEFAULT -1, f FLOAT DEFAULT NaN, s STRING DEFAULT 'it\'s' UNIQUE INDEX)
+row v: -9223372036854775808, FALSE, 9223372036854775807, -inf, ''
+row v: 0, TRUE, NULL, 1.5, 'é☃'
+row v: 7, TRUE, 0, NaN, NULL
+row v: 9, TRUE, -1, NaN, 'it\'s'
+table r owner admin: CREATE TABLE r (id STRING PRIMARY KEY, parent STRING DEFAULT NULL INDEX REFERENCES r, n INTEGER DEFAULT NULL INDEX REFERENCES v)
+row r: 'a', NULL, 0
+row r: 'b', 'a', NULL
+end 8 records, checksum 65249cf4
+
+> DROP TABLE r
+> DROP TABLE v
+restore all
+> SELECT * FROM r
+!> DELETE FROM v WHERE id = 0
+---
+'a', NULL, 0
+'b', 'a', NULL
+Error: invalid input: row referenced by r.id='a'

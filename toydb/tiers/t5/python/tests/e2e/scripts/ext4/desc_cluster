@@ -1,0 +1,34 @@
+# DESCRIBE through the client: tables, views and queries, without effect.
+
+cluster nodes=3
+---
+ok
+
+c1:> CREATE TABLE dept (id INT PRIMARY KEY, name STRING NOT NULL)
+c1:> CREATE TABLE emp (id INT PRIMARY KEY, name STRING, dept_id INT REFERENCES dept, salary FLOAT NOT NULL DEFAULT 0.0)
+c2:[header]> DESCRIBE emp
+---
+c2: column, type, nullable
+c2: 'id', 'INTEGER', FALSE
+c2: 'name', 'STRING', TRUE
+c2: 'dept_id', 'INTEGER', TRUE
+c2: 'salary', 'FLOAT', FALSE
+
+c3:> DESCRIBE SELECT d.name, COUNT(e.id), SUM(e.salary) / 2 FROM dept d LEFT JOIN emp e ON e.dept_id = d.id GROUP BY d.name
+c3:> CREATE VIEW payroll AS SELECT e.name AS who, e.salary * 12 AS yearly FROM emp e
+c1:> DESCRIBE payroll
+c2:[json]> DESCRIBE INSERT INTO emp VALUES (1, 'ann', NULL, 10.0)
+c2:> SELECT * FROM emp
+---
+c3: 'd.name', 'STRING', FALSE
+c3: NULL, 'INTEGER', FALSE
+c3: NULL, 'FLOAT', TRUE
+c1: 'who', 'STRING', TRUE
+c1: 'yearly', 'FLOAT', FALSE
+c2: {"result":"select","columns":["column","type","nullable"],"rows":[]}
+
+c1:!> DESCRIBE nosuch
+c1:!> DESCRIBE SHOW VIEWS
+---
+c1: Error: invalid input: table nosuch does not exist
+c1: Error: invalid input: DESCRIBE is not supported for SHOW

@@ -1,0 +1,87 @@
+# EXPORT AS SQL writes the views after the tables, each after the views it
+# depends on; statement digests record the view statements.
+
+> CREATE TABLE item (id INT PRIMARY KEY, name STRING, qty INT)
+> INSERT INTO item VALUES (1, 'it''s', 10), (2, 'b', 3)
+> CREATE VIEW b_view AS SELECT id, name FROM item WHERE qty > 5
+> CREATE VIEW a_view AS SELECT * FROM b_view
+> CREATE VIEW "Mixed" ("Id", n) AS SELECT id, name FROM item
+> CREATE VIEW c_view AS SELECT a.id FROM a_view a JOIN "Mixed" m ON m."Id" = a.id
+> EXPORT AS SQL
+---
+CREATE TABLE item (
+  id INTEGER PRIMARY KEY,
+  name STRING DEFAULT NULL,
+  qty INTEGER DEFAULT NULL
+);
+INSERT INTO item VALUES (1, 'it''s', 10);
+INSERT INTO item VALUES (2, 'b', 3);
+CREATE VIEW "Mixed" ("Id", n) AS SELECT id, name FROM item;
+CREATE VIEW b_view (id, name) AS SELECT id, name FROM item WHERE qty > 5;
+CREATE VIEW a_view (id, name) AS SELECT * FROM b_view;
+CREATE VIEW c_view (id) AS SELECT a.id FROM a_view AS a JOIN "Mixed" AS m ON m."Id" = a.id;
+
+# Exporting one table doesn't write views, and views can't be exported.
+> EXPORT item AS SQL
+!> EXPORT a_view AS CSV
+---
+CREATE TABLE item (
+  id INTEGER PRIMARY KEY,
+  name STRING DEFAULT NULL,
+  qty INTEGER DEFAULT NULL
+);
+INSERT INTO item VALUES (1, 'it''s', 10);
+INSERT INTO item VALUES (2, 'b', 3);
+Error: invalid input: table a_view does not exist
+
+# The exported view lines re-create the views.
+> DROP VIEW c_view
+> DROP VIEW a_view
+> DROP VIEW b_view
+> DROP VIEW "Mixed"
+> CREATE VIEW "Mixed" ("Id", n) AS SELECT id, name FROM item;
+> CREATE VIEW b_view (id, name) AS SELECT id, name FROM item WHERE qty > 5;
+> CREATE VIEW a_view (id, name) AS SELECT * FROM b_view;
+> CREATE VIEW c_view (id) AS SELECT a.id FROM a_view AS a JOIN "Mixed" AS m ON m."Id" = a.id;
+> SELECT * FROM c_view
+[json]> EXPORT AS SQL
+---
+1
+{"result":"export","format":"sql","lines":["CREATE TABLE item (","  id INTEGER PRIMARY KEY,","  name STRING DEFAULT NULL,","  qty INTEGER DEFAULT NULL",");","INSERT INTO item VALUES (1, 'it''s', 10);","INSERT INTO item VALUES (2, 'b', 3);","CREATE VIEW \"Mixed\" (\"Id\", n) AS SELECT id, name FROM item;","CREATE VIEW b_view (id, name) AS SELECT id, name FROM item WHERE qty > 5;","CREATE VIEW a_view (id, name) AS SELECT * FROM b_view;","CREATE VIEW c_view (id) AS SELECT a.id FROM a_view AS a JOIN \"Mixed\" AS m ON m.\"Id\" = a.id;"]}
+
+# ANALYZE without a table analyzes the tables only.
+> DROP VIEW c_view
+> DROP VIEW a_view
+> DROP VIEW b_view
+> DROP VIEW "Mixed"
+> SHOW VIEWS
+> ANALYZE
+> SHOW STATISTICS item
+---
+'id', 2, 0, 2, 1, 2, 1, 1, NULL
+'name', 2, 0, 2, 'b', 'it\'s', 'b', 1, 2.5
+'qty', 2, 0, 2, 3, 10, 3, 1, NULL
+
+# Digests of the view statements.
+> SHOW STATEMENTS
+---
+'CREATE TABLE item (id INTEGER PRIMARY KEY, name STRING, qty INTEGER)', 1, 0, 0
+'INSERT INTO item VALUES (?, ?, ?), (?, ?, ?)', 1, 0, 2
+'CREATE VIEW b_view AS SELECT id, name FROM item WHERE qty > ?', 1, 0, 0
+'CREATE VIEW a_view AS SELECT * FROM b_view', 1, 0, 0
+'CREATE VIEW Mixed (Id, n) AS SELECT id, name FROM item', 2, 0, 0
+'CREATE VIEW c_view AS SELECT a.id FROM a_view AS a JOIN Mixed AS m ON m.Id = a.id', 1, 0, 0
+'EXPORT AS SQL', 2, 0, 4
+'EXPORT item AS SQL', 1, 0, 2
+'EXPORT a_view AS CSV', 1, 1, 0
+'DROP VIEW c_view', 2, 0, 0
+'DROP VIEW a_view', 2, 0, 0
+'DROP VIEW b_view', 2, 0, 0
+'DROP VIEW Mixed', 2, 0, 0
+'CREATE VIEW b_view (id, name) AS SELECT id, name FROM item WHERE qty > ?', 1, 0, 0
+'CREATE VIEW a_view (id, name) AS SELECT * FROM b_view', 1, 0, 0
+'CREATE VIEW c_view (id) AS SELECT a.id FROM a_view AS a JOIN Mixed AS m ON m.Id = a.id', 1, 0, 0
+'SELECT * FROM c_view', 1, 0, 1
+'SHOW VIEWS', 1, 0, 0
+'ANALYZE', 1, 0, 0
+'SHOW STATISTICS item', 1, 0, 3

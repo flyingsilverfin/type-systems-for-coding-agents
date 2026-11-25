@@ -1,0 +1,22 @@
+# LINT through the client, with the table definitions seen through the
+# cluster.
+
+cluster nodes=3
+---
+ok
+
+c1:> CREATE TABLE t (id INT PRIMARY KEY, s STRING)
+c2:[header]> LINT UPDATE t SET s = 'x' WHERE id = 'one' OR s = NULL
+c3:> LINT DELETE FROM t
+c1:[json]> LINT INSERT INTO t VALUES (1, 'a')
+---
+c2: code, message
+c2: 'type_mismatch', 'INTEGER column id compared with STRING value \'one\''
+c2: 'null_comparison', 'comparison with NULL is never true: s = NULL'
+c3: 'unfiltered_write', 'DELETE without WHERE deletes every row of t'
+c1: {"result":"select","columns":["code","message"],"rows":[["implicit_columns","INSERT without a column list depends on the column order of t"]]}
+
+c2:> SELECT * FROM t
+c3:!> LINT
+---
+c3: Error: invalid input: unexpected end of input

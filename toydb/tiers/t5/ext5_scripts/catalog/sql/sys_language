@@ -1,0 +1,160 @@
+# System tables of the SQL language: keywords, functions and data types.
+
+> SELECT * FROM toydb_types
+[header]> SELECT * FROM toydb_functions
+---
+'BOOLEAN', 'BOOL, BOOLEAN', 'bool', 16, 1
+'INTEGER', 'INT, INTEGER', 'int8', 20, 2
+'FLOAT', 'DOUBLE, FLOAT', 'float8', 701, 3
+'STRING', 'STRING, TEXT, VARCHAR', 'text', 25, 4
+toydb_functions.name, toydb_functions.kind, toydb_functions.arguments
+'avg', 'aggregate', 1
+'count', 'aggregate', 1
+'max', 'aggregate', 1
+'min', 'aggregate', 1
+'sqrt', 'scalar', 1
+'sum', 'aggregate', 1
+
+# Every reserved keyword, with its category: statement, type, literal,
+# operator or reserved, the first that applies.
+[header]> SELECT * FROM toydb_keywords
+---
+toydb_keywords.word, toydb_keywords.category
+'ANALYZE', 'statement'
+'AND', 'operator'
+'AS', 'reserved'
+'ASC', 'reserved'
+'AUDIT', 'reserved'
+'BEGIN', 'statement'
+'BOOL', 'type'
+'BOOLEAN', 'type'
+'BY', 'reserved'
+'CHANGES', 'reserved'
+'CHECK', 'reserved'
+'COMMIT', 'statement'
+'CONSTRAINT', 'reserved'
+'CREATE', 'statement'
+'CROSS', 'reserved'
+'CSV', 'reserved'
+'DEALLOCATE', 'statement'
+'DEFAULT', 'reserved'
+'DELETE', 'statement'
+'DESC', 'reserved'
+'DESCRIBE', 'statement'
+'DOUBLE', 'type'
+'DROP', 'statement'
+'ESTIMATE', 'statement'
+'EXECUTE', 'statement'
+'EXISTS', 'reserved'
+'EXPLAIN', 'statement'
+'EXPORT', 'statement'
+'FALSE', 'literal'
+'FLOAT', 'type'
+'FORMAT', 'statement'
+'FROM', 'reserved'
+'GRANT', 'statement'
+'GRANTS', 'reserved'
+'GROUP', 'reserved'
+'HAVING', 'reserved'
+'IF', 'reserved'
+'IMPORT', 'statement'
+'INDEX', 'reserved'
+'INFINITY', 'literal'
+'INNER', 'reserved'
+'INSERT', 'statement'
+'INT', 'type'
+'INTEGER', 'type'
+'INTO', 'reserved'
+'IS', 'operator'
+'JOIN', 'reserved'
+'JSON', 'reserved'
+'KEY', 'reserved'
+'LEFT', 'reserved'
+'LIKE', 'operator'
+'LIMIT', 'reserved'
+'LINT', 'statement'
+'MATERIALIZED', 'reserved'
+'NAN', 'literal'
+'NOT', 'operator'
+'NULL', 'literal'
+'OF', 'reserved'
+'OFFSET', 'reserved'
+'ON', 'reserved'
+'ONLY', 'reserved'
+'OR', 'operator'
+'ORDER', 'reserved'
+'OUTER', 'reserved'
+'PASSWORD', 'reserved'
+'POLICY', 'reserved'
+'PREPARE', 'statement'
+'PREPARED', 'reserved'
+'PRIMARY', 'reserved'
+'READ', 'reserved'
+'REFERENCES', 'reserved'
+'REFRESH', 'statement'
+'RESET', 'statement'
+'REVOKE', 'statement'
+'RIGHT', 'reserved'
+'ROLE', 'reserved'
+'ROLLBACK', 'statement'
+'SELECT', 'statement'
+'SESSIONS', 'reserved'
+'SET', 'statement'
+'SHOW', 'statement'
+'SINCE', 'reserved'
+'SQL', 'reserved'
+'STATEMENTS', 'reserved'
+'STATISTICS', 'reserved'
+'STRING', 'type'
+'SUPERUSER', 'reserved'
+'SYSTEM', 'reserved'
+'TABLE', 'reserved'
+'TEXT', 'type'
+'TIME', 'reserved'
+'TO', 'reserved'
+'TRANSACTION', 'reserved'
+'TRUE', 'literal'
+'UNIQUE', 'reserved'
+'UPDATE', 'statement'
+'USER', 'reserved'
+'USERS', 'reserved'
+'USING', 'reserved'
+'VALUES', 'reserved'
+'VARCHAR', 'type'
+'VIEW', 'reserved'
+'VIEWS', 'reserved'
+'WHERE', 'reserved'
+'WITH', 'reserved'
+'WRITE', 'reserved'
+
+> SELECT category, count(*) FROM toydb_keywords GROUP BY category ORDER BY category
+> SELECT word FROM toydb_keywords WHERE category = 'operator'
+---
+'literal', 5
+'operator', 5
+'reserved', 61
+'statement', 26
+'type', 9
+'AND'
+'IS'
+'LIKE'
+'NOT'
+'OR'
+
+# pg_type: the PostgreSQL types of the wire protocol, for PostgreSQL clients.
+[header]> SELECT * FROM pg_type
+> SELECT t.name, p.typlen FROM toydb_types AS t JOIN pg_type AS p ON t.pg_oid = p.oid
+---
+pg_type.oid, pg_type.typname, pg_type.typlen
+16, 'bool', 1
+20, 'int8', 8
+21, 'int2', 2
+23, 'int4', 4
+25, 'text', -1
+700, 'float4', 4
+701, 'float8', 8
+1043, 'varchar', -1
+'BOOLEAN', 1
+'INTEGER', 8
+'FLOAT', 8
+'STRING', -1

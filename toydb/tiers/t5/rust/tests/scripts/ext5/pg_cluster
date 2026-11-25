@@ -1,0 +1,73 @@
+# The PostgreSQL protocol in a cluster: every node listens on its PostgreSQL
+# port; a connection's statements are executed by its node like a client's.
+
+cluster nodes=3
+---
+ok
+
+c1:> CREATE TABLE t (id INT PRIMARY KEY, v STRING)
+c1:> CREATE USER alice PASSWORD 'pw'
+c1:> GRANT SELECT, INSERT ON t TO alice
+---
+ok
+
+p1:pg startup user=alice password=pw
+p1:pg query "INSERT INTO t VALUES (1, 'a'), (2, 'b'); SELECT * FROM t"
+---
+p1: AuthenticationMD5Password
+p1: AuthenticationOk
+p1: ParameterStatus application_name= client_encoding=UTF8 DateStyle=ISO integer_datetimes=on is_superuser=off server_encoding=UTF8 server_version=14.0 session_authorization=alice standard_conforming_strings=on
+p1: BackendKeyData
+p1: ReadyForQuery idle
+p1: CommandComplete INSERT 0 2
+p1: RowDescription id int8(20,8), v text(25,-1)
+p1: DataRow '1', 'a'
+p1: DataRow '2', 'b'
+p1: CommandComplete SELECT 2
+p1: ReadyForQuery idle
+
+# The extended protocol, and transactions, through another connection.
+p2:pg startup
+p2:pg parse name=get "SELECT v FROM t WHERE id = $1" types=20
+p2:pg bind statement=get params=2
+p2:pg execute
+p2:pg sync
+p2:pg query "BEGIN; INSERT INTO t VALUES (3, 'c')"
+p1:pg query "SELECT count(*) FROM t"
+p2:pg query "COMMIT"
+p1:pg query "SELECT count(*) FROM t"
+c1:> SELECT * FROM t WHERE id = 3
+---
+p2: AuthenticationOk
+p2: ParameterStatus application_name= client_encoding=UTF8 DateStyle=ISO integer_datetimes=on is_superuser=on server_encoding=UTF8 server_version=14.0 session_authorization=admin standard_conforming_strings=on
+p2: BackendKeyData
+p2: ReadyForQuery idle
+p2: ParseComplete
+p2: BindComplete
+p2: DataRow 'b'
+p2: CommandComplete SELECT 1
+p2: ReadyForQuery idle
+p2: CommandComplete BEGIN
+p2: CommandComplete INSERT 0 1
+p2: ReadyForQuery transaction
+p1: RowDescription count int8(20,8)
+p1: DataRow '2'
+p1: CommandComplete SELECT 1
+p1: ReadyForQuery idle
+p2: CommandComplete COMMIT
+p2: ReadyForQuery idle
+p1: RowDescription count int8(20,8)
+p1: DataRow '3'
+p1: CommandComplete SELECT 1
+p1: ReadyForQuery idle
+c1: 3, 'c'
+
+# Errors and failed startups.
+p1:pg query "DELETE FROM t"
+p3:pg startup user=alice password=nope
+---
+p1: ErrorResponse ERROR 42501 permission denied: user alice has no DELETE privilege on t
+p1: ReadyForQuery idle
+p3: AuthenticationMD5Password
+p3: ErrorResponse FATAL 28P01 password authentication failed for user alice
+p3: Closed

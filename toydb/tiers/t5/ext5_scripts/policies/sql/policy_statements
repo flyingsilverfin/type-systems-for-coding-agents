@@ -1,0 +1,83 @@
+# Policies restrict every read of a protected table's rows: scans, key and
+# index lookups, joins, views, aggregates, UPDATE, DELETE and EXPORT. The
+# checks of written rows see every row.
+
+> CREATE TABLE doc (id INT PRIMARY KEY, owner_name STRING INDEX, body STRING)
+> INSERT INTO doc VALUES (1, 'alice', 'a1'), (2, 'bob', 'b1'), (3, 'alice', 'a2')
+> CREATE VIEW dv AS SELECT id, body FROM doc
+> CREATE USER alice
+> GRANT SELECT, INSERT, UPDATE, DELETE ON doc TO alice
+> GRANT SELECT ON dv TO alice
+> CREATE POLICY own ON doc TO alice USING (owner_name = 'alice')
+a:> SET ROLE alice
+---
+ok
+
+a:> SELECT count(*), max(id) FROM doc
+a:> SELECT * FROM doc WHERE id = 2
+a:> SELECT * FROM doc WHERE id = 2 OR id = 3
+a:> SELECT * FROM doc WHERE owner_name = 'bob'
+a:> SELECT * FROM dv
+a:> SELECT d.id, e.id FROM doc AS d JOIN doc AS e ON d.id = e.id
+a:> SELECT d.id, e.id FROM doc AS d LEFT JOIN doc AS e ON d.id = e.id + 1
+a:> EXPORT doc AS CSV
+---
+a: 2, 3
+a: 3, 'alice', 'a2'
+a: 1, 'a1'
+a: 3, 'a2'
+a: 1, 1
+a: 3, 3
+a: 1, NULL
+a: 3, NULL
+a: id,owner_name,body
+a: 1,alice,a1
+a: 3,alice,a2
+
+# The plan is the same for every user: the policies apply to the rows that
+# its nodes read.
+[plan]> SELECT * FROM doc WHERE id = 2
+---
+KeyLookup: doc (2)
+2, 'bob', 'b1'
+
+# The policies are evaluated before the statement's own conditions, so these
+# never see a hidden row.
+a:> SELECT id FROM doc WHERE 1 / (id - 2) >= 0
+a:> SELECT id FROM doc WHERE owner_name = 'alice' AND 1 / (id - 2) > 0
+---
+a: 3
+a: 3
+
+# UPDATE and DELETE change only the rows the user reads.
+a:[result]> UPDATE doc SET body = 'x'
+a:[result]> DELETE FROM doc WHERE id = 2
+a:> SELECT * FROM doc
+> SELECT * FROM doc
+---
+a: Update { count: 2 }
+a: Delete { count: 0 }
+a: 1, 'alice', 'x'
+a: 3, 'alice', 'x'
+1, 'alice', 'x'
+2, 'bob', 'b1'
+3, 'alice', 'x'
+
+# INSERT is restricted by the policies' check conditions (here the USING
+# condition); a hidden row's key or unique value is still taken.
+a:!> INSERT INTO doc VALUES (2, 'alice', 'dup')
+a:!> INSERT INTO doc VALUES (4, 'bob', 'b2')
+a:> INSERT INTO doc VALUES (4, 'alice', 'a4')
+a:!> UPDATE doc SET owner_name = 'bob' WHERE id = 1
+a:> SELECT id FROM doc
+a:[result]> DELETE FROM doc
+> SELECT id, owner_name FROM doc
+---
+a: Error: invalid input: primary key 2 already exists
+a: Error: invalid input: new row violates row-level security policy for table doc
+a: Error: invalid input: new row violates row-level security policy for table doc
+a: 1
+a: 3
+a: 4
+a: Delete { count: 3 }
+2, 'bob'

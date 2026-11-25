@@ -1,0 +1,66 @@
+# Column statistics are transactional: ANALYZE writes them in the session's
+# transaction, with snapshot isolation like any other write.
+
+> CREATE TABLE t (id INT PRIMARY KEY, n INT)
+> INSERT INTO t VALUES (1, 1), (2, 2), (3, 3)
+---
+ok
+
+# An uncommitted ANALYZE is visible only to its own transaction, and sees the
+# transaction's own writes.
+a:> BEGIN
+a:> INSERT INTO t VALUES (4, 40)
+a:> ANALYZE t
+a:> SHOW STATISTICS t
+b:> SHOW STATISTICS t
+---
+a: 'id', 4, 0, 4, 1, 4, 1, 1, NULL
+a: 'n', 4, 0, 4, 1, 40, 1, 1, NULL
+b: 'id', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL
+b: 'n', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL
+
+# A concurrent ANALYZE of the same table conflicts.
+b:!> ANALYZE t
+---
+b: Error: serialization failure, retry transaction
+
+# ROLLBACK discards the statistics with the rows.
+a:> ROLLBACK
+a:> SHOW STATISTICS t
+---
+a: 'id', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL
+a: 'n', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL
+
+# After COMMIT, transactions that begin later see them; an earlier transaction
+# keeps its snapshot.
+b:> BEGIN READ ONLY
+a:> BEGIN
+a:> INSERT INTO t VALUES (5, 50)
+a:> ANALYZE t
+a:> COMMIT
+b:> SHOW STATISTICS t
+b:> COMMIT
+b:> SHOW STATISTICS t
+---
+b: 'id', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL
+b: 'n', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL
+b: 'id', 4, 0, 4, 1, 5, 1, 1, NULL
+b: 'n', 4, 0, 4, 1, 50, 1, 1, NULL
+
+# In a read-only transaction ANALYZE fails, SHOW STATISTICS works.
+c:> BEGIN READ ONLY
+c:!> ANALYZE t
+c:> SHOW STATISTICS t
+c:> ROLLBACK
+---
+c: Error: read-only transaction
+c: 'id', 4, 0, 4, 1, 5, 1, 1, NULL
+c: 'n', 4, 0, 4, 1, 50, 1, 1, NULL
+
+# Statistics as of an earlier version are those committed by then.
+> BEGIN READ ONLY AS OF SYSTEM TIME 3
+> SHOW STATISTICS t
+> ROLLBACK
+---
+'id', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL
+'n', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL

@@ -1,0 +1,110 @@
+# Errors of CREATE POLICY and DROP POLICY, in the order of their checks, and
+# the policies in FORMAT, digests, LINT and the "not supported" checks.
+
+> CREATE TABLE t (id INT PRIMARY KEY, v STRING)
+> CREATE VIEW tv AS SELECT id FROM t
+> CREATE USER alice
+> CREATE POLICY p ON t USING (id > 0)
+---
+ok
+
+!> CREATE POLICY q ON nosuch USING (id > 0)
+!> CREATE POLICY q ON tv USING (id > 0)
+!> CREATE POLICY "" ON t USING (id > 0)
+!> CREATE POLICY p ON t USING (nosuch > 0)
+!> CREATE POLICY q ON t TO nosuch USING (nosuch > 0)
+!> CREATE POLICY q ON t USING (nosuch > 0)
+!> CREATE POLICY q ON t USING (count(*) > 0)
+!> CREATE POLICY q ON t USING (other.id > 0)
+!> CREATE POLICY q ON t USING (id > $1)
+!> DROP POLICY p ON nosuch
+!> DROP POLICY q ON t
+> DROP POLICY IF EXISTS q ON t
+!> DROP POLICY IF EXISTS q ON nosuch
+---
+Error: invalid input: table nosuch does not exist
+Error: invalid input: table tv does not exist
+Error: invalid input: policy name can't be empty
+Error: invalid input: policy p already exists on table t
+Error: invalid input: user nosuch does not exist
+Error: invalid input: unknown column nosuch
+Error: invalid input: unknown function count with 1 arguments
+Error: invalid input: unknown table other
+Error: invalid input: parameter $1 can only be used in a prepared statement
+Error: invalid input: table nosuch does not exist
+Error: invalid input: policy q does not exist on table t
+Error: invalid input: table nosuch does not exist
+
+# Creating and dropping policies requires ownership of the table.
+a:> SET ROLE alice
+a:!> CREATE POLICY q ON t USING (TRUE)
+a:!> DROP POLICY p ON t
+a:!> DROP POLICY IF EXISTS q ON t
+a:!> CREATE POLICY q ON nosuch USING (TRUE)
+---
+a: Error: permission denied: user alice is not the owner of t
+a: Error: permission denied: user alice is not the owner of t
+a: Error: permission denied: user alice is not the owner of t
+a: Error: invalid input: table nosuch does not exist
+
+> BEGIN READ ONLY
+!> CREATE POLICY q ON t USING (TRUE)
+!> CREATE POLICY q ON t USING (nosuch)
+!> DROP POLICY p ON t
+> DROP POLICY IF EXISTS q ON t
+> COMMIT
+---
+Error: read-only transaction
+Error: invalid input: unknown column nosuch
+Error: read-only transaction
+
+# Parse errors.
+!> CREATE POLICY
+!> CREATE POLICY 1 ON t USING (TRUE)
+!> CREATE POLICY q t USING (TRUE)
+!> CREATE POLICY q ON t (TRUE)
+!> CREATE POLICY q ON t USING TRUE
+!> CREATE POLICY q ON t USING (
+!> CREATE POLICY q ON t TO USING (TRUE)
+!> CREATE POLICY q ON t USING (TRUE) TO alice
+!> CREATE POLICIES q ON t USING (TRUE)
+!> DROP POLICY p
+!> DROP POLICY p ON t x
+!> SELECT 1 AS using
+---
+Error: invalid input: unexpected end of input
+Error: invalid input: expected identifier, got 1
+Error: invalid input: expected token ON, found t
+Error: invalid input: expected token USING, found (
+Error: invalid input: expected token (, found TRUE
+Error: invalid input: unexpected end of input
+Error: invalid input: expected identifier, got USING
+Error: invalid input: unexpected token TO
+Error: invalid input: expected token TABLE, found policies
+Error: invalid input: unexpected end of input
+Error: invalid input: unexpected token x
+Error: invalid input: expected identifier, got USING
+
+# FORMAT, the "not supported" checks and LINT.
+> FORMAT create policy P on T to "Alice" using (id > 1 and v != 'it''s')
+> FORMAT drop policy if exists p on t
+!> EXPLAIN CREATE POLICY q ON t USING (TRUE)
+!> DESCRIBE DROP POLICY p ON t
+!> PREPARE x AS CREATE POLICY q ON t USING (id > $1)
+> LINT CREATE POLICY q ON t USING (v = NULL AND 1 = 1)
+---
+CREATE POLICY p ON t TO "Alice" USING (id > 1 AND v != 'it''s')
+DROP POLICY IF EXISTS p ON t
+Error: invalid input: EXPLAIN is not supported for CREATE POLICY
+Error: invalid input: DESCRIBE is not supported for DROP POLICY
+Error: invalid input: PREPARE is not supported for CREATE POLICY
+'null_comparison', 'comparison with NULL is never true: v = NULL'
+
+# Digests.
+d:> CREATE POLICY q ON t TO alice USING (v != 'x' OR id > 10)
+d:> DROP POLICY IF EXISTS q ON t
+d:[header]> SHOW STATEMENTS
+---
+d: digest, calls, errors, rows
+d: 'CREATE POLICY q ON t TO alice USING (v != ? OR id > ?)', 1, 0, 0
+d: 'DROP POLICY IF EXISTS q ON t', 1, 0, 0

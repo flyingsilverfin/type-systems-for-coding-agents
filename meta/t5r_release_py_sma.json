@@ -1,0 +1,15 @@
+{
+ "run": "t5r_release_py_sma",
+ "task": "release",
+ "suite": "toydb-t5",
+ "tier": "t5",
+ "lang": "python",
+ "model": "sonnet",
+ "effort": "medium",
+ "ws": "/home/user/agentbench/runs/t5r_release_py_sma",
+ "hint": true,
+ "readme_from": "t2",
+ "baseline": "8a78cf631ec6e2d0bba20149df42eaf66d3e1eaa",
+ "created": 1795536919.1123252,
+ "warm_ok": true
+}

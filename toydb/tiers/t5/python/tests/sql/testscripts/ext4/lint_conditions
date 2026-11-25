@@ -1,0 +1,60 @@
+# constant_condition and order_by_constant: a column reference, an aggregate
+# function or a parameter makes an expression non-constant.
+
+> CREATE TABLE t (id INT PRIMARY KEY, g STRING, n INT)
+---
+ok
+
+> LINT SELECT * FROM t WHERE TRUE
+> LINT SELECT * FROM t WHERE NOT FALSE AND 1 < 2
+> LINT SELECT * FROM t WHERE id = 1 AND TRUE
+> LINT SELECT * FROM t WHERE sqrt(4) > 1
+> LINT SELECT * FROM t WHERE sqrt(n) > 1
+---
+'constant_condition', 'condition is constant: TRUE'
+'constant_condition', 'condition is constant: NOT FALSE AND 1 < 2'
+'constant_condition', 'condition is constant: sqrt(4) > 1'
+
+# Only the whole condition is checked, not its parts.
+> LINT SELECT * FROM t WHERE n > 1 OR 1 = 1
+---
+ok
+
+# HAVING with aggregates and GROUP BY columns.
+> LINT SELECT g, COUNT(*) FROM t GROUP BY g HAVING COUNT(*) > 1
+> LINT SELECT g, COUNT(*) FROM t GROUP BY g HAVING g = 'a'
+> LINT SELECT g, COUNT(*) FROM t GROUP BY g HAVING 2 > 1
+---
+'constant_condition', 'condition is constant: 2 > 1'
+
+# Join conditions, also of nested joins; a cross join has none.
+> LINT SELECT * FROM t a JOIN t b ON a.id = b.id LEFT JOIN t c ON 1 = 1 CROSS JOIN t d
+---
+'constant_condition', 'condition is constant: 1 = 1'
+
+# Parameters are not constants.
+> LINT PREPARE p (BOOLEAN, INT) AS SELECT * FROM t WHERE $1 ORDER BY $2
+> LINT PREPARE p (INT) AS SELECT * FROM t WHERE $1 > 0 AND 1 = 1 ORDER BY $1 + 1, 2
+---
+'order_by_constant', 'ORDER BY a constant has no effect: 2'
+
+# ORDER BY with aggregates, expressions over columns, and constants.
+> LINT SELECT g, COUNT(*) FROM t GROUP BY g ORDER BY COUNT(*) DESC, g, 'z', 1 + 1 DESC
+---
+'order_by_constant', 'ORDER BY a constant has no effect: \'z\''
+'order_by_constant', 'ORDER BY a constant has no effect: 1 + 1'
+
+# A constant select list, LIMIT, OFFSET, GROUP BY or VALUES is no warning.
+> LINT SELECT 1, 'a' FROM t GROUP BY 1 LIMIT 2 OFFSET 1
+> LINT INSERT INTO t (id) VALUES (1 + 1)
+---
+ok
+
+# Views are checked like queries; a WHERE over a view too.
+> LINT CREATE VIEW v AS SELECT g FROM t WHERE 1 = 1 ORDER BY 'x'
+> CREATE VIEW v AS SELECT g FROM t
+> LINT SELECT * FROM v WHERE FALSE
+---
+'constant_condition', 'condition is constant: 1 = 1'
+'order_by_constant', 'ORDER BY a constant has no effect: \'x\''
+'constant_condition', 'condition is constant: FALSE'
