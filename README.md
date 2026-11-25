@@ -3,14 +3,26 @@
 This repository was built to test whether type systems remain fundamentally useful in the age of agentic
 programming. 
 
-Historically, type systems were designed as guardrails for human developers. They catch entire classes of
-bugs before execution, co-locate interface documentation with the code, and offload cognitive overhead
-from human working memory. Rather than mentally tracing every downstream consequence of a change, a
-developer modifies a type and delegates the search to an external verifier: the compiler.
+Type systems do two jobs for human developers.
+
+1. **Guardrails.** They catch entire classes of bugs before execution, co-locate interface documentation
+   with the code, and offload cognitive overhead from human working memory. Rather than mentally tracing every
+   downstream consequence of a change, a developer modifies a type and delegates the search to an external
+   verifier: the compiler.
+2. **Units of abstraction.** Developers also use types (structs, enums, classes, traits) because they are
+   close to how we think about a problem. We use types to model the problem, not just to guard the code, and a
+   well-chosen type makes the software easier to reason about before anything is checked.
+
+**This project tests the first job.** It measures correctness and maintainability: agents change an existing
+codebase, and we count the mistakes the type system catches, or fails to catch. We don't yet know how to test the
+second job, whether thinking in types makes an agent better at *writing* the code in the first place. That
+question is open to discussion and research (see
+[What this does not test](#what-this-does-not-test-types-as-a-way-to-think)).
 
 ## Two Competing Hypotheses
 
-AI coding agents alter this trade-off, and it is not obvious which way the balance tips.
+AI coding agents alter the guardrail trade-off, and it is not obvious which way the balance tips. Both
+hypotheses below are about types as guardrails.
 
 **Agents might need types more than humans.** An agent has no persistent memory of a codebase. Every
 session starts cold—like a new contributor on day one—and the agent only knows the files it chooses to
@@ -267,12 +279,42 @@ seconds and no fatigue, and Rust carried no consistent token premium. And every 
 defensible claim is narrower: types help an agent in proportion to how weak its search is, and how much of the
 code that depends on a change it never looks at.
 
+### What this does not test: types as a way to think
+
+Everything above treats the type system as a verifier. In that role, the results fit a simple summary: **types
+didn't make the agents better at writing the code; they caught the agents' mistakes more often and made them fix
+them.** A compiler-flagged site a weak agent would have missed became a compile error it had to clear. The content
+it then wrote was no better than in Python, and sometimes worse, where a forced arm replaced a correct generic
+fallback.
+
+That framing almost assumes that the model gains nothing from types as abstractions, and the experiment's design
+leans the same way. Every task changes an existing codebase whose types a human-led port already fixed. No agent
+designed a data model, chose between an enum and a set of flags, or decided where a new concept should live. So
+the second job of a type system, as a way to model the problem, barely comes up.
+
+There is one hint that it might matter. At Tier 5, Rust Opus wrote the "operand of unknown type" case as
+`Some(Integer) | None`, a value of the type it was matching, and got the rule right 3 times out of 3. Python Opus,
+whose code was annotated `DataType | None` but matched only concrete types, missed it 3 times out of 3. The compiler
+enforced nothing there; if anything helped, it was the notation. Three runs a side can't settle it.
+
+Testing types as abstractions would need a different experiment, for example:
+
+- greenfield tasks, where the agent designs its own types and data model, judged on correctness and on how well
+  later changes go;
+- the same codebase written with rich domain types and with loose primitive types (strings, dicts, tuples), in
+  one language, so that the compiler is held constant and only the modelling changes;
+- measuring whether agents that state a type-level design first write fewer semantic bugs.
+
+We'd welcome ideas on how to do this well.
+
 Open questions:
 
 1. **Does documentation close the semantic gap?** The Tier 3 repeat runs, Tier 4 and Tier 5 all hid the extension docs from the README.
    A run with them restored would show whether the silent semantic misses are a documentation problem.
 2. **Can encoding more invariants into types bridge the gap?** If a codebase pushes more of its semantic
    rules into the type system, can the compiler start helping with the *what* as well as the *where*?
+3. **Do agents think better in types?** This is the abstraction role of types, which this project does not
+   test (see above).
 
 ## Method in Brief
 
