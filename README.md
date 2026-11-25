@@ -63,8 +63,9 @@ Their only feedback was a standard developer loop: compiler errors (in Rust), on
 
 ### 1. Small codebases show no difference (Tiers 1–2)
 
-At Tiers 1 and 2, agents in both languages pass almost every task. Rust incurs slightly more wall time and
-token usage, while Python's lack of static types carries no penalty in success rate.
+At Tiers 1 and 2, agents in both languages pass almost every task (27/28 and 28/28). Python's lack of static
+types carries no penalty in success rate, and Rust costs little extra: about 12% more output tokens for Haiku
+at Tier 1, and slightly fewer than Python at Tier 2.
 
 ### 2. Types reach code the agent never saw (Transplant Tests)
 
@@ -158,6 +159,80 @@ Python's generic fallback was automatically right. The rest of Rust's 8-run lead
 Sites nothing flags were missed in both languages, Rust 41 times and Python 62. They include the lint rules through
 simple-CASE expansions (missed by all 18 runs) and BETWEEN/IN and NOT LIKE rewritten in the parser.
 
+### 6. Rust carries no fixed token tax
+
+Across Tiers 1–4, Rust and Python total token use differs by −7% to +8%. At Tier 5 it runs the other way: Python
+used 25% more (622M vs 499M tokens), because Haiku and Sonnet took more turns in Python (90 vs 71 and 53 vs 43 per
+run). The largest Rust premium was Haiku at Tier 4 (+37%). Compile time is small throughout. At Tier 1, for
+example, Rust builds took 59–62 s across seven tasks, out of about 2,000 s of wall time.
+
+A separate replication by Kimi K3.1 Pro, on small SQL engines it wrote itself, found Rust used 28.6% more tokens.
+But its Rust code was 1.8× the size of its Python, so code size may explain that gap rather than the types. Here
+the Rust codebase is the smaller one.
+
+## Specific Outcomes, For and Against
+
+Pass rates compress a lot. The outcomes below are individual cases, each chosen because it shows one mechanism
+clearly.
+
+### For: the compiler finds what the agent doesn't see, or doesn't look for
+
+- **A green solution that broke the cluster (Tier 1 → 2).** Haiku's Python solutions for CASE and DATE passed
+  every Tier 1 test. Applied unchanged to the full database, they also passed the entire Tier 2 suite, then crashed
+  on the first cluster request carrying the new expression or value (`UnexpectedEof`). The Python port serializes
+  values and plans by hand, and at Tier 1 nothing called that code, so it looked dead. Rust derives serialization
+  with serde: none of the 10 transplanted Rust solutions failed this way.
+- **An import path nothing tested (Tier 2 → 3).** Tier 2 DATE and release solutions, carried to Tier 3, passed the
+  agent's visible script and every existing test in Python. Then they failed all six extension scripts: importing
+  a date crashed, and nothing but IMPORT reaches that code. In Rust the same solutions did not compile. For DATE,
+  the four errors named the JSON value form, the SQL literal and the CSV and JSON import parsers. That was exactly
+  the list of remaining work.
+- **Haiku's missing JSON writer (Tier 3).** With the extension docs removed from the README, Haiku in Python
+  missed a compiler-flagged site in 6 of 18 runs:
+  - CASE and BOOL_AND were never added to the JSON expression writer. It crashes, but only under `[json]` output,
+    which the agent never tried.
+  - DISTINCT was silently dropped by the JSON aggregate writer and by the hand-written Raft serialization.
+
+  Rust Haiku missed none of 18, because each of those sites is a non-exhaustive match, a missing struct field or
+  derived serde.
+- **Haiku's only Tier 5 pass.** One of 36 Haiku runs passed at Tier 5: a Rust DISTINCT run. A Python Haiku run on
+  the same task failed only on the two sites the compiler names there: the statement-digest printer for
+  `SELECT DISTINCT` and for `f(DISTINCT x)`. It is the cleanest case of the compiler deciding a run.
+
+### Against: capable agents find the sites anyway, and types don't check meaning
+
+- **Opus never needed the compiler to find a site.** Across Tiers 3, 4 and 5, no Python Opus run (0 of 51) left a
+  compiler-flagged site unhandled. Opus found every JSON writer, digest printer and formatter by searching for an
+  existing sibling of the new variant and visiting each hit. In a consistent codebase, that search returns the
+  same list as the compiler.
+- **Forced arms, wrong content (Tiers 3–5).** Exhaustive matching makes the agent write an arm, not the right arm.
+  When adding DATE, Rust agents were forced to add a JSON arm, and often wrote the date as a plain string instead
+  of the typed `{"type":"DATE",…}` form. At Tier 4 Rust got this right in 3 of 9 runs and Python in 9 of 9,
+  because Python's generic fallback already handled every typed value. At Tier 5 the same pattern cost Rust two
+  Sonnet DISTINCT runs (aggregate-name casing, an extra JSON field), which Python's fallback got right.
+- **Rules nobody followed (Tiers 3–5).** LINT rules must also apply to the expressions a simple CASE or BETWEEN/IN
+  expands into. No run did this: 0 of 36 at Tier 4, and 0 of 18 for CASE at Tier 5, across every model and both
+  languages. Most runs at every tier also implemented BETWEEN/IN by rewriting it in the parser into `>= … AND <=`,
+  against the digest documentation's "constructs are never rewritten" (15 of 18 at Tiers 4 and 5). No new type
+  exists then, so there is nothing for a compiler to check.
+
+### Looked like types, but wasn't
+
+- **The change log (Tiers 4–5).** At Tier 4, 8 of 9 Rust ALTER runs recorded the change in the change log,
+  against 0 of 9 Python runs. It looked as if Rust's data-carrying `enum Change` made the new variant natural. The
+  transcripts point elsewhere: Python's base has a unit test that pins the exact list of change kinds, and Python
+  agents read it as a prohibition. One Sonnet run wrote "`test_kind` pins the list of change kinds, so I did not
+  add one". Rust has no such test, since a Rust test can't enumerate an enum's variants. That one test accounts
+  for 3 of Rust's 8 extra passes at Tier 5.
+- **The DESCRIBE rule (Tier 5, unresolved).** Date arithmetic with an operand of unknown type must be typed DATE.
+  All three Rust Opus runs got this right, writing patterns like `(true, Some(Date), Some(Integer) | None)`. All
+  three Python Opus runs matched only concrete types and failed on that one rule. The compiler did not force it,
+  since both languages used a catch-all. But Rust's `Option` puts "unknown" in front of the agent as a value to
+  match. With three runs each (p ≈ 0.1), and Rust Haiku and Sonnet wrong in 6 of 6, it is a hint, not a result.
+- **A documentation difference (Tier 3).** Part of Opus's 18 vs. 13 at Tier 3 came from the ALTER digest. The Rust
+  module doc stated "optional words are left out" as a rule, and the Python docstring only implied it. Opus got it
+  right in Rust 3/3 and in Python 0/3. From Tier 4 on, the docs are identical in both languages.
+
 ## What This Means So Far
 
 Both hypotheses hold—just at different boundaries.
@@ -173,6 +248,24 @@ checks which cases exist, not what each case must do—it catches a forgotten en
 that silently skips a CASE expansion.
 
 Tier 5 bears this out at 19k lines of Rust: grepping did not lose its edge for strong models.
+
+### Are types more critical for agents than for humans?
+
+There was no human arm, so this is inference. The evidence does not support the strong form of the claim. The
+agents types helped were the weak one, and agents whose downstream code was out of view. Those are the same
+conditions under which types help a human newcomer. Strong agents behaved like a diligent engineer with good
+search tools: they found every site the compiler would have named.
+
+The instinct that agents need types less because they hold more in working memory is half right. Opus did not
+hold 20k lines in context; it searched systematically, and Haiku didn't. What separates the two is how thoroughly
+they search, not how much they remember. And what both lacked at the larger tiers was the semantic rules, which
+these types don't encode.
+
+Two things do tilt the balance toward agents. Their retries are cheap: a compile error costs an agent a few
+seconds and no fatigue, and Rust carried no consistent token premium. And every session starts cold, so
+"downstream code I have never seen" is an agent's normal state rather than a newcomer's first week. The
+defensible claim is narrower: types help an agent in proportion to how weak its search is, and how much of the
+code that depends on a change it never looks at.
 
 Open questions:
 
